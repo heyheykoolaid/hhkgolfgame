@@ -36,6 +36,7 @@ import {
   BOUND,
   FUN,
   WEST,
+  WEST_OFF,
   inWorld,
   type Plot,
   type Collider,
@@ -59,8 +60,10 @@ import { createStaticBatcher } from '../world/staticBatch';
 import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
-import { buildWestSide } from './westside';
-import { buyItem, setPlaced, ownAtLeast } from '../avatar/progress';
+import { buildWestSide, westRiseMesh } from './westside';
+import { buyItem, setPlaced, ownAtLeast, setTrail } from '../avatar/progress';
+import { TRAILS } from '../avatar/trails';
+import type { Shop } from './wardrobe';
 import { ITEMS } from './catalog';
 import { invIcon } from './invIcons';
 import { PAPERS_PRICE, GRINDER_PRICE } from './dealer';
@@ -284,7 +287,7 @@ export function createLobby(env: LobbyEnv) {
   };
   addEventListener('resize', resize);
   resize();
-  const { light, colliders, plots, gacha, hills, fountain } = buildLobby(scene);
+  const { light, colliders, plots, gacha, fountain } = buildLobby(scene);
   const fun = buildFunLand(scene, colliders);
   const west = buildWestSide(scene, colliders);
   // Shaders are otherwise built the first time something comes into view, which shows up as a hitch the first time
@@ -352,18 +355,18 @@ export function createLobby(env: LobbyEnv) {
             Math.max(0.05, (c.z1 - c.z0) / 2),
           );
       for (const [x, z, hx, hz] of [
-        // the south edge is open onto the hills, which have their own outer walls
-        [0, 152.5, 73, 0.5],
-        [72.5, 98, 0.5, 55],
-        [-72.5, 98, 0.5, 55],
-        [58.5, BOUND + 0.5, 14, 0.5],
-        [-58.5, BOUND + 0.5, 14, 0.5],
+        [0, BOUND + 0.5, BOUND + 1, 0.5],
         [0, -BOUND - 0.5, BOUND + 1, 0.5],
         // the west edge has one gate into the West Side (south-west, at z = gateZ); the district has its own outer walls
         [-BOUND - 0.5, (WEST.gateZ - WEST.gateHW - BOUND) / 2, 0.5, (WEST.gateZ - WEST.gateHW + BOUND) / 2],
         [-BOUND - 0.5, (WEST.gateZ + WEST.gateHW + BOUND) / 2, 0.5, (BOUND - WEST.gateZ - WEST.gateHW) / 2],
-        [(WEST.x0 - BOUND) / 2, WEST.z0 - 0.5, (-BOUND - WEST.x0) / 2 + 1, 0.5],
-        [(WEST.x0 - BOUND) / 2, WEST.z1 + 0.5, (-BOUND - WEST.x0) / 2 + 1, 0.5],
+        // the street up the rise is walled either side; the district on top has walls all round, open only at the street
+        [(WEST.x1 - BOUND) / 2, WEST.gateZ - WEST.rampHW - 0.5, (-BOUND - WEST.x1) / 2, 0.5],
+        [(WEST.x1 - BOUND) / 2, WEST.gateZ + WEST.rampHW + 0.5, (-BOUND - WEST.x1) / 2, 0.5],
+        [WEST.x1 + 0.5, (WEST.z0 + WEST.gateZ - WEST.rampHW) / 2, 0.5, (WEST.gateZ - WEST.rampHW - WEST.z0) / 2],
+        [WEST.x1 + 0.5, (WEST.z1 + WEST.gateZ + WEST.rampHW) / 2, 0.5, (WEST.z1 - WEST.gateZ - WEST.rampHW) / 2],
+        [(WEST.x0 + WEST.x1) / 2, WEST.z0 - 0.5, (WEST.x1 - WEST.x0) / 2 + 1, 0.5],
+        [(WEST.x0 + WEST.x1) / 2, WEST.z1 + 0.5, (WEST.x1 - WEST.x0) / 2 + 1, 0.5],
         [WEST.x0 - 0.5, (WEST.z0 + WEST.z1) / 2, 0.5, (WEST.z1 - WEST.z0) / 2 + 1],
         // the east edge has one gate into Fun Land (north-east, at z = -gateZ); the park has its own outer walls
         [BOUND + 0.5, (FUN.z - FUN.gateZ + FUN.gateHW) / 2, 0.5, (FUN.z + FUN.gateZ - FUN.gateHW) / 2],
@@ -374,7 +377,8 @@ export function createLobby(env: LobbyEnv) {
       ])
         w.box(x, 9, z, hx, 9, hz); // the edge of the world (carts)
       {
-        // the hills' ground, for carts: the same triangles that are drawn
+        // the rise the West Side stands on, for carts and ragdolls: the street's slope and the flat top
+        const hills = westRiseMesh();
         const R = rapier();
         if (R)
           w.world.createCollider(
@@ -662,8 +666,8 @@ export function createLobby(env: LobbyEnv) {
   // ---------------- interactions ----------------
   const SPOTS = [
     { id: 'tee', x: 0, z: -6.3, r: 2.6, label: 'View tee times' },
-    { id: 'shop', x: -5.8, z: 0, r: 2.4, label: 'Change your look' },
-    { id: 'gacha', x: -74.2, z: -2.6, r: 1.5, label: 'Birdie Ball machine' },
+    { id: 'shop', x: -5.8, z: 0, r: 2.4, label: 'Pro shop (moved to the West Side)' },
+    { id: 'gacha', x: -74.2 + WEST_OFF.x, z: -2.6, r: 1.5, label: 'Birdie Ball machine' },
     { id: 'dealer', x: DEALER_POS.x - 0.3, z: DEALER_POS.z + 0.9, r: 2.1, label: 'Sell to the Street Dealer' },
     ...fun.spots,
     ...west.spots,
@@ -739,7 +743,9 @@ export function createLobby(env: LobbyEnv) {
     const n = nearest();
     if (!n) return;
     if (n.id === 'tee') tee.open();
-    else if (n.id === 'shop') openWardrobe(true);
+    else if (n.id === 'shop') toast('The pro shop has moved to the West Side: clothes, a barber, tattoos and golf gear are all up the hill.', 4200);
+    else if (n.id === 'store:pro') void openProShop();
+    else if (n.id.startsWith('store:')) void openWardrobe(n.id.slice(6) as Shop);
     else if (n.id === 'gacha') openGacha();
     else if (n.id === 'rv') openCollection();
     else if (n.id === 'bjseat') openBJ((n as any).seat);
@@ -1496,7 +1502,12 @@ export function createLobby(env: LobbyEnv) {
       items: [string, string, string, () => void][] = [
         ['map', 'Town map', 'M', openMap],
         ['inv', 'Inventory', 'I', () => openInventory()],
-        ...(onLot ? ([['build', 'Build Mode', 'B', tryBuild]] as [string, string, string, () => void][]) : []),
+        ...(onLot
+          ? ([
+              ['build', 'Build Mode', 'B', tryBuild],
+              ['mirror', 'Mirror: build and skin', '', () => void openWardrobe('mirror')],
+            ] as [string, string, string, () => void][])
+          : []),
         ['options', 'Options', 'Esc', () => options.open()],
       ];
     openModal(
@@ -1519,9 +1530,9 @@ export function createLobby(env: LobbyEnv) {
   function openMap() {
     const c = document.createElement('canvas'),
       S = 3.1, // pixels per metre
-      X0 = -130,
+      X0 = -156,
       Z0 = -62,
-      W = 310,
+      W = 336,
       Hh = 124;
     c.width = Math.round(W * S);
     c.height = Math.round(Hh * S);
@@ -1545,15 +1556,16 @@ export function createLobby(env: LobbyEnv) {
     rect(X0, Z0, X0 + W, Z0 + Hh, '#6f7a45'); // meadow
     rect(-BOUND, -BOUND, BOUND, BOUND, '#7f8a52'); // the town
     rect(BOUND, -FUN.z, FUN.x1, FUN.z, '#86905a'); // Fun Land
-    rect(WEST.x0, WEST.z0, -BOUND, WEST.z1, '#86905a'); // the West Side
+    rect(WEST.x0, WEST.z0, WEST.x1, WEST.z1, '#86905a'); // the West Side, up its rise
+    rect(WEST.x1, 8, -BOUND, 20, '#86905a');
     // streets
     for (const s of [-14, 14]) {
       rect(-BOUND, s - 3, BOUND, s + 3, '#55524c');
       rect(s - 3, -BOUND, s + 3, BOUND, '#55524c');
     }
     rect(BOUND, -17, 104, -10.5, '#55524c');
-    rect(-116, 10.5, -BOUND, 17.5, '#55524c');
-    rect(-100, 20, -54, 35, '#4c4a45');
+    rect(-140, 10.5, -BOUND, 17.5, '#55524c');
+    rect(-124, 20, -78, 35, '#4c4a45');
     rect(-9.5, -9.5, 9.5, 9.5, '#c9bca4'); // plaza
     for (const l of LOTS) rect(l.cx - HALF, l.cz - HALF, l.cx + HALF, l.cz + HALF, '#a79a7c');
     if (MY) rect(MY.cx - HALF, MY.cz - HALF, MY.cx + HALF, MY.cz + HALF, '#e2b23a');
@@ -1567,12 +1579,12 @@ export function createLobby(env: LobbyEnv) {
     x.beginPath();
     x.roundRect(px(109), pz(-43), (166 - 109) * S, 35 * S, 20);
     x.stroke();
-    rect(-68, -5, -52, 8, '#ece6d8');
-    rect(-86, -6, -72, 8, '#5a3a30');
-    rect(-104, -4, -90, 8, '#4f7a4a');
+    rect(-92, -5, -76, 8, '#ece6d8');
+    rect(-110, -6, -96, 8, '#5a3a30');
+    rect(-128, -4, -114, 8, '#4f7a4a');
     x.fillStyle = '#d8d2c4';
     x.beginPath();
-    x.arc(px(-112), pz(-1), 2.8 * S, 0, 7);
+    x.arc(px(-136), pz(-1), 2.8 * S, 0, 7);
     x.fill();
     label('PLAZA', 0, 1.5, 16);
     label('tee times · pro shop', 0, 7, 11, '#f1e6c8');
@@ -1582,11 +1594,11 @@ export function createLobby(env: LobbyEnv) {
     label('Mini putt', 89, -31, 13);
     label('Go-karts', 138, -22, 13);
     label('Driving range', 122, 30, 13);
-    label('WEST SIDE', -77, 29.5, 20, '#ffd27a');
-    label('Clubhouse', -55, -7, 13);
-    label('Blackjack', -79, -11.5, 13);
-    label('Grow Supply', -104, -7, 13);
-    label('Dealer', -88, 9.6, 11, '#f1e6c8');
+    label('WEST SIDE', -101, 29.5, 20, '#ffd27a');
+    label('Clubhouse', -79, -7, 13);
+    label('Lounge', -103, -11.5, 13);
+    label('Grow Supply', -128, -7, 13);
+    label('Dealer', -112, 9.6, 11, '#f1e6c8');
     if (MY) label('YOUR LOT', MY.cx, MY.cz + HALF + 4.5, 12, '#ffe9a8');
     // you
     x.fillStyle = '#ff5a4a';
@@ -1704,6 +1716,35 @@ export function createLobby(env: LobbyEnv) {
               const c = $('lmodal').querySelector('.card');
               if (c) c.scrollTop = sc;
             }
+          }),
+      );
+  }
+  /** The pro shop (West Side): ball trails for now. Club skins and club effects are to come. */
+  async function openProShop() {
+    const pr = await loadProgress(),
+      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+    openModal(
+      'Pro Shop',
+      `<div class="shop"><div class="shophead"><p class="muted">"Everything for the golfer who has everything. Trails today; club skins and effects are on order."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
+       <h3>Ball trails</h3><div class="goods">${TRAILS.map(t => {
+         const own = !t.id || pr.trails.includes(t.id),
+           on = pr.trail === t.id;
+         return `<div class="good"><div class="gi"><span class="trail" style="background:${t.color === 'rainbow' ? 'linear-gradient(90deg,#ff4f4f,#ffd24a,#9cff3a,#8fe3ff,#ff4fc3)' : t.color}"></span></div><div class="gt"><b>${t.name}</b><p>${t.desc}</p><em>${on ? 'In use' : own ? 'Owned' : ''}</em></div>
+           <button data-trail="${t.id}" ${on || (!own && pr.cash < t.price) ? 'disabled' : ''}>${on ? 'In use' : own ? 'Use' : money(t.price)}</button></div>`;
+       }).join('')}</div>
+       <p class="muted" style="margin-top:10px">A trail is the line your ball draws through the air on every course. Others don't see yours yet.</p></div>`,
+    );
+    $('lmodal').querySelector('.card')?.classList.add('wide');
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-trail]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const t = TRAILS.find(x => x.id === b.dataset.trail)!,
+              ok = await setTrail(t.id, t.price);
+            playSample(ok ? 'confirm' : 'error', 0.5);
+            if (ok) void openProShop();
+            else toast("You can't afford that right now.");
           }),
       );
   }
@@ -2483,9 +2524,9 @@ export function createLobby(env: LobbyEnv) {
       }
     } else if (P.mode === 'wardrobe') {
       const a = wardrobe.cam();
-      tmp.set(P.x + Math.sin(a) * 2.9, 1.3, P.z + Math.cos(a) * 2.9);
+      tmp.set(P.x + Math.sin(a) * 2.9, P.gy + 1.3, P.z + Math.cos(a) * 2.9); // (the shops stand up on the West Side's rise)
       camPos.lerp(tmp, 1 - Math.exp(-dt * 5));
-      camLook.lerp(new THREE.Vector3(P.x + Math.cos(a) * 0.75, 1.05, P.z - Math.sin(a) * 0.75), 1 - Math.exp(-dt * 6)); // golfer sits left of the panel
+      camLook.lerp(new THREE.Vector3(P.x + Math.cos(a) * 0.75, P.gy + 1.05, P.z - Math.sin(a) * 0.75), 1 - Math.exp(-dt * 6)); // golfer sits left of the panel
     } else {
       // GTA-style chase camera: you aim it with the mouse; while you move and leave the mouse alone it swings back
       // in behind you. Slight over-the-shoulder offset, height follows jumps softly.
@@ -2606,7 +2647,7 @@ export function createLobby(env: LobbyEnv) {
           if (_cb.isEmpty()) u.cullR = 0;
           else {
             _cb.getBoundingSphere(_cs);
-            u.cullR = _cs.radius > 12 || _cb.max.y > 16 || o.name === 'funland' || o.name === 'hills' || o.name === 'lobbyTrees' ? -1 : _cs.radius;
+            u.cullR = _cs.radius > 12 || _cb.max.y > 16 || o.name === 'funland' || o.name === 'westrise' || o.name === 'lobbyTrees' ? -1 : _cs.radius;
             u.cullOff = _cs.center.clone().sub(o.position);
             if (u.cullR > 0) {
               // far away, the object reads as not visible whatever its own flag says; the flag itself is kept

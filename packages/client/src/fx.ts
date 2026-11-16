@@ -256,6 +256,10 @@ export class Tracer {
     this.line.frustumCulled = false;
     scene.add(this.line);
   }
+  /** The line's colour (a ball trail from the pro shop). */
+  setColor(c: string) {
+    this.mat.color.set(c);
+  }
   reset() {
     this.n = 0;
     this.line.geometry.setDrawRange(0, 0);

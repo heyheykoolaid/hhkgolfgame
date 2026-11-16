@@ -6,14 +6,32 @@ import { loadProps } from '../world/propPacks';
 import { buildMachines, type VltSpot } from './vlt';
 import * as THREE from 'three';
 import { buildCar, CAR_PAINT, type CarKind } from '../world/cars';
-import { M, box, cyl, textTex, photoM, tile, BOUND, WEST, BJ_AT, type Collider } from './world';
+import { M, box, cyl, textTex, photoM, tile, BOUND, WEST, WEST_OFF, BJ_AT, type Collider } from './world';
 
 const ST = { z0: 10.5, z1: 17.5 }, // the street (it carries on from the town's south-west street)
   X0 = -44, // the gate: the town's west edge (-BOUND; written out because world.ts imports this file)
   XW = -116; // the turning circle at the far end
-/** What's underfoot in the West Side ('' outside it). */
-export function westSurface(x: number, z: number): '' | 'asphalt' | 'paved' | 'grass' {
-  if (x > -BOUND || x < WEST.x0 || z < WEST.z0 || z > WEST.z1) return '';
+// Everything below is laid out in the district's own frame (as if it began at the town's edge, on the flat); the
+// whole group is then moved west and lifted onto its rise (WEST_OFF). World positions go through these two.
+const RAMP_X1 = -68, // where the street reaches the top (= WEST.x1; written out for the same reason as X0)
+  OX = -24,
+  OY = 2.6;
+/** How high the ground is west of town: 0 at the town's edge, climbing the street to the district's level. */
+export function westY(x: number, z: number) {
+  void z;
+  if (x <= RAMP_X1) return OY;
+  const t = Math.max(0, Math.min(1, (X0 - x) / (X0 - RAMP_X1)));
+  return OY * t * t * (3 - 2 * t); // eased at both ends, so the street meets the flat without a kink
+}
+/** What's underfoot in the West Side or on the street up to it ('' outside both). World coordinates. */
+export function westSurface(wx: number, z: number): '' | 'asphalt' | 'paved' | 'grass' {
+  if (wx > X0) return '';
+  if (wx > RAMP_X1) {
+    if (z > ST.z0 && z < ST.z1) return 'asphalt';
+    return z > ST.z0 - 2.4 && z < ST.z1 + 2.4 ? 'paved' : '';
+  }
+  const x = wx - OX;
+  if (x < -126 || z < -9 || z > 37) return '';
   if (z > ST.z0 && z < ST.z1) return 'asphalt';
   if (x > -104 && x < -52 && z > -6 && z <= ST.z0 - 2.4) return 'paved'; // inside the row of buildings and the alley (no grass indoors)
   if (z >= ST.z1 + 2.2 && z < 35 && x < -54 && x > -100) return 'asphalt'; // the car park
@@ -38,11 +56,146 @@ function sign(lines: Parameters<typeof textTex>[0], w: number, h: number, bg: st
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
 }
 
+/** The rise itself: the street and sidewalks climbing from the town's edge, grass banks either side of them, and
+ *  banks falling away all round the district so it reads as a low hill, not a slab. */
+function buildRise(scene: THREE.Scene) {
+  const G = new THREE.Group();
+  G.name = 'westrise';
+  const asphalt = photoM('asphalt', '#55524c'),
+    pavers = photoM('pavers', '#b9ad98'),
+    grass = new THREE.MeshStandardMaterial({ map: photoM('meadow', '#8a8a46').map, color: '#c9c98a', roughness: 1 });
+  /** A strip of ground from a list of cross-sections: at each x, points (z, y) across it. uv in metres / size. */
+  const strip = (xs: number[], cross: (x: number) => [number, number][], m: THREE.Material, size: number, lift = 0) => {
+    const pos: number[] = [],
+      uv: number[] = [],
+      idx: number[] = [],
+      n = cross(xs[0]).length;
+    xs.forEach((x, i) => {
+      cross(x).forEach(([z, y], k) => {
+        pos.push(x, y + lift, z);
+        uv.push(x / size, z / size);
+        if (i < xs.length - 1 && k < n - 1) {
+          const o = i * n + k;
+          idx.push(o, o + 1, o + n, o + 1, o + n + 1, o + n);
+        }
+      });
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, m);
+    (m as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    mesh.receiveShadow = true;
+    G.add(mesh);
+  };
+  const xs: number[] = [];
+  for (let x = X0; x >= RAMP_X1 - 0.01; x -= 1) xs.push(x);
+  const h = (x: number) => westY(x, 0);
+  strip(
+    xs,
+    x => [
+      [ST.z0, h(x)],
+      [ST.z1, h(x)],
+    ],
+    asphalt,
+    1.7,
+    0.035,
+  );
+  strip(
+    xs,
+    x => [
+      [ST.z0 - 2.4, h(x)],
+      [ST.z0, h(x)],
+    ],
+    pavers,
+    2.4,
+    0.06,
+  );
+  strip(
+    xs,
+    x => [
+      [ST.z1, h(x)],
+      [ST.z1 + 2.4, h(x)],
+    ],
+    pavers,
+    2.4,
+    0.06,
+  );
+  // The hill itself is one continuous grass surface: flat on top under the district, falling away over BANK metres
+  // all round, and shaped to the street where it climbs (the paving above sits a few centimetres clear of it).
+  const X_W = -126 + OX - 52,
+    Z_N = -9 - 24,
+    Z_S = 37 + 26,
+    BANK = 13,
+    ease = (t: number) => {
+      t = Math.max(0, Math.min(1, t));
+      return t * t * (3 - 2 * t);
+    },
+    riseY = (x: number, z: number) => {
+      const dx = Math.max(X_W - x, 0, x - RAMP_X1),
+        dz = Math.max(Z_N - z, 0, z - Z_S),
+        top = OY * ease(1 - Math.hypot(dx, dz) / BANK);
+      let st = 0;
+      if (x > RAMP_X1 && x < X0 + 1) {
+        const hy = h(Math.min(x, X0)),
+          off = Math.max(0, Math.abs(z - 14) - 5.9);
+        st = hy * ease(1 - off / (3 + hy * 3.2));
+      }
+      return Math.max(top, st);
+    },
+    STEP = 2,
+    gx0 = X_W - BANK - 2,
+    gz0 = Z_N - BANK - 2,
+    nx = Math.ceil((X0 + 2 - gx0) / STEP),
+    nz = Math.ceil((Z_S + BANK + 2 - gz0) / STEP),
+    pos: number[] = [],
+    uv: number[] = [],
+    idx: number[] = [];
+  for (let k = 0; k <= nz; k++)
+    for (let i = 0; i <= nx; i++) {
+      const x = Math.min(gx0 + i * STEP, X0 + 0.5),
+        z = gz0 + k * STEP;
+      pos.push(x, riseY(x, z) - 0.03, z);
+      uv.push(x / 9, z / 9);
+      if (i < nx && k < nz) {
+        const o = k * (nx + 1) + i;
+        idx.push(o, o + nx + 1, o + 1, o + 1, o + nx + 1, o + nx + 2);
+      }
+    }
+  const hg = new THREE.BufferGeometry();
+  hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  hg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  hg.setIndex(idx);
+  hg.computeVertexNormals();
+  const hill = new THREE.Mesh(hg, grass);
+  hill.receiveShadow = true;
+  G.add(hill);
+  scene.add(G);
+}
+/** The rise as triangles for the cart's and the ragdoll's physics: the street's slope and the flat top. */
+export function westRiseMesh() {
+  const v: number[] = [],
+    idx: number[] = [],
+    quad = (a: number[], b: number[], c: number[], d: number[]) => {
+      const o = v.length / 3;
+      v.push(...a, ...b, ...c, ...d);
+      idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
+    };
+  for (let x = X0; x > RAMP_X1; x -= 1) quad([x, westY(x, 0), 6], [x, westY(x, 0), 22], [x - 1, westY(x - 1, 0), 6], [x - 1, westY(x - 1, 0), 22]);
+  quad([RAMP_X1, OY, -40], [RAMP_X1, OY, 70], [-215, OY, -40], [-215, OY, 70]);
+  return { verts: new Float32Array(v), indices: new Uint32Array(idx) };
+}
+
 export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
   const G = new THREE.Group();
   G.name = 'westside';
+  G.position.set(WEST_OFF.x, WEST_OFF.y, 0);
   scene.add(G);
-  const col = (x0: number, x1: number, z0: number, z1: number, tag = 'shop') => colliders.push({ x0, x1, z0, z1, tag });
+  const col = (x0: number, x1: number, z0: number, z1: number, tag = 'shop') =>
+    colliders.push({ x0: x0 + WEST_OFF.x, x1: x1 + WEST_OFF.x, z0, z1, tag });
+  buildRise(scene);
   const white = M('#f1eee6', 0.8),
     dark = M('#2a2420', 0.8),
     wood = M('#8a6a45', 0.9),
@@ -84,30 +237,6 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
     G.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#e9dfc6' })));
-  }
-
-  // ---------------- the gate: a plain timber arch over the street, like the one to the course
-  {
-    const a = new THREE.Group(),
-      s = sign(
-        [
-          { t: 'WEST SIDE', s: 150, c: '#ffe9a8', b: true, y: 118 },
-          { t: 'CLUBHOUSE  ·  BLACKJACK  ·  GROW SUPPLY', s: 40, c: '#f1eee6', y: 212 },
-        ],
-        8.6,
-        2.15,
-        '#3a2a1a',
-      );
-    s.rotation.y = Math.PI / 2;
-    s.position.set(0.2, 5.9, 0);
-    const b = s.clone();
-    b.rotation.y = -Math.PI / 2;
-    b.position.x = -0.2;
-    a.add(box(0.45, 7, 0.45, wood, 0, 3.5, -4.7), box(0.45, 7, 0.45, wood, 0, 3.5, 4.7), box(0.36, 2.4, 9.9, M('#3a2a1a', 0.85), 0, 5.9, 0), s, b);
-    a.position.set(X0 - 1.2, 0, WEST.gateZ);
-    G.add(a);
-    col(X0 - 1.5, X0 - 0.9, WEST.gateZ - 5, WEST.gateZ - 4.4, 'sign');
-    col(X0 - 1.5, X0 - 0.9, WEST.gateZ + 4.4, WEST.gateZ + 5, 'sign');
   }
 
   // ---------------- a building: walls, a flat or pitched roof, a door and lit windows on the street side (+z)
@@ -293,6 +422,24 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     }
   });
   G.add(tile(flat(46, 3.4, pavers, -96, 36.5, 0.05), 2)); // the walk along the shopfronts
+  // our own signs over the four doors (the pack's painted names stay on the walls behind them)
+  for (const [t, x, c] of [
+    ['THREADS  ·  CLOTHING', -110.9, '#27405e'],
+    ['BARBER', -100.2, '#8a2f28'],
+    ['INK SPOT  ·  TATTOO', -90.7, '#3a2a4a'],
+    ['PRO SHOP', -79.2, '#2b4a3a'],
+  ] as [string, number, string][]) {
+    const w = Math.min(5.6, 1.4 + t.length * 0.21),
+      sg = sign([{ t, s: 96, c: '#ffe9a8', b: true, y: 160 }], w, 0.8, c, 0.5, 1024, 256);
+    sg.position.set(x, 3.25, 37.75);
+    sg.rotation.y = Math.PI;
+    G.add(
+      sg,
+      box(w + 0.2, 0.95, 0.12, dark, x, 3.25, 37.85),
+      box(0.08, 3.3, 0.08, dark, x - w / 2, 1.65, 37.85),
+      box(0.08, 3.3, 0.08, dark, x + w / 2, 1.65, 37.85),
+    );
+  }
   let vltSpots: VltSpot[] = [];
   // 2 · the Lucky Lie Lounge: dark brick, open to the street, with the blackjack table inside under warm lamps
   {
@@ -388,7 +535,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     });
     // slot machines and video poker along the back wall (lobby/vlt.ts)
     const xs = [-81.3, -80.3, -77.7, -76.7];
-    vltSpots = buildMachines(G, xs, z0 + 0.72);
+    vltSpots = buildMachines(G, xs, z0 + 0.72, WEST_OFF);
     for (const mx of xs) col(mx - 0.4, mx + 0.4, z0 + 0.3, z0 + 1.15, 'bench');
   }
   // 3 · the alley between the lounge and the store, where the Street Dealer does business (lobby/dealer.ts)
@@ -579,8 +726,12 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     spots: [
       { id: 'growshop', x: -97, z: ST.z0 - 1.4, r: 2.2, label: 'Grow Supply' },
       { id: 'club', x: -60, z: ST.z0 - 1.2, r: 2.4, label: 'Clubhouse · tee times and trophies' },
+      { id: 'store:clothes', x: -110.9, z: 36.2, r: 2.6, label: 'Threads · clothing' },
+      { id: 'store:barber', x: -100.2, z: 36.2, r: 2.2, label: 'The Clip Joint · barber' },
+      { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
+      { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
       ...vltSpots,
-    ] as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
+    ].map(sp => ({ ...sp, x: sp.x + WEST_OFF.x })) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
     /** Per frame. The van slows for anyone in its way (people: x, z). */
     update(dt: number, people: { x: number; z: number }[]) {
       const [x, z, yaw] = vanAt(vs),
@@ -589,7 +740,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       // someone within a few metres ahead: brake; otherwise amble along at about 20 km/h
       let want = 5.5;
       for (const p of people) {
-        const dx = p.x - x,
+        const dx = p.x - WEST_OFF.x - x,
           dz = p.z - z,
           ahead = dx * fx + dz * fz,
           side = Math.abs(dx * fz - dz * fx);
@@ -602,6 +753,6 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       for (const w of wheels) w.rotation.x += (vv * dt) / 0.32;
     },
     /** Where the van is, for bumping into (x, z, heading, speed). */
-    van: () => ({ x: van.position.x, z: van.position.z, yaw: van.rotation.y, v: vv }),
+    van: () => ({ x: van.position.x + WEST_OFF.x, z: van.position.z, yaw: van.rotation.y, v: vv }),
   };
 }

@@ -15,7 +15,7 @@ const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 /** In the alley on the West Side, between the Lucky Lie Lounge and Grow Supply (lobby/westside.ts). He buys; the
  *  store next door sells. */
-export const DEALER_POS = new THREE.Vector3(-88.5, 0, 6.2),
+export const DEALER_POS = new THREE.Vector3(-88.5 - 24, 0, 6.2), // in the alley beside Grow Supply (the West Side sits 24 m west of its own frame)
   DEALER_YAW = 0.25;
 
 export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?: number): void; onClose(): void; sfx?: (n: string) => void }) {
@@ -201,7 +201,7 @@ export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?
   const _v = new THREE.Vector3();
   function update(dt: number, clock: number, camera: THREE.Camera) {
     npc.update({ mode: 'walk', speed: 0, phase: 0, time: clock, s: 0, club: 'iron', showClub: false } as any);
-    _v.set(DEALER_POS.x, 2.05, DEALER_POS.z).project(camera);
+    _v.set(DEALER_POS.x, 2.05 + groundY(DEALER_POS.x, DEALER_POS.z), DEALER_POS.z).project(camera);
     const vis = _v.z < 1 && Math.hypot(camera.position.x - DEALER_POS.x, camera.position.z - DEALER_POS.z) < 11; // close enough to be in his yard: the tag used to show through the building
     tag.style.display = vis ? '' : 'none';
     if (vis)

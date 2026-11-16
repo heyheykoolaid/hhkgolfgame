@@ -1,5 +1,6 @@
 // Golden Hills — the neighbourhood next to the course: eight lots around a plaza (tee-time board, pro shop with the
 // wardrobe, fountain, a blackjack table for later), streets, palms and power lines, in the course's golden-hour light.
+import { buildMountains } from '../world/mountains';
 import * as THREE from 'three';
 import { buildFountain } from './fountain';
 import { blackjackTable } from './blackjack';
@@ -10,8 +11,7 @@ import { createGachaMachine } from './gachaMachine';
 import { buildRV } from './rv';
 import { buildProShop, buildTeeBoard, buildBench } from './plaza';
 import { funSurface, puttFloor } from './funland';
-import { westSurface } from './westside';
-import { hillY, inHills, onHillRoad, HILLS, buildHills } from './hills';
+import { westSurface, westY } from './westside';
 
 export const CELL = 28,
   PLOT = 14,
@@ -52,12 +52,17 @@ export const FUN = { x1: 172, z: 48, gateZ: 14, gateHW: 4.4 };
 /** The West Side (lobby/westside.ts): through a gate in the town's west edge at z = gateZ; x from x0 to the edge. */
 /** Where the blackjack table stands: in the middle of the Lucky Lie Lounge. */
 export const BJ_AT: [number, number] = [-79, 2.2];
-export const WEST = { x0: -126, z0: -9, z1: 37, gateZ: 14, gateHW: 4.4 };
+/** The West Side stands on a rise west of town: everything in lobby/westside.ts is laid out in its own frame and then
+ *  moved this far (x) and lifted this high (y). The street climbs to it over the 24 m between the town's edge and x1. */
+export const WEST_OFF = { x: -24, y: 2.6 };
+export const WEST = { x0: -150, x1: -68, z0: -9, z1: 37, gateZ: 14, gateHW: 4.4, rampHW: 5.7 };
 /** Inside the walkable world: the town square, or Fun Land (reached through the one gate in the town's east edge, at z = -gateZ). */
 export function inWorld(x: number, z: number) {
   if (Math.abs(x) <= BOUND && Math.abs(z) <= BOUND) return true;
-  if (inHills(x, z)) return Math.abs(x) < HILLS.x - 1 && z < HILLS.z1 - 1; // the hills open straight off the town's south edge
-  if (x < -BOUND) return x > WEST.x0 && z > WEST.z0 && z < WEST.z1 && (x < -BOUND - 1.4 || Math.abs(z - WEST.gateZ) < WEST.gateHW);
+  if (x < -BOUND) {
+    if (x > WEST.x1) return Math.abs(z - WEST.gateZ) < (x > -BOUND - 1.4 ? WEST.gateHW : WEST.rampHW); // the street up the rise
+    return x > WEST.x0 && z > WEST.z0 && z < WEST.z1;
+  }
   if (x < BOUND || x > FUN.x1 || Math.abs(z) > FUN.z) return false;
   return x > BOUND + 1.4 || Math.abs(z + FUN.gateZ) < FUN.gateHW;
 }
@@ -295,9 +300,9 @@ export function buildLobby(scene: THREE.Scene) {
   // the game itself is lobby/blackjack.ts. The dealer has his back to the room's back wall; players face him.
   const bj = blackjackTable(false);
   bj.add(contactShadow(3.2, 3.2, 0, 0.2, 0.005, 0.3));
-  bj.position.set(BJ_AT[0], groundY(BJ_AT[0], BJ_AT[1]) + 0.06, BJ_AT[1]);
+  bj.position.set(BJ_AT[0] + WEST_OFF.x, WEST_OFF.y + 0.12, BJ_AT[1]);
   scene.add(bj);
-  addCol(BJ_AT[0] - 1.45, BJ_AT[0] + 1.45, BJ_AT[1] - 0.9, BJ_AT[1] + 0.55, 'bj');
+  addCol(BJ_AT[0] + WEST_OFF.x - 1.45, BJ_AT[0] + WEST_OFF.x + 1.45, BJ_AT[1] - 0.9, BJ_AT[1] + 0.55, 'bj');
 
   // a fingerpost by the fountain: where everything is
   {
@@ -401,6 +406,7 @@ export function buildLobby(scene: THREE.Scene) {
 
   /* horizon: the city — brick blocks just outside town, an art-deco downtown toward the sunset, far towers all round */
   buildCity(scene, { center: [0, 0], keepOut: BOUND, sunAz: SUN_AZ, rings: [240, 380], tall: 0.6 });
+  scene.add(buildMountains([0, 0], SUN_AZ, 'coast')); // a coastal range all round, behind the skyline
   /* open ground between town and the city: oak and palm groves on dry grass, a clear lane out of the gate */
   {
     let sd = 77;
@@ -413,8 +419,7 @@ export function buildLobby(scene: THREE.Scene) {
         z = Math.cos(a) * d;
       if (z < 0 && Math.abs(x) < 9) continue; // the lane out of the gate
       if (x > BOUND - 2 && x < FUN.x1 + 60 && Math.abs(z) < FUN.z + 6) continue; // Fun Land and its driving range
-      if (x < -BOUND + 2 && x > WEST.x0 - 44 && z > WEST.z0 - 6 && z < WEST.z1 + 24) continue; // the West Side and the shopfronts behind its car park
-      if (z > BOUND - 2 && z < HILLS.z1 + 4 && Math.abs(x) < HILLS.x + 4) continue; // the hills south of town (bare golden slopes)
+      if (x < -BOUND + 2 && x > WEST.x0 - 20 && z > WEST.z0 - 10 && z < WEST.z1 + 26) continue; // the West Side and the shopfronts behind its car park
       const grove = Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05 - 0.7);
       if (grove < 0.05 && r() < 0.75) continue; // trees bunch into groves, with open meadow between
       trees.push({ x, y: 0, z, s: 0.8 + r() * 0.6, tint: r(), id: Math.floor(r() * 1000) });
@@ -462,19 +467,17 @@ export function buildLobby(scene: THREE.Scene) {
   // the Birdie Ball machine (spin it with Birdie Dollars; see gachaMachine.ts)
   const gacha = createGachaMachine();
   gacha.group.add(contactShadow(0.9, 0.9, 0, 0, 0.005, 0.55));
-  gacha.group.position.set(-73.0, 0.085, -2.6); // in the Lucky Lie Lounge, against the east wall
+  gacha.group.position.set(-73.0 + WEST_OFF.x, WEST_OFF.y + 0.085, -2.6); // in the Lucky Lie Lounge, against the east wall
   gacha.group.rotation.y = Math.PI;
   scene.add(gacha.group);
-  addCol(-73.35, -72.65, -2.95, -2.25, 'gacha');
-  const hills = buildHills(scene, photoM('meadow', '#8a8a46'), photoM('asphalt', '#55524c'));
-  return { light, colliders, plots, gacha, hills, fountain };
+  addCol(-73.35 + WEST_OFF.x, -72.65 + WEST_OFF.x, -2.95, -2.25, 'gacha');
+  return { light, colliders, plots, gacha, fountain };
 }
 
 /** Height of the walkable surface (plaza slab, sidewalks, lot pads sit a few cm above the dirt). */
 export function groundY(x: number, z: number) {
-  if (z > BOUND) return hillY(x, z);
   if (x > BOUND) return puttFloor(x, z);
-  if (x < -BOUND) return westSurface(x, z) === 'paved' ? 0.06 : 0;
+  if (x < -BOUND) return westY(x, z) + (westSurface(x, z) === 'paved' ? 0.06 : 0);
   if (Math.abs(x) < 9.5 && Math.abs(z) < 9.5) return 0.1;
   for (const [v, off, a, b] of SIDEWALKS) {
     const u = v ? x : z,
@@ -486,7 +489,6 @@ export function groundY(x: number, z: number) {
 }
 /** What's underfoot, for footstep sounds (audio/ambience.ts). */
 export function surfaceOf(x: number, z: number): 'concrete' | 'asphalt' | 'gravel' | 'grass' {
-  if (z > BOUND && inHills(x, z)) return onHillRoad(x, z) ? 'asphalt' : 'grass';
   const ws = westSurface(x, z);
   if (ws) return ws === 'paved' ? 'concrete' : ws;
   const f = funSurface(x, z);

@@ -1,6 +1,7 @@
 // Options: one menu for the whole game (sound, display, controls), opened with Esc or the gear in the corner, plus
 // whatever the current situation adds (on the course: "Leave the round"). Settings are remembered in this browser.
 // Other modules read `opts` directly each frame, or subscribe with `onOptions` when they need to react to a change.
+import { creditsHTML } from './credits';
 export const opts = {
   /** volumes, 0–1 */
   master: 0.8,
@@ -82,6 +83,7 @@ function build() {
   );
   addEventListener('keyup', e => isOpen && e.stopImmediatePropagation(), true);
 }
+let showCredits = false;
 function render() {
   if (!el) return;
   const slider = (k: keyof Opts, label: string, min = 0, max = 1) =>
@@ -89,6 +91,15 @@ function render() {
   const toggle = (k: keyof Opts, label: string, hint = '') =>
     `<label class="orow"><span>${label}${hint ? `<small>${hint}</small>` : ''}</span><button class="otog${opts[k] ? ' on' : ''}" data-t="${k}">${opts[k] ? 'On' : 'Off'}</button></label>`;
   const acts = actions();
+  if (showCredits) {
+    el.innerHTML = `<div class="ocard"><div class="ohead"><h2>Credits</h2><span>Golden Hills</span></div><div class="credits">${creditsHTML()}</div>
+      <div class="oacts"><button class="primary" data-back>Back</button></div></div>`;
+    el.querySelector<HTMLButtonElement>('[data-back]')!.onclick = () => {
+      showCredits = false;
+      render();
+    };
+    return;
+  }
   el.innerHTML = `<div class="ocard">
     <div class="ohead"><h2>Options</h2><span>${where}</span></div>
     <h3>Sound</h3>
@@ -103,7 +114,7 @@ function render() {
     <h3>Controls</h3>
     ${slider('look', 'Mouse look speed', 0.4, 2)}
     ${toggle('panel', 'Controls panel', 'the key guide down the right-hand side')}
-    <div class="oacts">${acts.map((a, i) => `<button class="${a.danger ? 'danger' : ''}" data-a="${i}">${a.label}</button>`).join('')}<button class="primary" data-a="-1">Back to the game <kbd>Esc</kbd></button></div>
+    <div class="oacts"><button data-credits>Credits</button>${acts.map((a, i) => `<button class="${a.danger ? 'danger' : ''}" data-a="${i}">${a.label}</button>`).join('')}<button class="primary" data-a="-1">Back to the game <kbd>Esc</kbd></button></div>
   </div>`;
   el.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(i => {
     i.oninput = () => {
@@ -123,6 +134,10 @@ function render() {
       render();
     };
   });
+  el.querySelector<HTMLButtonElement>('[data-credits]')!.onclick = () => {
+    showCredits = true;
+    render();
+  };
   el.querySelectorAll<HTMLButtonElement>('[data-a]').forEach(b => {
     b.onclick = () => {
       const i = +b.dataset.a!;

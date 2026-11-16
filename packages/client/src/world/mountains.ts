@@ -41,11 +41,14 @@ function peak(r: () => number, base: number, h: number, snow: number, rock: THRE
   g.computeVertexNormals();
   return g;
 }
-export function buildMountains(center: [number, number], sunAz: number) {
+/** look: 'alpine' is Boulder Peak's bare grey range with low cloud; 'coast' is a forested coastal range (blue-green
+ *  slopes, snow only on the highest tops, no cloud bands), like the mountains across the water from Vancouver. */
+export function buildMountains(center: [number, number], sunAz: number, look: 'alpine' | 'coast' = 'alpine') {
   const root = new THREE.Group(),
     r = rng(8848),
-    rock = new THREE.Color('#8b8378'),
-    low = new THREE.Color('#5d6650'),
+    coast = look === 'coast',
+    rock = new THREE.Color(coast ? '#5f7480' : '#8b8378'),
+    low = new THREE.Color(coast ? '#3d5a54' : '#5d6650'),
     mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false, side: THREE.DoubleSide });
   root.name = 'mountains';
   const add = (ring: number, n: number, hMin: number, hMax: number, bMin: number, bMax: number, snow: number, y: number, haze: number) => {
@@ -61,6 +64,12 @@ export function buildMountains(center: [number, number], sunAz: number) {
       root.add(m);
     }
   };
+  if (coast) {
+    add(560, 20, 70, 120, 190, 280, 2, -14, 0.3); // forested foothills, shoulder to shoulder
+    add(760, 20, 150, 240, 240, 340, 0.82, -20, 0.45); // the range: a dusting on the tops
+    add(1000, 14, 240, 330, 300, 400, 0.6, -30, 0.6); // the snowy ones behind
+    return root;
+  }
   add(520, 15, 50, 95, 150, 230, 2, -14, 0.42); // wooded foothills (no snow)
   add(700, 18, 130, 230, 200, 290, 0.5, -20, 0.55); // the range
   add(930, 14, 230, 350, 280, 380, 0.42, -30, 0.66); // the giants behind

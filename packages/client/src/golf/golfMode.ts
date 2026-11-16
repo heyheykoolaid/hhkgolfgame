@@ -1,5 +1,6 @@
 // Golf mode: the hole, the 3-tap swing, shot playback for everyone in the match, scorecard → back to the lobby.
 // The app creates it once and calls start()/stop()/tick(); it shares the renderer with the lobby.
+import { trailColor } from '../avatar/trails';
 import { cartRadio } from '../audio/cartRadio';
 import * as THREE from 'three';
 import { playSample } from '../audio/samples';
@@ -1578,6 +1579,7 @@ export function createGolf(env: GolfEnv) {
       }
     }
     roam.update(dt);
+    tracer.setColor(trailColor(progress().trail, clock));
     {
       // the cart radio: at the wheel, or heard from where the cart is parked
       const cp = roam.cart?.root.position;

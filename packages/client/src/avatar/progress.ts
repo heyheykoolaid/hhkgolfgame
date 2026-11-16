@@ -62,6 +62,13 @@ export interface Progress {
   fert: number;
   /** Grow gear you own, by catalog id (growpot, growbed, sprinkler): what's on your lot plus what's in your pockets. */
   gear: Record<string, number>;
+  /** What you own to wear, as "part:style" (top:tee, hairStyle:afro, tatChest:skullrose…). Colours are free. */
+  closet: string[];
+  /** The closet has been seeded with what you were already wearing. */
+  closetInit?: boolean;
+  /** Ball trails you own, and the one in use ('' = the plain white one). */
+  trails: string[];
+  trail: string;
   at?: number; /* when this copy was last saved (ms): the newer copy wins between devices */
 }
 const cleanTrophy = (t: any): TrophyRec | null =>
@@ -87,7 +94,7 @@ const cleanTrophy = (t: any): TrophyRec | null =>
 const LS = 'gh.progress.v1';
 /** Cash: the second currency (street-dealer-economy.md). Never converts to or from Birdie Dollars. */
 export const STARTING_CASH = 5000;
-const clean0 = (p: any): Omit<Progress, 'papers' | 'grinder' | 'joints' | 'fert' | 'gear'> => {
+const clean0 = (p: any): Omit<Progress, 'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail'> => {
   const owned = Array.isArray(p?.owned) ? ([...new Set(p.owned.filter((id: any) => BALL.has(id)))] as string[]) : [];
   if (!owned.includes(DEFAULT_BALL)) owned.unshift(DEFAULT_BALL);
   return {
@@ -129,6 +136,14 @@ const clean = (p: any): Progress => ({
   papers: Math.max(0, Math.min(999, Math.floor(+p?.papers || 0))),
   grinder: !!p?.grinder,
   fert: Math.max(0, Math.min(999, Math.floor(+p?.fert || 0))),
+  closet: Array.isArray(p?.closet)
+    ? [...new Set<string>(p.closet.filter((s: any) => typeof s === 'string' && /^[a-zA-Z]{2,12}:[a-zA-Z0-9_]{1,16}$/.test(s)))].slice(0, 400)
+    : [],
+  closetInit: !!p?.closetInit,
+  trails: Array.isArray(p?.trails)
+    ? [...new Set<string>(p.trails.filter((s: any) => typeof s === 'string' && /^[a-z]{2,12}$/.test(s)))].slice(0, 30)
+    : [],
+  trail: typeof p?.trail === 'string' && /^[a-z]{0,12}$/.test(p.trail) ? p.trail : '',
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
       .filter(([k, v]) => /^[a-z]{3,12}$/.test(k) && +(v as any) > 0)
@@ -397,6 +412,28 @@ export async function buyItem(kind: string, price: number): Promise<BuyResult> {
   else cur.gear[kind] = (cur.gear[kind] || 0) + 1;
   await save();
   return 'ok';
+}
+/** Clothes, hair and tattoos: add these to the closet for `cost` (0 the first time, for what you already wore). */
+export async function addToCloset(keys: string[], cost: number, seed = false) {
+  await loadProgress();
+  if (cur.cash < cost) return false;
+  cur.cash -= cost;
+  for (const k of keys) if (!cur.closet.includes(k)) cur.closet.push(k);
+  if (seed) cur.closetInit = true;
+  await save();
+  return true;
+}
+/** Ball trails: buy one (and put it on), or switch to one you own. */
+export async function setTrail(id: string, price: number) {
+  await loadProgress();
+  if (id && !cur.trails.includes(id)) {
+    if (cur.cash < price) return false;
+    cur.cash -= price;
+    cur.trails.push(id);
+  }
+  cur.trail = id;
+  await save();
+  return true;
 }
 /** Use one dose of fertilizer. */
 export function useFert() {

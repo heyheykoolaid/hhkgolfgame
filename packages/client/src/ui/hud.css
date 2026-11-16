@@ -437,3 +437,11 @@ body.warding #controls{right:auto;left:12px;top:auto;bottom:12px;transform:none;
 #lstash .slot .ic img{width:86%;height:86%;margin:auto}
 #lstash .slot .ic{display:grid;place-items:center;width:100%;height:100%}
 .shop .gi img{width:46px;height:46px}
+#options .credits h3{margin:14px 0 6px}
+#options .crow{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;padding:6px 0;border-bottom:1px solid rgba(255,232,190,.1);font-size:13px}
+#options .crow span{opacity:.75}
+#options .crow small{grid-column:1/-1;opacity:.55;font-size:11px}
+#options .cnote{margin:14px 0 4px;font-size:12px;opacity:.7}
+#lward .pr{font-style:normal;font-size:10px;opacity:.75;color:#ffd27a;margin-left:4px}
+#lward .tb.buy{outline:1px dashed rgba(255,210,122,.55);outline-offset:-2px}
+.shop .gi .trail{display:block;width:38px;height:6px;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,.35)}

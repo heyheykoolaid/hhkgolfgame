@@ -50,7 +50,9 @@ const STOOL_Z = 0.95, // the stool stands this far in front of the cabinet's mid
 // ------------------------------------------------------------------ a machine in the room
 interface Machine {
   def: MachineDef;
+  /** where it stands in the world (the cabinet is built in its group's own frame) and how high its floor is */
   x: number;
+  y0: number;
   z: number;
   cv: HTMLCanvasElement;
   g: CanvasRenderingContext2D;
@@ -132,7 +134,7 @@ function card(x: CanvasRenderingContext2D, c: number, px: number, py: number, w:
 }
 
 /** Build the four cabinets with their stools. They stand at `xs` along the wall at z, facing +z. */
-export function buildMachines(G: THREE.Group, xs: number[], z: number): VltSpot[] {
+export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x: 0, y: 0 }): VltSpot[] {
   const mat = (color: string, rough = 0.6, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }),
     dark = mat('#17161a', 0.5, 0.2),
     chrome = mat('#b9b4a8', 0.25, 0.8),
@@ -198,7 +200,7 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number): VltSpot[
     add(G, new THREE.CylinderGeometry(0.19, 0.19, 0.08, 14), seat, x, 0.7, z + STOOL_Z);
     add(G, new THREE.CylinderGeometry(0.03, 0.03, 0.62, 8), chrome, x, 0.36, z + STOOL_Z);
     add(G, new THREE.CylinderGeometry(0.2, 0.22, 0.04, 14), chrome, x, 0.08, z + STOOL_Z);
-    const m: Machine = { def, x, z, cv, g: cv.getContext('2d')!, tex, marquee, marqueeCol, lever, spinBtn, flashTo: 0 };
+    const m: Machine = { def, x: x + off.x, y0: off.y, z, cv, g: cv.getContext('2d')!, tex, marquee, marqueeCol, lever, spinBtn, flashTo: 0 };
     machines.push(m);
     drawAttract(m);
     return { id: def.id, x, z: z + STOOL_Z + 0.35, r: 0.95, label: `Sit · ${def.name}` };
@@ -552,19 +554,19 @@ export function createVlt(host: VltHost) {
     if (!m) return;
     g.root.position.set(m.x, 0, m.z + STOOL_Z);
     g.root.rotation.set(0, Math.PI, 0);
-    const right = new THREE.Vector3(m.x + 0.17, DECK_Y + 0.05, m.z + 0.36),
-      left = new THREE.Vector3(m.x - 0.17, DECK_Y + 0.05, m.z + 0.36);
+    const right = new THREE.Vector3(m.x + 0.17, m.y0 + DECK_Y + 0.05, m.z + 0.36),
+      left = new THREE.Vector3(m.x - 0.17, m.y0 + DECK_Y + 0.05, m.z + 0.36);
     if (reach) right.lerp(reach.to, reach.k);
     const feet: [THREE.Vector3, THREE.Vector3] = [
-      new THREE.Vector3(m.x + 0.12, 0.3, m.z + STOOL_Z - 0.22),
-      new THREE.Vector3(m.x - 0.12, 0.3, m.z + STOOL_Z - 0.22),
+      new THREE.Vector3(m.x + 0.12, m.y0 + 0.3, m.z + STOOL_Z - 0.22),
+      new THREE.Vector3(m.x - 0.12, m.y0 + 0.3, m.z + STOOL_Z - 0.22),
     ];
     if (g.root.userData.hipOff === undefined) {
       g.update({ mode: 'sit', s: 0, club: 'iron', time: t, turn: 0 } as any);
       const hb = (g as any).by?.Hips as THREE.Bone | undefined;
       g.root.userData.hipOff = hb ? hb.getWorldPosition(_v).y - g.root.position.y : 0.95;
     }
-    g.root.position.y = 0.085 + SEAT_H + 0.06 - g.root.userData.hipOff; // (the lounge carpet is the floor)
+    g.root.position.y = m.y0 + 0.085 + SEAT_H + 0.06 - g.root.userData.hipOff; // (the lounge carpet is the floor)
     g.update({ mode: 'sit', s: 0, club: 'iron', time: t, turn: 0, ik: { hands: [right, left], feet } } as any);
   }
   function seatMe(g: Golfer, t: number) {
@@ -578,8 +580,8 @@ export function createVlt(host: VltHost) {
         act.kind === 'lever'
           ? m.lever!.localToWorld(new THREE.Vector3(0, 0.44, 0))
           : act.kind === 'spin'
-            ? new THREE.Vector3(m.x + 0.2, DECK_Y + 0.03, m.z + 0.31)
-            : new THREE.Vector3(m.x - 0.05, DECK_Y + 0.03, m.z + 0.31);
+            ? new THREE.Vector3(m.x + 0.2, m.y0 + DECK_Y + 0.03, m.z + 0.31)
+            : new THREE.Vector3(m.x - 0.05, m.y0 + DECK_Y + 0.03, m.z + 0.31);
       reach = { to, k: act.kind === 'lever' ? clamp(u * 3, 0, 1) * (u > 0.8 ? clamp((1 - u) * 5, 0, 1) : 1) : k };
     }
     seatGolfer(g, mine, t, reach);
@@ -589,16 +591,16 @@ export function createVlt(host: VltHost) {
     if (mine < 0) return;
     const m = M();
     if (cam === 'over') {
-      camV.set(m.x + 0.95, 1.85, m.z + 2.5);
-      look.set(m.x, 1.3, m.z);
+      camV.set(m.x + 0.95, m.y0 + 1.85, m.z + 2.5);
+      look.set(m.x, m.y0 + 1.3, m.z);
       return;
     }
     const head = (host.myGolfer() as any).by?.Head as THREE.Bone | undefined,
-      eye = head ? head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(m.x, 1.42, m.z + STOOL_Z - 0.05),
+      eye = head ? head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(m.x, m.y0 + 1.42, m.z + STOOL_Z - 0.05),
       bob = Math.sin(clock * 1.3) * 0.004;
     // a little in front of the face, so no hair or nose is in shot; looking at the middle of the screen
     camV.set(m.x + (eye.x - m.x) * 0.5, eye.y + 0.08 + bob, eye.z - 0.15);
-    const to = new THREE.Vector3(m.x, SCREEN_Y - 0.1, m.z + 0.2).sub(camV),
+    const to = new THREE.Vector3(m.x, m.y0 + SCREEN_Y - 0.1, m.z + 0.2).sub(camV),
       yaw = Math.atan2(to.x, to.z) + lookYaw,
       pitch = Math.atan2(to.y, Math.hypot(to.x, to.z)) + lookPitch;
     look.set(camV.x + Math.sin(yaw) * Math.cos(pitch), camV.y + Math.sin(pitch), camV.z + Math.cos(yaw) * Math.cos(pitch));
