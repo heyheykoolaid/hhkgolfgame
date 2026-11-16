@@ -61,7 +61,7 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar } from '../avatar/progress';
+import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar, sellTrophy, isPlaced } from '../avatar/progress';
 import { TRAILS } from '../avatar/trails';
 import type { Shop } from './wardrobe';
 import { ITEMS, loadItemModels } from './catalog';
@@ -748,6 +748,7 @@ export function createLobby(env: LobbyEnv) {
     else if (n.id === 'store:pro') void openProShop();
     else if (n.id === 'store:home') void openFurniture();
     else if (n.id === 'store:auto') void openAuto();
+    else if (n.id === 'pawn') void openPawn();
     else if (n.id.startsWith('store:')) void openWardrobe(n.id.slice(6) as Shop);
     else if (n.id === 'gacha') openGacha();
     else if (n.id === 'rv') openCollection();
@@ -953,7 +954,16 @@ export function createLobby(env: LobbyEnv) {
     toast: (h, ms) => toast(h, ms),
     onClose: panelClosed,
   });
-  const staff = createAttendants(scene, fun.attendants);
+  const staff = createAttendants(scene, [
+    ...fun.attendants,
+    // the pawnbroker behind his counter (lobby/westside.ts, Lucky Pawn)
+    {
+      x: -120.8 + WEST_OFF.x,
+      z: -2.2,
+      yaw: 0,
+      look: { shirt: '#3d3226', top: 'button', pants: '#2a2a2e', hairStyle: 'bald', stubble: true, glasses: 'round', chain: true, watch: true },
+    },
+  ]);
   // ---------------- the cart radio: ten bands of shipped music on a shared clock (audio/radio.ts)
   const { radio, RS } = cartRadio,
     radioSrc: RadioSource[] = [],
@@ -1763,6 +1773,66 @@ export function createLobby(env: LobbyEnv) {
       );
   }
   /** Homestead Furniture (West Side): everything for your lot. Bought pieces go to the lot's storage (Build Mode). */
+  /** What the pawnbroker pays for a trophy: more for a championship, a bigger field and a score under par, and then
+   *  his mood about that particular cup (fixed by the trophy, so it can't be re-rolled). */
+  const pawnOffer = (t: { seed: number; n: number; toPar: number; field: number }) => {
+    const big = t.n === 9,
+      base = (big ? 6000 : 2000) * (1 + 0.25 * Math.max(0, Math.min(3, (t.field || 1) - 1))),
+      under = Math.max(0, -t.toPar) * (big ? 250 : 150),
+      mood = 0.88 + ((t.seed >>> 0) % 25) / 100;
+    return Math.max(500, Math.round(((base + under) * mood) / 50) * 50);
+  };
+  /** Lucky Pawn (West Side): sell trophies from your case for cash. Gone for good; not while one stands on your lot. */
+  async function openPawn(armed = '') {
+    const pr = await loadProgress(),
+      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
+      tp = (n: number) => (n === 0 ? 'even par' : n > 0 ? `+${n}` : `${n}`),
+      list = [...pr.trophies].sort((a, b) => pawnOffer(b) - pawnOffer(a));
+    openModal(
+      'Lucky Pawn',
+      `<div class="shop"><div class="shophead"><p class="muted">${
+        list.length
+          ? "\"Let's see what you've got. I pay cash, and I don't sell them back.\""
+          : '"Nothing to sell? Go and win something. I\'ll be here."'
+      }</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
+       ${
+         list.length
+           ? `<h3>Your trophies</h3><div class="goods">${list
+               .map(t => {
+                 const out = isPlaced('trophy:' + t.id),
+                   offer = pawnOffer(t);
+                 return `<div class="good"><div class="gi"><img src="${trophyPic(t.seed, t.n, '', 96)}" alt=""></div><div class="gt"><b>${esc(t.title)}</b>
+                   <p>${t.n === 9 ? 'Championship' : 'Mini cup'} · ${tp(t.toPar)}${t.field > 1 ? ` · beat ${t.field - 1}` : ''}</p><em>${out ? 'On your lot: take it down in Build Mode first' : ''}</em></div>
+                   <button data-pawn="${esc(t.id)}" ${out ? 'disabled' : ''}>${armed === t.id ? `Sell for ${money(offer)}?` : money(offer)}</button></div>`;
+               })
+               .join('')}</div>`
+           : ''
+       }
+       <p class="muted" style="margin-top:10px">A sold trophy is gone for good, on every device. Click a price once to be asked, again to sell.</p></div>`,
+    );
+    const card = $('lmodal').querySelector('.card');
+    card?.classList.add('wide');
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-pawn]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const id = b.dataset.pawn!,
+              t = pr.trophies.find(x => x.id === id),
+              sc = card?.scrollTop || 0;
+            if (!t) return;
+            if (armed !== id) await openPawn(id);
+            else {
+              const ok = await sellTrophy(id, pawnOffer(t));
+              playSample(ok ? 'confirm' : 'error', 0.5);
+              toast(ok ? `Sold: ${esc(t.title)} for ${money(pawnOffer(t))}.` : "He won't take that one.");
+              await openPawn();
+            }
+            const c = $('lmodal').querySelector('.card');
+            if (c) c.scrollTop = sc;
+          }),
+      );
+  }
   /** Wrench & Ride (West Side): buy a car, choose the one you drive, repaint it. Your car replaces the golf cart in town
    *  and on the course; it still comes out of your lot's garage. */
   const carPics = new Map<string, string>();

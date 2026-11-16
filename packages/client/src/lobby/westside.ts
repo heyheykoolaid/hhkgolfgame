@@ -2,6 +2,7 @@
 // One street with a row of buildings on its north side (the clubhouse, the Lucky Lie Lounge, Dealer Alley, the Grow
 // Supply store), a water tower at the far end, a car park on the south side, and a delivery van doing its rounds.
 // The buildings are built here in code, and so are the cars (world/cars.ts).
+import { buildTrophy } from '../world/trophy';
 import { buildShopRow } from './shops';
 import { loadPiece, loadProps } from '../world/propPacks';
 import { buildMachines, type VltSpot } from './vlt';
@@ -35,6 +36,7 @@ export function westSurface(wx: number, z: number): '' | 'asphalt' | 'paved' | '
   if (x < -126 || z < -9 || z > 37) return '';
   if (z > ST.z0 && z < ST.z1) return 'asphalt';
   if (x > -104 && x < -52 && z > -6 && z <= ST.z0 - 2.4) return 'paved'; // inside the row of buildings and the alley (no grass indoors)
+  if (x > -125.6 && x < -116 && z > -4 && z <= ST.z0 - 2.4) return 'paved'; // inside the pawn shop
   if (z >= ST.z1 + 2.2 && z < 35 && x < -54 && x > -100) return 'asphalt'; // the car park
   if ((z > ST.z0 - 2.4 && z <= ST.z0) || (z >= ST.z1 && z < ST.z1 + 2.2)) return 'paved';
   return 'grass';
@@ -651,6 +653,168 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     }
     G.add(cyl(0.28, 0.22, 0.5, 10, M('#b5651d', 0.9), -99, 0.25, c.z1 + 1.3), cyl(0.42, 0.3, 0.5, 8, M('#3f7a3a', 0.9), -99, 0.72, c.z1 + 1.3));
   }
+  // 4b · Lucky Pawn: an open-fronted shop west of the water tower. A glass counter of watches and rings with the
+  // pawnbroker behind it (lobby/attendants.ts), other people's trophies on a shelf, guitars, a television and stock
+  // shelves round the walls. E at the counter sells your trophies (lobby.ts openPawn).
+  {
+    const x0 = -125.6,
+      x1 = -116,
+      z0 = -4,
+      z1 = ST.z0 - 2.4,
+      h = 4.2,
+      cx = (x0 + x1) / 2,
+      cz = (z0 + z1) / 2,
+      d = z1 - z0,
+      wall = M('#6d5a3c', 0.9),
+      inner = M('#8a7a55', 0.9),
+      trim = M('#1d1d1f', 0.8),
+      wood = M('#5a3b22', 0.7),
+      gold = new THREE.MeshStandardMaterial({ color: '#e2b23a', roughness: 0.3, metalness: 0.8, emissive: '#6a4a10', emissiveIntensity: 0.5 }),
+      lit = (c: string, k = 1.4) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: k, roughness: 0.5 });
+    // a chequered lino floor
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const g2 = cv.getContext('2d')!;
+    for (let i = 0; i < 4; i++)
+      for (let j = 0; j < 4; j++) {
+        g2.fillStyle = (i + j) % 2 ? '#3a342c' : '#b9ad92';
+        g2.fillRect(i * 32, j * 32, 32, 32);
+      }
+    const lino = new THREE.CanvasTexture(cv);
+    lino.colorSpace = THREE.SRGBColorSpace;
+    lino.wrapS = lino.wrapT = THREE.RepeatWrapping;
+    lino.repeat.set((x1 - x0) / 2.4, d / 2.4);
+    G.add(
+      box(x1 - x0, h, 0.3, wall, cx, h / 2, z0 + 0.15),
+      box(0.3, h, d, wall, x0 + 0.15, h / 2, cz),
+      box(0.3, h, d, wall, x1 - 0.15, h / 2, cz),
+      box(x1 - x0 - 0.6, h - 0.1, 0.04, inner, cx, h / 2, z0 + 0.32), // lighter paint inside
+      box(0.04, h - 0.1, d - 0.4, inner, x0 + 0.32, h / 2, cz),
+      box(0.04, h - 0.1, d - 0.4, inner, x1 - 0.32, h / 2, cz),
+      box(x1 - x0 + 0.4, 0.3, d + 0.4, M('#2a2420', 0.9), cx, h + 0.15, cz), // roof
+      box(x1 - x0 - 0.6, 0.06, d - 0.3, M('#e9e2cf', 0.9), cx, h - 0.03, cz), // ceiling
+      box(x1 - x0, 0.9, 0.3, wall, cx, h - 0.45, z1 - 0.15), // the beam over the open front
+      box(0.4, h, 0.4, trim, x0 + 0.2, h / 2, z1 - 0.2),
+      box(0.4, h, 0.4, trim, x1 - 0.2, h / 2, z1 - 0.2),
+      box(x1 - x0 - 0.6, 0.05, d - 0.3, new THREE.MeshStandardMaterial({ map: lino, roughness: 0.6 }), cx, 0.06, cz + 0.1),
+    );
+    // the counter: a timber base, a glass case of small gold things on top, a till at one end; a flap at the east end
+    const kz = z0 + 3.1,
+      k0 = x0 + 0.5,
+      k1 = x1 - 1.7,
+      km = (k0 + k1) / 2,
+      glass = new THREE.MeshStandardMaterial({ color: '#cfe6ea', roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.22 });
+    G.add(
+      box(k1 - k0, 0.9, 0.75, wood, km, 0.53, kz),
+      box(k1 - k0 + 0.1, 0.05, 0.85, M('#2a1c12', 0.5), km, 1.0, kz),
+      box(k1 - k0 - 0.2, 0.3, 0.6, glass, km, 1.18, kz),
+      box(k1 - k0 - 0.2, 0.02, 0.6, M('#5a1f2a', 0.9), km, 1.04, kz), // velvet
+      box(k1 - k0 - 0.1, 0.03, 0.7, M('#2a1c12', 0.5), km, 1.345, kz),
+      box(0.45, 0.32, 0.4, M('#2c2a30', 0.5, 0.4), k1 - 0.5, 1.52, kz), // the till
+      box(0.4, 0.12, 0.3, M('#3a3840', 0.5, 0.4), k1 - 0.5, 1.74, kz - 0.05),
+      box(0.3, 0.1, 0.02, lit('#58e08a', 1.2), k1 - 0.5, 1.74, kz + 0.11),
+    );
+    for (let i = 0; i < 9; i++) {
+      // watches, rings and chains under the glass
+      const px = k0 + 0.5 + i * ((k1 - k0 - 1.6) / 8),
+        o =
+          i % 3 === 0
+            ? cyl(0.06, 0.06, 0.02, 12, gold, px, 1.07, kz)
+            : i % 3 === 1
+              ? box(0.16, 0.03, 0.05, gold, px, 1.07, kz + 0.1)
+              : cyl(0.035, 0.035, 0.05, 10, gold, px, 1.08, kz - 0.1);
+      G.add(o);
+    }
+    // a plank shelf of other people's trophies on the back wall, under a strip light
+    G.add(box(5.2, 0.06, 0.4, wood, cx - 0.6, 2.25, z0 + 0.55), box(5, 0.05, 0.1, lit('#fff2c8', 1.6), cx - 0.6, 3.75, z0 + 0.5));
+    [7, 41, 1203, 88, 560].forEach((seed, i) => {
+      const t = buildTrophy(seed, i % 2 ? 9 : 3);
+      t.position.set(cx - 2.8 + i * 1.1, 2.28, z0 + 0.55);
+      t.traverse(o => (o.castShadow = false));
+      G.add(t);
+    });
+    // signs: neon on the back wall, the name over the front, three gold balls on a bracket
+    const buy = sign(
+      [
+        { t: 'WE BUY TROPHIES', s: 96, c: '#ffe9a8', b: true, y: 108 },
+        { t: 'CASH PAID  ·  NO QUESTIONS  ·  NO REFUNDS', s: 34, c: '#ff9a8a', y: 204 },
+      ],
+      4.6,
+      1.15,
+      '#141016',
+      0.9,
+    );
+    buy.position.set(cx - 0.6, 3.1, z0 + 0.36);
+    const name = sign(
+      [
+        { t: 'LUCKY PAWN', s: 130, c: '#ffd27a', b: true, y: 112 },
+        { t: 'GOLD  ·  GUITARS  ·  TROPHIES', s: 40, c: '#f1e6d0', y: 206 },
+      ],
+      6.4,
+      1.6,
+      '#1a140e',
+      0.9,
+    );
+    name.position.set(cx, h + 1.1, z1 - 0.05);
+    G.add(buy, name, box(6.7, 1.9, 0.2, trim, cx, h + 1.1, z1 - 0.2));
+    G.add(box(0.06, 0.06, 1.1, trim, x1 - 0.2, h - 0.2, z1 + 0.5), box(0.7, 0.04, 0.04, trim, x1 - 0.2, h - 0.5, z1 + 0.95));
+    for (const [dx, dy] of [
+      [-0.3, -0.75],
+      [0, -0.95],
+      [0.3, -0.75],
+    ]) {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), gold);
+      ball.position.set(x1 - 0.2 + dx, h - 0.5 + dy, z1 + 0.95);
+      G.add(ball, box(0.015, -dy - 0.15, 0.015, trim, x1 - 0.2 + dx, h - 0.5 + (dy + 0.15) / 2, z1 + 0.95));
+    }
+    const lamp = new THREE.PointLight('#ffe2b0', 14, 11, 1.5);
+    lamp.position.set(cx, 3.2, cz);
+    G.add(lamp);
+    // stock from the packs (docs/credits.md): house pieces round the walls, stock shelves behind the counter
+    const up = new THREE.Vector3(0, 1, 0),
+      stock = (kit: Awaited<ReturnType<typeof loadProps>>, names: string[], x: number, z: number, yaw: number) => {
+        const a0 = kit.at(names[0]);
+        if (!a0) return;
+        for (const n of names) {
+          const o = kit.make(n),
+            a = kit.at(n);
+          if (!o || !a) continue;
+          o.position.set(x, 0.09, z).add(a.sub(a0).applyAxisAngle(up, yaw));
+          o.rotation.y = yaw;
+          o.castShadow = false;
+          G.add(o);
+        }
+      };
+    void loadProps('home', n => n).then(kit => {
+      stock(kit, ['Cube004_atlas_living_0'], x0 + 0.72, cz + 2.6, 0); // the television wall unit, west wall
+      stock(kit, ['libr_atlas_living_0'], x0 + 0.72, cz - 0.1, 0);
+      stock(kit, ['guitar_atlas_mueblesDormitorio1_0'], x1 - 0.6, cz + 0.4, Math.PI);
+      stock(kit, ['guitar_atlas_mueblesDormitorio1_0'], x1 - 0.6, cz + 1.5, Math.PI);
+      stock(kit, ['couch001_fabricsofa_0', 'couch001_atlas_living_0', 'couch001_wood3_0'], x1 - 0.95, cz + 3.4, 0);
+      stock(kit, ['Circle004_atlas_living_0'], x1 - 0.7, cz + 4.8, 0);
+      stock(kit, ['Cube009_atlas_living_0'], x0 + 0.7, cz + 4.9, 0);
+    });
+    void loadProps('shelves', n => n).then(kit => {
+      for (const [n, sx] of [
+        ['Object_8', x1 - 1.6],
+        ['Object_14', x1 - 3.9],
+      ] as [string, number][]) {
+        const o = kit.make(n),
+          sz = kit.size(n);
+        if (!o || !sz) continue;
+        o.rotation.y = sz.x < sz.z ? Math.PI / 2 : 0; // long side along the back wall
+        o.position.set(sx, 0.09, z0 + 0.75);
+        o.castShadow = false;
+        G.add(o);
+      }
+    });
+    col(x0, x0 + 0.3, z0, z1);
+    col(x1 - 0.3, x1, z0, z1);
+    col(x0, x1, z0, z0 + 0.3);
+    col(k0, k1, kz - 0.45, kz + 0.45, 'bench');
+    col(x0 + 0.3, x0 + 1.15, cz - 0.9, cz + 4.3, 'bench'); // the television and the bookcase
+    col(x1 - 1.5, x1 - 0.3, cz + 2.8, cz + 4.0, 'bench'); // the armchair
+  }
   // 5 · the water tower: the landmark you steer by
   {
     const t = new THREE.Group(),
@@ -759,6 +923,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       { id: 'store:barber', x: -100.2, z: 36.2, r: 2.2, label: 'The Clip Joint · barber' },
       { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
       { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
+      { id: 'pawn', x: -120.8, z: 0.7, r: 2.1, label: 'Lucky Pawn · sell trophies' },
       { id: 'store:home', x: -67.3, z: 36.2, r: 2.6, label: 'Homestead · furniture for your lot' },
       { id: 'store:auto', x: -124, z: 36.2, r: 2.6, label: 'Wrench & Ride · cars' },
       ...vltSpots,

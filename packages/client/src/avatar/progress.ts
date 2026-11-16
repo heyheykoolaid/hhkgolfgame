@@ -55,6 +55,8 @@ export interface Progress {
   spins: number;
   welcome?: boolean;
   trophies: TrophyRec[];
+  /** Trophies sold at the pawn shop (ids): gone for good, on every device. */
+  soldTrophies: string[];
   papers: number;
   grinder: boolean;
   joints: Joint[];
@@ -134,6 +136,9 @@ const clean0 = (
     spins: Math.max(0, +p?.spins || 0),
     welcome: !!p?.welcome,
     trophies: Array.isArray(p?.trophies) ? (p.trophies.map(cleanTrophy).filter(Boolean).slice(-200) as TrophyRec[]) : [],
+    soldTrophies: Array.isArray(p?.soldTrophies)
+      ? [...new Set<string>(p.soldTrophies.filter((x: any) => typeof x === 'string' && x.length < 80))].slice(-400)
+      : [],
   };
 };
 const clean = (p: any): Progress => ({
@@ -212,7 +217,10 @@ async function doLoad() {
           : r.owned.length + r.spins > cur.owned.length + cur.spins || (r.bd > cur.bd && r.spins >= cur.spins);
         const keep = remoteWins ? r : cur,
           other = remoteWins ? cur : r;
+        const sold = new Set([...keep.soldTrophies, ...other.soldTrophies]); // (a trophy pawned on one device stays pawned)
         for (const t of other.trophies) if (!keep.trophies.some(x => x.id === t.id)) keep.trophies.push(t);
+        keep.trophies = keep.trophies.filter(t => !sold.has(t.id));
+        keep.soldTrophies = [...sold].slice(-400);
         cur = keep;
       }
     }
@@ -299,12 +307,24 @@ export async function spin(): Promise<string | null> {
 /** A tournament win: the trophy goes into the case (once per tournament). Returns false if it was already there. */
 export async function awardTrophy(t: TrophyRec) {
   await loadProgress();
-  if (cur.trophies.some(x => x.id === t.id)) return false;
+  if (cur.trophies.some(x => x.id === t.id) || cur.soldTrophies.includes(t.id)) return false;
   cur.trophies.push(t);
   await save();
   return true;
 }
 
+/** Sell a trophy at the pawn shop: it leaves the case for good and the cash arrives. Not while it stands on your lot. */
+export async function sellTrophy(id: string, price: number) {
+  await loadProgress();
+  if (!cur.trophies.some(t => t.id === id) || placedKeys.includes('trophy:' + id)) return false;
+  cur.trophies = cur.trophies.filter(t => t.id !== id);
+  cur.soldTrophies.push(id);
+  cur.cash += Math.max(0, Math.round(price));
+  await save();
+  return true;
+}
+/** Is this catalog item (e.g. 'trophy:<id>') standing on your lot right now? */
+export const isPlaced = (key: string) => placedKeys.includes(key);
 /** Change the cash balance (negative = spend). Refuses (returns false) if it would go below zero. */
 export async function addCash(delta: number) {
   await loadProgress();
