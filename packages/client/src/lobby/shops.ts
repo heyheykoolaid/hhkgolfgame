@@ -101,7 +101,12 @@ function storefront(f: Front) {
   // the lit inside seen through the glass: a warm back wall set a little way in, floor and ceiling of the display
   const inside = glow('#ffcf8a', 0.55);
   for (const s of [-1, 1]) {
-    g.add(box(ww, winH, 0.05, inside, s * wx, sillY + winH / 2, 0.9), box(ww, 0.06, 0.9, M('#8a6a45', 0.8), s * wx, sillY, 0.45));
+    // (the lit backdrop and the display's floor take no shadows: the wall's own shadow fell across them in a hard band
+    // that read as the wall poking into the window)
+    const back = box(ww, winH, 0.05, inside, s * wx, sillY + winH / 2, 0.9),
+      sill = box(ww, 0.06, 0.9, M('#8a6a45', 0.8), s * wx, sillY, 0.45);
+    back.userData.lit = sill.userData.lit = true;
+    g.add(back, sill);
     // the frame, and a pane of glass with a soft reflection
     g.add(box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY - 0.06, -0.02), box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY + winH + 0.06, -0.02));
     for (const e of [-1, 1]) g.add(box(0.12, winH + 0.24, 0.2, trim, s * wx + (e * (ww + 0.12)) / 2, sillY + winH / 2, -0.02));
@@ -117,7 +122,7 @@ function storefront(f: Front) {
   g.add(
     box(dw + 0.3, 2.6, 0.5, dark, 0, 1.3, 0.3),
     box(dw, 2.35, 0.08, trim, 0, 1.2, 0.1),
-    box(dw - 0.3, 1.2, 0.03, inside, 0, 1.55, 0.05),
+    Object.assign(box(dw - 0.3, 1.2, 0.03, inside, 0, 1.55, 0.05), { userData: { lit: true } }),
     box(0.05, 0.4, 0.06, M('#d9b45a', 0.3, 0.7), dw / 2 - 0.2, 1.1, 0.03),
     box(dw + 0.5, 0.1, 0.5, M('#b9ad98', 0.9), 0, 0.05, -0.2),
   );
@@ -140,7 +145,7 @@ function storefront(f: Front) {
   for (const s of [-1, 1])
     g.add(box(0.12, 0.3, 0.14, dark, s * (dw / 2 + 0.22), 2.3, -0.1), box(0.1, 0.16, 0.1, glow('#ffe2a0', 2), s * (dw / 2 + 0.22), 2.22, -0.14));
   g.traverse(o => {
-    if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true;
+    if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = !o.userData.lit;
   });
   return { g, wx, ww, sillY };
 }
