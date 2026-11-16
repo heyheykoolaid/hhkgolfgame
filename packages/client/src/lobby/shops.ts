@@ -3,6 +3,7 @@
 // display windows, a sign band, an optional striped awning) and then each shop's own dressing in and around it.
 import * as THREE from 'three';
 import { M, box, cyl, textTex } from './world';
+import { buildGarage, buildShowroom, type Room } from './interiors';
 
 function stripeTex(a: string, b: string, n: number) {
   const c = document.createElement('canvas');
@@ -67,6 +68,8 @@ interface Front {
   sign: [string, string, string]; // text, background, letters
   awning?: [string, string];
   doorW?: number;
+  /** hollow: a room you walk into (lobby/interiors.ts lines and furnishes it) instead of a solid block with lit windows */
+  open?: boolean;
 }
 /** The shared storefront. Returns the group (origin at the middle of the front, at ground level, facing -z) and the
  *  two display windows' sills (x of each middle, width), for the shop's own display. */
@@ -83,11 +86,12 @@ function storefront(f: Front) {
   // the shell: the body starts a metre back, and the front wall is built round the window and door openings
   const FD = 1.0,
     pier = (x0: number, x1: number, y0: number, y1: number) => g.add(box(x1 - x0, y1 - y0, FD, f.wall, (x0 + x1) / 2, (y0 + y1) / 2, FD / 2));
-  g.add(
-    box(f.w, f.h, f.d - FD, f.wall, 0, f.h / 2, FD + (f.d - FD) / 2),
-    box(f.w + 0.3, 0.28, f.d + 0.3, trim, 0, f.h + 0.14, f.d / 2),
-    box(f.w + 0.1, 0.35, 0.18, trim, 0, 0.175, -0.05),
-  );
+  if (f.open) {
+    // the outside of a hollow shop: two side walls and a back wall under the same roof
+    for (const sd of [-1, 1]) g.add(box(0.25, f.h, f.d - FD, f.wall, sd * (f.w / 2 - 0.125), f.h / 2, FD + (f.d - FD) / 2));
+    g.add(box(f.w, f.h, 0.25, f.wall, 0, f.h / 2, f.d - 0.125));
+  } else g.add(box(f.w, f.h, f.d - FD, f.wall, 0, f.h / 2, FD + (f.d - FD) / 2));
+  g.add(box(f.w + 0.3, 0.28, f.d + 0.3, trim, 0, f.h + 0.14, f.d / 2), box(f.w + 0.1, 0.35, 0.18, trim, 0, 0.175, -0.05));
   pier(-f.w / 2, f.w / 2, sillY + winH, f.h); // above the windows and door
   pier(-f.w / 2, -wx - ww / 2, 0, sillY + winH); // the corners
   pier(wx + ww / 2, f.w / 2, 0, sillY + winH);
@@ -106,7 +110,8 @@ function storefront(f: Front) {
     const back = box(ww, winH, 0.05, inside, s * wx, sillY + winH / 2, 0.9),
       sill = box(ww, 0.06, 0.9, M('#8a6a45', 0.8), s * wx, sillY, 0.45);
     back.userData.lit = sill.userData.lit = true;
-    g.add(back, sill);
+    g.add(sill);
+    if (!f.open) g.add(back); // (a hollow shop's windows look into the room itself)
     // the frame, and a pane of glass with a soft reflection
     g.add(box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY - 0.06, -0.02), box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY + winH + 0.06, -0.02));
     for (const e of [-1, 1]) g.add(box(0.12, winH + 0.24, 0.2, trim, s * wx + (e * (ww + 0.12)) / 2, sillY + winH / 2, -0.02));
@@ -119,13 +124,18 @@ function storefront(f: Front) {
     g.add(pane);
   }
   // the door: recessed, half glazed, with a brass pull and a step
-  g.add(
-    box(dw + 0.3, 2.6, 0.5, dark, 0, 1.3, 0.3),
-    box(dw, 2.35, 0.08, trim, 0, 1.2, 0.1),
-    Object.assign(box(dw - 0.3, 1.2, 0.03, inside, 0, 1.55, 0.05), { userData: { lit: true } }),
-    box(0.05, 0.4, 0.06, M('#d9b45a', 0.3, 0.7), dw / 2 - 0.2, 1.1, 0.03),
-    box(dw + 0.5, 0.1, 0.5, M('#b9ad98', 0.9), 0, 0.05, -0.2),
-  );
+  if (f.open) {
+    // an open doorway: a dark frame, and the door itself swung back against the wall inside
+    for (const sd of [-1, 1]) g.add(box(0.12, 2.6, FD, dark, sd * (dw / 2 + 0.09), 1.3, FD / 2));
+    g.add(box(dw + 0.3, 0.12, FD, dark, 0, 2.66, FD / 2), box(0.08, 2.35, dw - 0.1, trim, -dw / 2 - 0.45, 1.2, FD + (dw - 0.1) / 2 + 0.05));
+  } else
+    g.add(
+      box(dw + 0.3, 2.6, 0.5, dark, 0, 1.3, 0.3),
+      box(dw, 2.35, 0.08, trim, 0, 1.2, 0.1),
+      Object.assign(box(dw - 0.3, 1.2, 0.03, inside, 0, 1.55, 0.05), { userData: { lit: true } }),
+      box(0.05, 0.4, 0.06, M('#d9b45a', 0.3, 0.7), dw / 2 - 0.2, 1.1, 0.03),
+    );
+  g.add(box(dw + 0.5, 0.1, 0.5, M('#b9ad98', 0.9), 0, 0.05, -0.2));
   // the sign band
   const band = lettering(f.sign[0], f.w - 0.6, 0.85, f.sign[1], f.sign[2]);
   band.position.set(0, f.h - 0.75, -0.06);
@@ -151,7 +161,14 @@ function storefront(f: Front) {
 }
 
 /** Build the row. Fronts face -z along z = front. Returns a per-frame update (the barber's pole turns). */
-export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1: number, z0: number, z1: number) => void) {
+export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1: number, z0: number, z1: number, tag?: string) => void) {
+  type Place = { spot: [number, number]; staff: [number, number] };
+  const rooms: { auto?: Place; home?: Place } = {},
+    /** Furnish a hollow shop and turn what it reports (in its own frame) into the district's. */
+    room = (build: (r: Room) => Place, g: THREE.Group, x: number, w: number, d: number, h: number): Place => {
+      const p = build({ g, w, d, h, col: (x0, x1, z0, z1, tag) => col(x + x0, x + x1, front + z0, front + z1, tag) });
+      return { spot: [x + p.spot[0], front + p.spot[1]], staff: [x + p.staff[0], front + p.staff[1]] };
+    };
   const spin: THREE.Object3D[] = [];
   // ---- Threads: painted brick, a striped awning, dressed mannequins in the windows
   {
@@ -380,6 +397,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         wall: wallM('plaster', '#8d939b', '#777d86', w, 5),
         trim: '#1d2a3a',
         sign: ['WRENCH & RIDE AUTO', '#1d2a3a', '#ffd27a'],
+        open: true,
       });
     const rubber = M('#17171a', 0.9),
       red = M('#b8322a', 0.5, 0.3),
@@ -403,7 +421,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
       s.g.add(cyl(0.07, 0.07, 0.22, 10, M(['#e2b23a', '#2f6a8a', '#b8322a', '#3f8a4a'][i], 0.4), s.wx + 0.3 + i * 0.22, s.sillY + 0.14, 0.55));
     for (const dx of [-5.2, -4.5]) s.g.add(cyl(0.3, 0.3, 0.9, 12, M(dx < -5 ? '#2f6a8a' : '#b8322a', 0.5, 0.3), dx, 0.45, -0.5));
     G.add(s.g);
-    col(-124 - w / 2, -124 + w / 2, front, front + 9);
+    rooms.auto = room(buildGarage, s.g, -124, w, 9, 5);
   }
   // ---- Homestead Furniture: cream plaster with big windows, a sofa and a floor lamp on show
   {
@@ -418,6 +436,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         trim: '#5a3a26',
         sign: ['HOMESTEAD', '#5a3a26', '#ffe9a8'],
         awning: ['#8a2f28', '#f1e6d0'],
+        open: true,
       });
     const cloth = M('#2f6a8a', 0.8),
       wood = M('#8a5f38', 0.8),
@@ -440,9 +459,11 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
       cyl(0.1, 0.07, 0.2, 8, M('#c8452f', 0.6), s.wx + 0.5, s.sillY + 0.63, 0.5),
     );
     G.add(s.g);
-    col(-67.3 - w / 2, -67.3 + w / 2, front, front + 9);
+    rooms.home = room(buildShowroom, s.g, -67.3, w, 9, 4.6);
   }
   return {
+    /** the two walk-in shops: where each one's counter is and where its keeper stands (the district's frame) */
+    rooms,
     update(t: number) {
       for (const p of spin) p.rotation.y = t * 1.6;
     },

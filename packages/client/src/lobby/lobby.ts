@@ -918,6 +918,7 @@ export function createLobby(env: LobbyEnv) {
   });
   const staff = createAttendants(scene, [
     ...fun.attendants,
+    ...west.clerks, // the mechanic at Wrench & Ride and the clerk at Homestead (lobby/interiors.ts)
     // the pawnbroker behind his counter (lobby/westside.ts, Lucky Pawn)
     {
       x: -120.8 + SHADY_OFF.x,
@@ -1006,10 +1007,17 @@ export function createLobby(env: LobbyEnv) {
     P.mode = 'gacha';
     P.vx = P.vz = 0;
     for (const k in keys) keys[k] = false;
-    P.x = -5.05;
-    P.z = 3.55;
-    P.yaw = -Math.PI / 2; // step up behind the camera, facing the machine
     gacha.closeUp(gCam, gLook);
+    {
+      // step up behind the camera, facing the machine, wherever the machine stands (it used to put you where the
+      // machine was before it moved from the plaza to the lounge)
+      const dx = gCam.x - gLook.x,
+        dz = gCam.z - gLook.z,
+        d = Math.hypot(dx, dz) || 1;
+      P.x = gCam.x + (dx / d) * 0.9;
+      P.z = gCam.z + (dz / d) * 0.9;
+      P.yaw = Math.atan2(-dx, -dz);
+    }
     gacha.reset();
     gStep = 'coin';
     gGot = null;

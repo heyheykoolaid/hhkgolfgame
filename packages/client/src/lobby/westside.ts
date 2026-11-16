@@ -458,7 +458,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     }
   });
   G.add(tile(flat(71, 3.4, pavers, -96.5, 36.5, 0.05), 2)); // the walk along the shopfronts
-  const shopRow = buildShopRow(G, 38.2, (a, b, c, d) => col(a, b, c, d)); // Threads, the barber, Ink Spot and the Pro Shop (lobby/shops.ts)
+  const shopRow = buildShopRow(G, 38.2, (a, b, c, d, tag) => col(a, b, c, d, tag)); // Threads, the barber, Ink Spot and the Pro Shop (lobby/shops.ts)
   let vltSpots: VltSpot[] = [];
   // ---------------- Shady Lane: the lounge, the alley, Grow Supply and the pawn shop stand north of the gate to the
   // course (world.ts SHADY_OFF). Everything between here and the water tower is built into that group.
@@ -549,13 +549,37 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
       { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
       { id: 'pawn', x: -120.8, z: 0.7, r: 2.1, label: 'Lucky Pawn · sell trophies' },
-      { id: 'store:home', x: -67.3, z: 36.2, r: 2.6, label: 'Homestead · furniture for your lot' },
-      { id: 'store:auto', x: -124, z: 36.2, r: 2.6, label: 'Wrench & Ride · cars' },
+      { id: 'store:home', x: shopRow.rooms.home!.spot[0], z: shopRow.rooms.home!.spot[1], r: 1.5, label: 'Homestead · furniture for your lot' },
+      { id: 'store:auto', x: shopRow.rooms.auto!.spot[0], z: shopRow.rooms.auto!.spot[1], r: 1.5, label: 'Wrench & Ride · cars, paint and parts' },
       ...vltSpots,
     ].map(sp => {
       const o = sp.id === 'growshop' || sp.id === 'pawn' || sp.id.startsWith('vlt:') ? SHADY_OFF : { x: WEST_OFF.x, z: 0 };
       return { ...sp, x: sp.x + o.x, z: sp.z + o.z };
     }) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
+    /** The people behind the walk-in shops' counters: world x and z, and the look of each. */
+    clerks: [
+      {
+        x: shopRow.rooms.auto!.staff[0] + WEST_OFF.x,
+        z: shopRow.rooms.auto!.staff[1],
+        yaw: Math.PI,
+        look: {
+          shirt: '#2f4a66',
+          top: 'button',
+          pants: '#2a2a2e',
+          pantsStyle: 'overalls',
+          hairStyle: 'short',
+          stubble: true,
+          capStyle: 'cap',
+          cap: '#b8322a',
+        },
+      },
+      {
+        x: shopRow.rooms.home!.staff[0] + WEST_OFF.x,
+        z: shopRow.rooms.home!.staff[1],
+        yaw: Math.PI,
+        look: { body: 'female', shirt: '#8a2f28', top: 'button', pants: '#3a2a1c', hairStyle: 'bob', glasses: 'round' },
+      },
+    ],
     /** Per frame. */
     update() {
       shopRow.update(performance.now() / 1000);
