@@ -2,6 +2,7 @@
 // One street with a row of buildings on its north side (the clubhouse, the Lucky Lie Lounge, Dealer Alley, the Grow
 // Supply store), a water tower at the far end, a car park on the south side, and a delivery van doing its rounds.
 // The buildings are built here in code, and so are the cars (world/cars.ts).
+import { loadProps } from '../world/propPacks';
 import { buildMachines, type VltSpot } from './vlt';
 import * as THREE from 'three';
 import { buildCar, CAR_PAINT, type CarKind } from '../world/cars';
@@ -312,12 +313,43 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
   {
     const z1 = ST.z0 - 2.4;
     G.add(tile(flat(4, 14, asphalt, -88, z1 - 7, 0.03), 1.7));
-    G.add(box(2.0, 1.25, 1.1, M('#2f5a4a', 0.7), -87.3, 0.63, 1.5), box(2.1, 0.1, 1.2, M('#25483b', 0.7), -87.3, 1.3, 1.5)); // the dumpster
-    G.add(
-      box(0.7, 0.7, 0.7, wood, -88.9, 0.35, 4.2),
-      box(0.6, 0.6, 0.6, wood, -88.8, 1.0, 4.25),
-      cyl(0.3, 0.3, 0.9, 10, M('#6a6a6a', 0.5, 0.5), -87.1, 0.45, 5.6),
-    );
+    // dressed from the PSX Industrial Pack (Tomitos, CC BY 4.0; see docs/credits.md): [prop, x, z, yaw, y, scale]
+    const DRESS: [string, number, number, number, number?, number?][] = [
+      ['Dumpster', -86.55, 1.5, Math.PI / 2],
+      ['DumpsterLid1', -86.55, 1.0, Math.PI / 2, 1.1],
+      ['DumpsterLid1', -86.55, 2.0, Math.PI / 2, 1.1],
+      ['BarrelOil', -86.55, 3.5, 0.4],
+      ['BarrelWater', -86.6, 4.3, 1.9],
+      ['Jerrycan', -87.1, 3.95, 0.5],
+      ['CrateWood2', -89.35, 3.3, 0.1],
+      ['CrateWood', -89.4, 3.25, 0.5, 0.7],
+      ['CrateWood', -89.45, 4.2, -0.2],
+      ['Pallet', -89.3, 0.9, 0.08],
+      ['Pallet', -89.28, 0.92, -0.1, 0.13],
+      ['Pallet', -89.32, 0.88, 0.03, 0.26],
+      ['TransformerBox', -89.72, -0.9, Math.PI / 2],
+      ['Tires', -89.1, -2.7, 0.3],
+      ['Tire', -88.2, -3.3, 1.1],
+      ['PileTrash', -88.9, -4.9, 0.7],
+      ['PileDebris', -87.0, -4.8, 2.2],
+      ['TrashCan', -86.5, -0.3, 0],
+      ['TrashCanLid', -86.5, -0.3, 0.6, 0.9, 0.7],
+      ['TrashCan', -86.5, -1.05, 1.3],
+      ['TrashCanTrash', -86.5, -1.05, 0, 0.84],
+    ];
+    void loadProps('industrial').then(kit => {
+      for (const [n, x, z, yaw, y = 0, sc = 1] of DRESS) {
+        const o = kit.make(n, sc);
+        if (!o) continue;
+        o.position.set(x, 0.03 + y, z);
+        o.rotation.y = yaw;
+        G.add(o);
+      }
+    });
+    col(-90, -88.85, 2.7, 4.7, 'bench');
+    col(-87.0, -86.1, 3.1, 4.75, 'bench');
+    col(-90, -88.5, -3.4, -2.0, 'bench');
+    col(-86.9, -86.1, -1.45, 0.05, 'bench');
     const tag = sign([{ t: 'NO DUMPING', s: 60, c: '#f1eee6', b: true, y: 100 }], 1.4, 0.6, '#8a2f28', 0, 256, 128);
     tag.rotation.y = Math.PI / 2;
     tag.position.set(-85.92, 2.1, 3);
@@ -327,7 +359,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     );
     lamp.position.set(-86.1, 3.4, 6.2);
     G.add(tag, lamp, box(0.5, 0.06, 0.06, dark, -86.0, 3.5, 6.2));
-    col(-88.4, -86.2, 0.9, 2.1, 'bench');
+    col(-87.05, -86.1, 0.45, 2.55, 'bench');
     col(-90.2, -85.8, -6.6, -6, 'fence');
     G.add(box(4.2, 2.2, 0.1, M('#6a655c', 0.8), -88, 1.1, -6.3)); // a chain-link back fence, near enough
   }
