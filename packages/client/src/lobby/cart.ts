@@ -130,11 +130,12 @@ export function createLobbyCart(host: CartHost) {
     const p = car.root.position,
       y = cartYaw(car),
       g = garageOf(host.myPlot());
-    let x = p.x + Math.cos(y) * 1.5,
-      z = p.z - Math.sin(y) * 1.5;
+    const OUT = (car.half?.[1] ?? 0.7) + 0.85; // (clear of the body, however wide it is)
+    let x = p.x + Math.cos(y) * OUT,
+      z = p.z - Math.sin(y) * OUT;
     if (host.hitAt(x, z, 0.35)) {
-      x = p.x - Math.cos(y) * 1.5;
-      z = p.z + Math.sin(y) * 1.5;
+      x = p.x - Math.cos(y) * OUT;
+      z = p.z + Math.sin(y) * OUT;
     }
     P.x = x;
     P.z = z;

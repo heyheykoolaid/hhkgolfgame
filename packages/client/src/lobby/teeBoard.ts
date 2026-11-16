@@ -163,6 +163,70 @@ function localePic(id: LocaleId) {
   return u;
 }
 
+/** The picture on the "real course" card: a scorecard on a clipboard and a pin. */
+function realPic() {
+  let u = pics.get('real' as any);
+  if (u) return u;
+  const c = document.createElement('canvas');
+  c.width = 320;
+  c.height = 180;
+  const x = c.getContext('2d')!,
+    g = x.createLinearGradient(0, 0, 0, 180);
+  g.addColorStop(0, '#2f6a4a');
+  g.addColorStop(1, '#1f4a34');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 320, 180);
+  x.save();
+  x.translate(128, 96);
+  x.rotate(-0.07);
+  x.fillStyle = '#8a5f38';
+  x.fillRect(-98, -72, 196, 144);
+  x.fillStyle = '#f6efdc';
+  x.fillRect(-88, -58, 176, 122);
+  x.fillStyle = '#c9ccd0';
+  x.fillRect(-26, -80, 52, 18);
+  x.strokeStyle = '#3a2a1c';
+  x.lineWidth = 1.5;
+  x.font = '700 13px Inter, system-ui, sans-serif';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  ['HOLE', 'PAR', 'YOU'].forEach((t, r) => {
+    x.fillStyle = r === 0 ? '#2f6a4a' : '#3a2a1c';
+    x.textAlign = 'left';
+    x.fillText(t, -82, -36 + r * 30);
+    x.textAlign = 'center';
+    for (let k = 0; k < 6; k++) {
+      x.strokeRect(-40 + k * 21, -50 + r * 30, 21, 28);
+      x.fillText(r === 0 ? String(k + 1) : r === 1 ? '454344'[k] : ['4', '6', '3', '', '', ''][k], -29.5 + k * 21, -36 + r * 30);
+    }
+  });
+  x.restore();
+  // a pin beside it
+  x.fillStyle = '#f1ede4';
+  x.fillRect(262, 40, 4, 110);
+  x.fillStyle = '#e2332b';
+  x.beginPath();
+  x.moveTo(266, 42);
+  x.lineTo(304, 56);
+  x.lineTo(266, 70);
+  x.fill();
+  x.fillStyle = '#1a3a28';
+  x.beginPath();
+  x.ellipse(264, 152, 22, 6, 0, 0, 7);
+  x.fill();
+  pics.set('real' as any, (u = c.toDataURL('image/jpeg', 0.85)));
+  return u;
+}
+/** A few courses at random (ones with a known length first, as their cards tend to be the complete ones). */
+function someCourses(list: RealCourse[], n: number) {
+  const out: RealCourse[] = [];
+  for (let t = 0; t < 400 && out.length < n; t++) {
+    const c = list[Math.floor(Math.random() * list.length)];
+    if (c && !out.includes(c) && (c.yards > 0 || t > 200)) out.push(c);
+  }
+  return out;
+}
+
 export function createTeeBoard(host: TeeHost) {
   let teeOpen = false,
     teeHTML = '',
@@ -179,7 +243,8 @@ export function createTeeBoard(host: TeeHost) {
     // a round on a real course's card (golf/homeCourse.ts): the course picked, and how much of its front nine to play
     homeOn = false,
     home: RealCourse | null = null,
-    homeN: TourSize = 9;
+    homeN: TourSize = 9,
+    ideas: RealCourse[] = []; // a few courses offered to try
   const trophyPics = new Map<string, string>();
   const trophyPic = (seed: number, n: TourSize, sub = '', px = 160) => {
     const k = `${seed}:${n}:${sub}:${px}`;
@@ -247,31 +312,48 @@ export function createTeeBoard(host: TeeHost) {
           .join('')
       : '<div class="muted">Nobody is waiting yet.</div>';
     // 1 · where: a picture card per course
-    const where = `<h3 style="margin-top:0">Course</h3><div class="tlocs">${LOCALES.map(
-      l =>
-        `<button class="tloc${teeLoc === l.id ? ' on' : ''}" data-loc="${l.id}"><img src="${localePic(l.id)}" alt=""><b>${l.name}</b><small>${l.blurb}</small></button>`,
-    ).join('')}</div>`;
-    // 2 · what: one random hole (or one by its code), or a tournament
-    const pick = homeOn ? 'home' : teeFmt === 'one' ? teeHole : String(teeFmt),
+    // 1 · where: a picture card per course of ours, and one for playing a real course's card
+    const sel = homeOn ? 'real' : teeLoc,
+      where = `<h3 style="margin-top:0">Course</h3><div class="tlocs three">${LOCALES.map(
+        l =>
+          `<button class="tloc${sel === l.id ? ' on' : ''}" data-loc="${l.id}"><img src="${localePic(l.id)}" alt=""><b>${l.name}</b><small>${l.blurb}</small></button>`,
+      ).join(
+        '',
+      )}<button class="tloc${sel === 'real' ? ' on' : ''}" data-loc="real"><img src="${realPic()}" alt=""><b>A real course</b><small>Play the scorecard of one of 10,000 US courses.</small></button></div>`;
+    // 2 · what: for our own courses, one random hole (or one by its code) or a tournament; for a real course, which
+    //     one, how much of it, and which of our landscapes to play it across
+    const pick = teeFmt === 'one' ? teeHole : String(teeFmt),
       chip = (k: string, t: string) => `<button class="t${pick === k ? ' on' : ''}" data-play="${k}">${t}</button>`,
       holeInfo =
         teeHole === 'rand'
           ? 'A brand-new layout every round: par 3, 4 or 5, doglegs, water, bunkers. Every hole gets a code, so you can play a good one again.'
           : `<input id="t-code" maxlength="5" placeholder="Hole code, e.g. 4KQ2B" autocomplete="off" spellcheck="false"><br><span id="t-codeinfo"></span>`,
-      fmt = `${where}<h3>Play</h3><div class="tg holes">${chip('rand', 'Random hole')}${chip('code', 'Hole code')}${chip('3', 'Mini cup · 3 holes')}${chip('9', 'Championship · 9 holes')}${chip('home', 'Home course')}</div>`,
-      homePanel = () => {
+      place = (c: RealCourse) => esc([c.city, c.state].filter(Boolean).join(', ')),
+      realPanel = () => {
         const pars = home ? cardPars(home.card, homeN) : [];
-        return `<p class="muted">Play a real course's card: its pars in order, with its hardest holes given our hardest ideas. The holes themselves are ours.</p>
-          <input id="t-home" placeholder="Search 10,000 US courses by name, city or state" autocomplete="off" spellcheck="false" style="width:100%"><div id="t-homeres" class="homeres"></div>
+        return `<h3>Which course</h3>
+          <div class="btns" style="margin:0 0 6px"><button id="t-lucky" class="primary">🎲 Surprise me</button><span class="muted" style="align-self:center">or search, or try one of the ideas below</span></div>
+          <input id="t-home" placeholder="Search by name, city or state" autocomplete="off" spellcheck="false" style="width:100%"><div id="t-homeres" class="homeres"></div>
+          ${
+            ideas.length
+              ? `<div class="homeres">${ideas.map(c => `<button data-idea="${c.i}"${home?.i === c.i ? ' class="on"' : ''}><b>${esc(c.name)}</b><small>${place(c)}</small></button>`).join('')}</div>
+                 <button id="t-ideas" class="mini">Other ideas</button>`
+              : '<p class="muted">Fetching the course list…</p>'
+          }
           ${
             home
-              ? `<div class="cupprev"><div><div class="cupname">${esc(home.name)}</div><div class="muted">${esc([home.city, home.state].filter(Boolean).join(', '))}${home.yards ? ` · ${home.yards.toLocaleString('en-US')} yd` : ''}</div>
+              ? `<h3>${esc(home.name)}</h3><div class="cupprev"><div><div class="muted">${place(home)}${home.yards ? ` · ${home.yards.toLocaleString('en-US')} yd` : ''}</div>
                  <p style="margin:6px 0 0;font-variant-numeric:tabular-nums">Par ${pars.join(' · ')} <span class="muted">= ${pars.reduce((a, b) => a + b, 0)}</span></p>
-                 <div class="tg" style="margin-top:6px"><button class="t${homeN === 3 ? ' on' : ''}" data-homen="3">First 3 holes</button><button class="t${homeN === 9 ? ' on' : ''}" data-homen="9">Front nine</button></div></div></div>`
+                 <p class="muted" style="margin:6px 0 0">Its pars in order, and its hardest holes get our hardest ideas. The holes themselves are ours.</p></div></div>
+                 <h3>How much of it</h3><div class="tg"><button class="t${homeN === 3 ? ' on' : ''}" data-homen="3">First 3 holes</button><button class="t${homeN === 9 ? ' on' : ''}" data-homen="9">Front nine</button></div>
+                 <h3>Played across</h3><div class="tg">${LOCALES.map(l => `<button class="t${teeLoc === l.id ? ' on' : ''}" data-scn="${l.id}">${l.name}</button>`).join('')}</div>`
               : ''
-          }<p class="muted" style="font-size:11px;margin-top:6px">Course names and scorecards: OpenGolfAPI, Open Database License.</p>`;
+          }<p class="muted" style="font-size:11px;margin-top:8px">Course names and scorecards: OpenGolfAPI, Open Database License.</p>`;
       },
-      course = homeOn ? homePanel() : teeFmt === 'one' ? `<p class="muted">${holeInfo}</p>` : cupPreview(teeFmt);
+      fmt = homeOn
+        ? where
+        : `${where}<h3>Play</h3><div class="tg holes">${chip('rand', 'Random hole')}${chip('code', 'Hole code')}${chip('3', 'Mini cup · 3 holes')}${chip('9', 'Championship · 9 holes')}</div>`,
+      course = homeOn ? realPanel() : teeFmt === 'one' ? `<p class="muted">${holeInfo}</p>` : cupPreview(teeFmt);
     const html = `${fmt}${course}
       <div class="btns"><button id="t-solo" class="primary">Play solo now</button></div>
       <h3>Group round</h3><p class="muted">${online ? 'Join the queue; the first player in line starts the round for up to 4 golfers. Players take turns (walk and drive any time; only hitting waits for your turn).' : 'Group rounds work on the published page.'}</p>
@@ -285,7 +367,14 @@ export function createTeeBoard(host: TeeHost) {
     document.querySelectorAll<HTMLButtonElement>('#tee-body button[data-loc]').forEach(
       x =>
         (x.onclick = () => {
-          teeLoc = x.dataset.loc as LocaleId;
+          homeOn = x.dataset.loc === 'real';
+          if (homeOn) {
+            // the list arrives once; then a few ideas are on the table straight away
+            void loadCourses().then(list => {
+              if (!ideas.length && list.length) ideas = someCourses(list, 3);
+              renderTee();
+            });
+          } else teeLoc = x.dataset.loc as LocaleId;
           renderTee();
         }),
     );
@@ -293,10 +382,7 @@ export function createTeeBoard(host: TeeHost) {
       x =>
         (x.onclick = () => {
           const k = x.dataset.play!;
-          homeOn = k === 'home';
-          if (homeOn) {
-            if (teeFmt === 'one') teeFmt = 9; // (a home-course round is a cup: it has a scorecard and a trophy)
-          } else if (k === 'rand' || k === 'code') {
+          if (k === 'rand' || k === 'code') {
             teeFmt = 'one';
             teeHole = k;
           } else teeFmt = +k as TourSize;
@@ -310,6 +396,31 @@ export function createTeeBoard(host: TeeHost) {
           renderTee();
         }),
     );
+    document.querySelectorAll<HTMLButtonElement>('#tee-body button[data-scn]').forEach(
+      x =>
+        (x.onclick = () => {
+          teeLoc = x.dataset.scn as LocaleId;
+          renderTee();
+        }),
+    );
+    document.querySelectorAll<HTMLButtonElement>('#tee-body button[data-idea]').forEach(
+      x =>
+        (x.onclick = () => {
+          home = ideas.find(c => c.i === +x.dataset.idea!) || home;
+          renderTee();
+        }),
+    );
+    if (b('t-lucky'))
+      b('t-lucky')!.onclick = async () => {
+        const list = await loadCourses();
+        if (list.length) home = someCourses(list, 1)[0];
+        renderTee();
+      };
+    if (b('t-ideas'))
+      b('t-ideas')!.onclick = async () => {
+        ideas = someCourses(await loadCourses(), 3);
+        renderTee();
+      };
     const hi = b('t-home') as HTMLInputElement | null;
     if (hi) {
       // results are written straight into their own box, so typing never loses the cursor to a redraw
@@ -336,7 +447,6 @@ export function createTeeBoard(host: TeeHost) {
             }),
         );
       };
-      void loadCourses(); // (start the download as soon as the panel is open)
     }
     if (b('t-reroll'))
       b('t-reroll')!.onclick = () => {
@@ -363,7 +473,7 @@ export function createTeeBoard(host: TeeHost) {
     }
     const okCode = () => teeFmt !== 'one' || teeHole !== 'code' || teeCode.length === 5;
     b('t-solo')!.onclick = () => {
-      if (homeOn && !home) return host.toast('Search for a course and pick one first.');
+      if (homeOn && !home) return host.toast('Pick a course first: Surprise me, or search for one.');
       if (!okCode()) return host.toast('Enter a 5-character hole code first.');
       host.closeModal();
       host.setQ(0);
@@ -386,7 +496,7 @@ export function createTeeBoard(host: TeeHost) {
       };
     if (b('t-go'))
       b('t-go')!.onclick = () => {
-        if (homeOn && !home) return host.toast('Search for a course and pick one first.');
+        if (homeOn && !home) return host.toast('Pick a course first: Surprise me, or search for one.');
         if (!okCode()) return host.toast('Enter a 5-character hole code first.');
         const members = queue()
             .slice(0, GROUP_MAX)

@@ -62,6 +62,10 @@ interface Walker {
   speed: number;
   v: number;
   wait: number;
+  /** giving way: the side it has chosen to pass on and for how long it keeps to it; how long it has been stuck */
+  pass: number;
+  passT: number;
+  stuck: number;
   cross: { x0: number; z0: number; x1: number; z1: number; t: number; len: number } | null;
   x: number;
   z: number;
@@ -194,6 +198,7 @@ const ROUNDS: [string, string, [number, number][], number][] = [
 ];
 interface Car {
   v: Vehicle | null;
+  driver: Golfer | null;
   kind: string;
   lap: Lap;
   s: number; // metres round the lap
@@ -208,8 +213,8 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
     pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
   // ---- walkers
   const walkers: Walker[] = [];
-  for (let i = 0; i < 9; i++) {
-    const female = i % 3 === 1,
+  for (let i = 0; i < 2; i++) {
+    const female = i % 2 === 1,
       look = sanitizeLook({
         ball: 'white',
         body: female ? 'female' : 'male',
@@ -241,6 +246,9 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
         speed: 1.05 + r() * 0.55,
         v: 0,
         wait: 0,
+        pass: 0,
+        passT: 0,
+        stuck: 0,
         cross: null,
         x: 0,
         z: 0,
@@ -257,11 +265,43 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
     else make();
   }
   // ---- cars (made once the physics world is there, so the player's car can bump into them)
+  const person = (female: boolean) =>
+    sanitizeLook({
+      ball: 'white',
+      body: female ? 'female' : 'male',
+      skin: pick(SKIN),
+      hair: pick(HAIR),
+      shirt: pick(CLOTH),
+      print: pick(CLOTH),
+      pants: pick(PANTS),
+      shoes: '#2c2f38',
+      sole: '#e8e2d4',
+      cap: pick(CLOTH),
+      capStyle: pick(['none', 'none', 'front']),
+      top: pick(['tee', 'long', 'button']),
+      hairStyle: pick(['short', 'afro', 'bald', 'bob', 'pony']),
+      glasses: r() < 0.4 ? 'aviators' : 'none',
+      stubble: !female && r() < 0.4,
+    } as any);
   const cars: Car[] = ROUNDS.map(([id, paint, corners, at]) => {
     const L = lap(corners);
-    return { v: null, kind: `car:${id}:${paint}:`, lap: L, s: at * L.n * 0.5, spd: 0, x: 0, z: 0, yaw: 0 };
+    return { v: null, driver: null, kind: `car:${id}:${paint}:`, lap: L, s: at * L.n * 0.5, spd: 0, x: 0, z: 0, yaw: 0 };
   });
   void loadCarKit();
+  // somebody at the wheel of each
+  cars.forEach((c, i) => {
+    const female = i === 1,
+      look = person(female),
+      make = () => {
+        c.driver = new Golfer(look);
+        scene.add(c.driver.root);
+      };
+    if (female) loadBody('female').then(make, make);
+    else make();
+  });
+  const _q1 = new THREE.Quaternion(),
+    _q2 = new THREE.Quaternion(),
+    UP = new THREE.Vector3(0, 1, 0);
   const q = new THREE.Quaternion(),
     e = new THREE.Euler();
   /** How far ahead (along its heading) and aside something is from a mover at (x, z, yaw). */
@@ -314,6 +354,29 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
         if (st > Math.PI) st -= 2 * Math.PI;
         if (st < -Math.PI) st += 2 * Math.PI;
         c.v.follow({ k: c.kind, p: [c.x, y + 0.02, c.z], q: [q.x, q.y, q.z, q.w], s: c.spd, st: Math.max(-0.5, Math.min(0.5, st * 1.5)) }, dt);
+        if (c.driver) {
+          // the driver: seated at the wheel, hands turning it (the same seating a player gets)
+          const near = (c.x - cx) ** 2 + (c.z - cz) ** 2 < 80 * 80,
+            g = c.driver,
+            v = c.v;
+          g.root.visible = near;
+          if (near) {
+            v.root.updateMatrixWorld(true);
+            v.seatParent.updateMatrixWorld(true);
+            g.root.position.copy(v.seat).applyMatrix4(v.seatParent.matrixWorld);
+            g.root.quaternion.copy(v.seatParent.getWorldQuaternion(_q1)).multiply(_q2.setFromAxisAngle(UP, v.riderYaw));
+            const gr = v.grips?.(),
+              w = (p: THREE.Vector3) => v.seatParent.localToWorld(p.clone());
+            g.update({
+              mode: 'sit',
+              s: 0,
+              club: 'iron',
+              time: clock,
+              turn: -v.steering(),
+              ik: gr ? { hands: [w(gr.hands[0]), w(gr.hands[1])], feet: [w(gr.feet[0]), w(gr.feet[1])] } : undefined,
+            } as any);
+          }
+        }
       }
     }
     // ---------------- walkers
@@ -337,20 +400,40 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
         w.yaw = Math.atan2(c.x1 - c.x0, c.z1 - c.z0);
         if (c.t >= 1) w.cross = null;
       } else {
-        const dir = w.far ? 1 : -1,
-          yaw = s[0] ? (dir > 0 ? 0 : Math.PI) : dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-        // keep apart: drift to the far side of the pavement from whoever is just ahead, slow if there's no room
-        let lane = w.lane;
-        const dodge = (o: Mover, hard: boolean) => {
+        let dir = w.far ? 1 : -1;
+        const yaw = s[0] ? (dir > 0 ? 0 : Math.PI) : dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        // keep apart: when someone is just ahead, choose a side to pass on and keep to it for a moment (choosing afresh
+        // every frame made them flutter on the spot); if the way stays shut, wait, then turn round and go elsewhere
+        let lane = w.lane,
+          shut = false;
+        const dodge = (o: Mover, solid: boolean) => {
           const [ahead, side] = rel(w.x, w.z, yaw, o);
-          if (ahead > -0.4 && ahead < 2.6 && Math.abs(side) < 1.1) {
-            lane = side * dir * (s[0] ? -1 : 1) > 0 ? -0.75 : 0.75;
-            if (hard && ahead < 1.0 && Math.abs(side) < 0.5) want = 0;
+          if (ahead < -0.3 || ahead > 2.8 || Math.abs(side) > 1.2) return;
+          if (w.passT <= 0) {
+            // pass on whichever side of the pavement has more room, given where they are standing
+            const their = w.side + side * dir * (s[0] ? -1 : 1);
+            w.pass = their > 0 ? -1.15 : 1.15;
+            w.passT = 1.8;
           }
+          if (solid && ahead < 1.0 && Math.abs(side) < 0.55) shut = true;
         };
         for (const o of walkers) if (o !== w) dodge(o, false);
         for (const o of others) if ((o.spd || 0) <= 3) dodge(o, true);
+        if (w.passT > 0) {
+          w.passT -= dt;
+          lane = w.pass;
+        }
+        if (shut) {
+          want = 0;
+          w.stuck += dt;
+          if (w.stuck > 2.5) {
+            w.far = !w.far; // no way past: go back the other way
+            w.stuck = 0;
+            w.passT = 0;
+          }
+        } else w.stuck = Math.max(0, w.stuck - dt * 2);
         w.side += (lane - w.side) * Math.min(1, dt * 2.2);
+        dir = w.far ? 1 : -1;
         w.v += (want - w.v) * Math.min(1, dt * 4);
         w.u += w.v * dt * dir;
         const along = s[2] + Math.max(0, Math.min(len, w.u));

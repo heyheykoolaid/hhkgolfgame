@@ -471,3 +471,6 @@ body.warding #controls{right:auto;left:12px;top:auto;bottom:12px;transform:none;
 .homeres button:hover{border-color:var(--gold);background:rgba(255,210,122,.14)}
 .homeres small{opacity:.7;white-space:nowrap}
 #t-home{font:600 14px Inter,system-ui,sans-serif;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:rgba(22,16,10,.85);color:#fff;outline:none;margin:4px 0;box-sizing:border-box}
+.tlocs.three{grid-template-columns:repeat(3,1fr)}
+.tlocs.three .tloc b{font-size:15px}
+.homeres button.on{border-color:var(--gold);background:rgba(255,210,122,.18)}

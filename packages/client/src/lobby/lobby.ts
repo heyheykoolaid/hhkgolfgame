@@ -24,6 +24,7 @@ import { colorFor } from '../avatar/colors';
 import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed, thumb } from './build';
 import {
   vehicleKind,
+  insideVehicle,
   cartModel,
   DRIVE_FX,
   CARS,
@@ -457,10 +458,7 @@ export function createLobby(env: LobbyEnv) {
     _q1 = new THREE.Quaternion(),
     _q2 = new THREE.Quaternion(),
     UP = new THREE.Vector3(0, 1, 0);
-  const inCartBox = (c: Vehicle, x: number, z: number, r = 0) => {
-    const l = c.root.worldToLocal(_cv.set(x, c.root.position.y + 0.5, z));
-    return Math.abs(l.x) < 1.25 + r && Math.abs(l.z) < 0.7 + r && l.y > -1.5 && l.y < 2;
-  };
+  const inCartBox = insideVehicle; // (each vehicle's own length and width: a sedan is twice a golf cart)
   function cartAt(x: number, z: number, r: number) {
     if (cart.car && P.mode !== 'drive' && inCartBox(cart.car, x, z, r)) return true;
     for (const q of remotes.values()) if (q.cart && inCartBox(q.cart, x, z, r)) return true;

@@ -4,7 +4,7 @@
 // are (`W`) and your cart. Carts themselves are vehicles/vehicles.ts.
 import * as THREE from 'three';
 import { COURSE, heightAt, surfaceAt, clamp, treesNear, pondPd, WATER_Y, CART_SLOTS } from '@gh/shared';
-import { myVehicleKind, type Vehicle } from '../vehicles/vehicles';
+import { myVehicleKind, insideVehicle, type Vehicle } from '../vehicles/vehicles';
 import { progress } from '../avatar/progress';
 import { speedo } from '../ui/speedo';
 import { Flop, type PhysWorld } from '../physics/ragdoll';
@@ -73,8 +73,7 @@ export function createRoaming(host: RoamHost) {
     for (const t of treesNear(x, z)) if ((t.x - x) ** 2 + (t.z - z) ** 2 < (0.3 * t.s + 0.35) ** 2) return true;
     for (const c of [cart, ...remoteCarts.values()]) {
       if (!c) continue;
-      const p = c.root.position;
-      if ((p.x - x) ** 2 + (p.z - z) ** 2 < 1.25 ** 2) return true;
+      if (insideVehicle(c, x, z, 0.3)) return true;
     }
     return false;
   }
@@ -111,11 +110,12 @@ export function createRoaming(host: RoamHost) {
       if (!cart) return;
       const p = cart.root.position,
         y = cartYaw(cart);
-      let x = p.x + Math.cos(y) * 1.5,
-        z = p.z - Math.sin(y) * 1.5;
+      const OUT = (cart.half?.[1] ?? 0.7) + 0.85; // (clear of the body, however wide it is)
+      let x = p.x + Math.cos(y) * OUT,
+        z = p.z - Math.sin(y) * OUT;
       if (walkBlocked(x, z)) {
-        x = p.x - Math.cos(y) * 1.5;
-        z = p.z + Math.sin(y) * 1.5;
+        x = p.x - Math.cos(y) * OUT;
+        z = p.z + Math.sin(y) * OUT;
       }
       W.x = x;
       W.z = z;

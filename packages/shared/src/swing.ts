@@ -113,8 +113,8 @@ export function windows(power: number, club: any, lie: string, golfer: Golfer = 
 }
 export function swingTempo(meterSpeed = 1, putt = false) {
   const k = meterSpeed * 1.18, // Nov 16: the whole swing runs 18% quicker ("a little slow")
-    pm = putt ? 1.3 : 1;
-  return { up: (1.05 / k) * pm, down: (0.58 / k) * pm, hang: 0.07, rate: 2.4 * k * (putt ? 0.8 : 1), ex: 1.6 };
+    pm = 1; // (putts ran 30% slower than full swings until Nov 16: "still too easy")
+  return { up: (1.05 / k) * pm, down: (0.58 / k) * pm, hang: 0.07, rate: 2.4 * k, ex: 1.6 };
 }
 export interface Impact {
   grade: 'perfect' | 'good' | 'miss';

@@ -46,6 +46,8 @@ export interface Vehicle {
   /** remote side: follow the owner's reported state */
   follow(st: VehState, dt: number): void;
   placeAt(x: number, y: number, z: number, yaw: number): void;
+  /** Half its length and half its width (m), for people walking into it. */
+  half?: [number, number];
   /** How rough the ground under it is, set by whoever drives it: 0 road … 1 long grass (more for sand). Cars care; carts don't. */
   terrain?: number;
   /** A car's engine right now (revs, gear with 0 = reverse, load 0–1, how deep or high its voice is); null for electric things. */
@@ -58,6 +60,13 @@ export interface VehicleKind {
   make(pw: PhysWorld | null, scene: THREE.Object3D, color: string, owner: boolean): Vehicle;
 }
 export const VEHICLES: Record<string, VehicleKind> = {};
+const _in = new THREE.Vector3();
+/** Is the point (x, z) inside a vehicle's body, grown by r? (Its own length and width, whichever way it is facing.) */
+export function insideVehicle(c: Vehicle, x: number, z: number, r = 0) {
+  const l = c.root.worldToLocal(_in.set(x, c.root.position.y + 0.5, z)),
+    [hx, hz] = c.half || [1.25, 0.7];
+  return Math.abs(l.x) < hx + r && Math.abs(l.z) < hz + r && l.y > -1.5 && l.y < 2.6;
+}
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const M = (c: string, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
@@ -1147,6 +1156,7 @@ class Cart implements Vehicle {
   private fixedW = false; // a car's wheels ride with its body (they stand over the wheels modelled into it)
   private prof: CarProfile = { accel: 1, brake: 1, steer: 1, grip: 1, roll: 1, pitch: 1 };
   terrain = 0;
+  half: [number, number] = [1.25, 0.7];
   private gear = 1;
   private rpm = IDLE_RPM;
   private shiftT = 0;
@@ -1182,7 +1192,7 @@ class Cart implements Vehicle {
       this.kind = `car:${spec.id}:${paint}:${rim}`;
       this.name = spec.name;
       const top = (spec.cabH ?? spec.size[2]) * 0.96;
-      this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX, top - 1.62, 0.36); // (the driver's head just under the roof)
+      this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX - 0.12, top - 1.93, 0.36); // (low in the seat: the driver's head sits under the roof, behind the screen)
       this.ax = spec.axles;
       this.tz = spec.bike ? 0.34 : (spec.tyre[0] + spec.tyre[1]) / 2;
       this.wr = spec.r;
@@ -1191,6 +1201,7 @@ class Cart implements Vehicle {
       this.hz = spec.bike ? 0.36 : (spec.size[1] / 2) * 0.9;
       this.fixedW = true;
       this.prof = carProfile(spec);
+      this.half = [spec.size[0] / 2, spec.bike ? 0.4 : spec.size[1] / 2 - 0.08];
     }
     if (kart) {
       this.kind = 'kart';
@@ -1535,7 +1546,7 @@ class Cart implements Vehicle {
     this.root.position.set(t.x, t.y, t.z);
     this.root.quaternion.set(r.x, r.y, r.z, r.w);
     const sp = this.vc.currentVehicleSpeed();
-    this.spin += (sp * dt) / this.wr;
+    if (Math.abs(sp) > 0.2) this.spin += (sp * dt) / this.wr; // (a parked car's wheels stay still: the solver's speed never quite reads zero)
     this.wheels.forEach((w, i) => {
       const sl = this.vc!.wheelSuspensionLength(i) ?? 0.25;
       this.susp[i] = sl;
