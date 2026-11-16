@@ -421,15 +421,16 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       }
       return sz.x;
     };
-    // nobody's shops: a back street of them north of the main row, there to make the place feel bigger than it is
-    let x = -122;
+    // nobody's shops fill the main street's north side where the lounge, Grow Supply and the pawn shop stood before
+    // they moved to Shady Lane: three in a row east of the water tower, one west of it
+    let x = -106.5;
     for (const [n, ex] of [
       ['polleria', []],
       ['restaurant', []],
       ['Pizzeria', []],
-      ['farmacia', ['farmacia_glass']],
     ] as [string, string[]][])
-      x += stand(n, x, -14, ex, true) + 2.5;
+      x += stand(n, x, ST.z0 - 2.4, ex, true) + 1.2;
+    stand('farmacia', -127, ST.z0 - 2.4, ['farmacia_glass'], true);
     for (const [n, px, pz, yaw] of [
       ['Condo002', -142, 14, Math.PI / 2],
       ['Condo004', -136, -22, 0],
@@ -879,6 +880,8 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
   }
   G = GW;
   at = WEST_OFF;
+  col(-106.5, -71.5, -3, ST.z0 - 2.4); // the filler shops on the main street (built above, once their models arrive)
+  col(-127, -116, -3, ST.z0 - 2.4);
   // 5 · the water tower: the landmark you steer by
   {
     const t = new THREE.Group(),

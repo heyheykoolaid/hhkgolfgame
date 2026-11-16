@@ -2,7 +2,7 @@
 // frame drives it (input, crashes, running people over) and publishes its state. Other players' carts are plain
 // vehicles the lobby keeps per remote player.
 import * as THREE from 'three';
-import { VEHICLES, cleanKind, myVehicleKind, type Vehicle, type VehState } from '../vehicles/vehicles';
+import { VEHICLES, CAR, carModel, cleanKind, myVehicleKind, type Vehicle, type VehState } from '../vehicles/vehicles';
 import { progress } from '../avatar/progress';
 import { toWorld, BOUND, type Plot, type Collider } from './world';
 import type { Placed } from './build';
@@ -184,12 +184,19 @@ export function createLobbyCart(host: CartHost) {
     return false;
   }
   function cartPrompt() {
-    if (P.mode === 'drive') return carStuck ? '<kbd>E</kbd> Flip the cart back over' : ''; // (the controls panel lists the driving keys)
+    // what you drive, by name: "your cart", "your tow truck"
+    const mine =
+      car && car.kind !== 'cart' && car.kind !== 'kart'
+        ? car.name.toLowerCase()
+        : !car && CAR.get(progress().car)
+          ? CAR.get(progress().car)!.name.toLowerCase()
+          : 'cart';
+    if (P.mode === 'drive') return carStuck ? `<kbd>E</kbd> Flip the ${mine} back over` : ''; // (the controls panel lists the driving keys)
     if (car && Math.hypot(car.root.position.x - P.x, car.root.position.z - P.z) < 3)
-      return carStuck ? '<kbd>E</kbd> Flip the cart back over' : '<kbd>E</kbd> Drive your cart';
+      return carStuck ? `<kbd>E</kbd> Flip the ${mine} back over` : `<kbd>E</kbd> Drive your ${mine}`;
     const g = garageOf(host.myPlot());
     if (g && Math.hypot(g.x - P.x, g.z - P.z) < 4.2)
-      return car ? '<kbd>E</kbd> Send your cart back to the garage' : '<kbd>E</kbd> Take your cart out';
+      return car ? `<kbd>E</kbd> Send your ${mine} back to the garage` : `<kbd>E</kbd> Take your ${mine} out`;
     return '';
   }
   /** Seat a golfer in a cart, hands on the wheel. */
@@ -241,6 +248,30 @@ export function createLobbyCart(host: CartHost) {
       const g = host.lotGroup(p.lot);
       if (!g) continue;
       const out = p === host.myPlot() ? !!car : !!p.owner && host.cartOut(p.owner);
+      if (p === host.myPlot()) {
+        // my own garage shows what I drive: the car from the auto shop stands in for the golf cart (a long one is
+        // scaled to fit under the roof)
+        const pr = progress(),
+          spec = CAR.get(pr.car),
+          want = spec ? `${pr.car}:${pr.carLook[pr.car] || ':'}` : '';
+        if (g.userData.myCar !== want) {
+          g.userData.myCar = want;
+          g.traverse(o => {
+            if (!o.userData.parkedCart) return;
+            for (const ch of [...o.children]) {
+              if (ch.userData.ownCar) o.remove(ch);
+              else ch.visible = !spec;
+            }
+            if (spec) {
+              const [paint, rim] = (pr.carLook[pr.car] || ':').split(':'),
+                m = carModel(spec, paint, rim).root;
+              m.userData.ownCar = true;
+              m.scale.setScalar(Math.min(1, 3.5 / spec.size[0], 2.3 / spec.size[1]));
+              o.add(m);
+            }
+          });
+        }
+      }
       if (!!g.userData.carOut !== out) {
         g.userData.carOut = out;
         g.traverse(o => {

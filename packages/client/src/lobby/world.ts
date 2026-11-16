@@ -355,8 +355,9 @@ export function buildLobby(scene: THREE.Scene) {
         return a;
       };
     post.add(
-      cyl(0.07, 0.09, 3.3, 8, M('#3a2a1a', 0.85), 0, 1.65, 0),
-      arm('THE COURSE', Math.PI / 2, 2.95, '#2b6a4c'), // north (-z)
+      cyl(0.07, 0.09, 3.8, 8, M('#3a2a1a', 0.85), 0, 1.9, 0),
+      arm('SHADY LANE', Math.PI / 2, 3.45, '#1f5a3a'), // north (-z): the lounge, Grow Supply, the pawn shop
+      arm('THE COURSE', Math.PI / 2, 2.95, '#2b6a4c'),
       arm('FUN LAND', 0, 2.45, '#8a2f28'), // east (+x)
       arm('WEST SIDE', Math.PI, 1.95, '#3a4f6a'), // west (-x)
     );

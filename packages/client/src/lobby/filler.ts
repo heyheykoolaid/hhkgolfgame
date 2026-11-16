@@ -27,6 +27,17 @@ export function buildFiller(scene: THREE.Scene) {
   const G = new THREE.Group();
   G.name = 'filler';
   scene.add(G);
+  // a tall clipped hedge along the back of Shady Lane's south side, so the town looks at green and not at the shops' backs
+  const hedge = new THREE.MeshStandardMaterial({ color: '#3f5e34', roughness: 0.95 });
+  for (const [x0, x1] of [
+    [-34, -6.5],
+    [6.5, 48],
+  ]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4.6, 1.3), hedge);
+    h.position.set((x0 + x1) / 2, 2.3, -49.3);
+    h.castShadow = h.receiveShadow = true;
+    G.add(h);
+  }
   void loadProps('buildings', n =>
     n.includes('street')
       ? 'street'
