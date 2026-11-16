@@ -391,36 +391,13 @@ body.warding #controls{right:auto;left:12px;top:auto;bottom:12px;transform:none;
 .bjrow kbd,.bm-btns kbd,#bm-grid kbd{display:none}
 .bm-help{display:none}
 #lmodal .card.mapcard{width:min(1000px,96vw)}
-/* the lounge's machines */
-.vlt{display:flex;flex-direction:column;gap:12px;align-items:stretch}
-.vlt .vcash{font:800 15px Inter,sans-serif;color:#9fdc8a;text-align:right}
-.vlt .reels{display:flex;gap:10px;justify-content:center;padding:14px;border-radius:14px;background:linear-gradient(#0b0f1a,#161d2e);border:1px solid var(--line)}
-.vlt .reel{width:96px;height:110px;border-radius:10px;background:#f6f1e2;display:grid;place-items:center;font-size:58px;line-height:1;box-shadow:inset 0 10px 14px -8px rgba(0,0,0,.55),inset 0 -10px 14px -8px rgba(0,0,0,.55)}
-.vlt .reel.spin{filter:blur(1.5px)}
-.vlt .seven{font:900 72px Georgia,serif;color:#c8452f}
-.vlt .vpays .seven{font-size:15px}
-.vlt .vmsg{text-align:center;min-height:24px;font:600 15px Inter,sans-serif;opacity:.85}
-.vlt .vmsg.win{font:900 24px "Barlow Condensed",Inter,sans-serif;color:#ffd27a;opacity:1;transform:rotate(-2deg);text-shadow:0 2px 0 #7a2a12}
-.vlt .vbets{display:flex;gap:8px;justify-content:center}
-.vlt .vbets button{padding:8px 14px;display:flex;gap:8px;align-items:center}
-.vlt .vbets button.on{background:#e2b23a;color:#2a1a08;border-color:#e2b23a}
-.vlt .vgo{padding:12px;font-size:17px}
-.vlt .vpays{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:center;font-size:13px;opacity:.85}
-.vlt .vpays b{color:#ffd27a}
-.vlt .vpays.poker{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px 12px}
-.vlt .vpays.poker span{display:flex;justify-content:space-between;padding:2px 6px;border-radius:6px}
-.vlt .vpays.poker span.on{background:#e2b23a;color:#2a1a08}
-.vlt .vpays.poker span.on b{color:#2a1a08}
-.vlt .vcards{display:flex;gap:8px;justify-content:center}
-.vlt .vcard{position:relative;width:74px;height:106px;border-radius:9px;background:#f6f1e2;color:#1d1d1f;border:2px solid transparent;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-.vlt .vcard.red{color:#c8452f}
-.vlt .vcard i{font:800 30px Georgia,serif;font-style:normal}
-.vlt .vcard u{font-size:30px;text-decoration:none;line-height:1}
-.vlt .vcard em{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);font:800 10px Inter,sans-serif;font-style:normal;background:#e2b23a;color:#2a1a08;padding:2px 6px;border-radius:5px;display:none}
-.vlt .vcard.held{border-color:#e2b23a;transform:translateY(-6px)}
-.vlt .vcard.held em{display:block}
-.vlt .vcard kbd{position:absolute;top:3px;right:3px;font-size:9px;opacity:.5}
-.vlt .vcard.back{background:repeating-linear-gradient(45deg,#7a2430,#7a2430 6px,#8f2f3c 6px,#8f2f3c 12px);border:2px solid #f6f1e2}
+/* the lounge's machines: a bar of buttons under the first-person view (the game itself is on the cabinet's screen) */
+#lvlt{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:11;display:flex;gap:8px;align-items:center;padding:10px 12px;border-radius:16px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px)}
+#lvlt.hidden{display:none}
+#lvlt button{font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:inherit;cursor:pointer;white-space:nowrap}
+#lvlt button:hover{background:rgba(243,210,122,.2)}
+#lvlt button.primary{background:#e2b23a;color:#2a1a08;border-color:#e2b23a;font-weight:800;padding:8px 20px}
+#lvlt b{min-width:64px;text-align:center;color:#ffd27a;font:800 17px Inter,sans-serif}
 /* inventory: a 4 x 8 grid of slots */
 #lstash .card.inv{width:min(640px,96vw)}
 #lstash .invgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:12px 0}

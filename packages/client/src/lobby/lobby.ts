@@ -73,7 +73,7 @@ import { SWATCH, sanitizeLook, lookKey, randomLook, loadLocalLook, saveLocalLook
 import { platform, resolveNames, type Platform } from '../platform';
 import { Sfx } from '../fx';
 import { snapSun } from '../world/course';
-import { openMachine } from './vlt';
+import { createVlt } from './vlt';
 import { loadPhysics, PhysWorld, Flop, rapier, grp, G_STATIC, G_RAG, G_VEH } from '../physics/ragdoll';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -100,6 +100,8 @@ interface LPres {
   car?: VehState | null;
   dr?: 1;
   bj?: BJPres;
+  /** the lounge machine this player is sitting at (0–3) */
+  vm?: number;
   sm?: SmokePres;
   /** cart radio, while the cart is out with it on (driven or parked): [band, volume] */
   rd?: [number, number];
@@ -226,6 +228,28 @@ const TOWN_KEYS: Record<string, [string, ControlRow[]]> = {
       ['V', 'Change view'],
       ['Shift', 'Lean in'],
       ['Esc', 'Leave (between hands)'],
+    ],
+  ],
+  vlt: [
+    'Slot machine',
+    [
+      ['Space', 'Spin', true],
+      ['L', 'Pull the lever'],
+      [['A', 'D'], 'Bet down / up'],
+      ['M', 'Max bet'],
+      ['V', 'Change view'],
+      ['E', 'Stand up'],
+    ],
+  ],
+  vltp: [
+    'Video poker',
+    [
+      ['Space', 'Deal · draw', true],
+      [['1', '–', '5'], 'Keep / release a card'],
+      [['A', 'D'], 'Bet down / up'],
+      ['M', 'Max bet'],
+      ['V', 'Change view'],
+      ['E', 'Stand up'],
     ],
   ],
   chat: [
@@ -399,7 +423,7 @@ export function createLobby(env: LobbyEnv) {
     aspd: 0,
     gw: undefined as undefined | { o: string; k: string; at: number; amt?: number },
     mode: 'walk' as
-      'walk' | 'wardrobe' | 'modal' | 'chat' | 'gacha' | 'bj' | 'grow' | 'dealer' | 'mail' | 'build' | 'drive' | 'stash' | 'putt' | 'range',
+      'walk' | 'wardrobe' | 'modal' | 'chat' | 'gacha' | 'bj' | 'vlt' | 'grow' | 'dealer' | 'mail' | 'build' | 'drive' | 'stash' | 'putt' | 'range',
     q: 0,
     go: null as LPres['go'],
     say: '',
@@ -487,6 +511,10 @@ export function createLobby(env: LobbyEnv) {
     }
     if (P.mode === 'bj') {
       bjGame.key(e);
+      return;
+    }
+    if (P.mode === 'vlt') {
+      vlt.key(e);
       return;
     }
     if (P.mode === 'grow') {
@@ -603,7 +631,16 @@ export function createLobby(env: LobbyEnv) {
     drag = { x: e.clientX, y: e.clientY };
   });
   addEventListener('pointermove', e => {
-    if (!active || P.mode === 'wardrobe' || P.mode === 'gacha' || P.mode === 'bj' || P.mode === 'grow' || P.mode === 'dealer' || P.mode === 'mail')
+    if (
+      !active ||
+      P.mode === 'wardrobe' ||
+      P.mode === 'gacha' ||
+      P.mode === 'bj' ||
+      P.mode === 'vlt' ||
+      P.mode === 'grow' ||
+      P.mode === 'dealer' ||
+      P.mode === 'mail'
+    )
       return;
     if (locked()) mouseLook(e.movementX, e.movementY);
     else if (drag) {
@@ -715,14 +752,7 @@ export function createLobby(env: LobbyEnv) {
     else if (n.id.startsWith('fun:') || n.id.startsWith('west:')) toast((n as any).say || n.label);
     else if (n.id === 'growshop') openGrowShop();
     else if (n.id === 'club') openClubhouse();
-    else if (n.id.startsWith('vlt:'))
-      void openMachine(
-        {
-          open: (t, h) => (openModal(t, h), $('lm-body')),
-          hooks: (k, c) => ((modalKeys = k), (modalClosed = c)),
-        },
-        n.id,
-      );
+    else if (n.id.startsWith('vlt:')) openVlt(+n.id.slice(4));
     else if (n.id === 'mail') openPanel('mail', () => mail.open());
     else if (n.id === 'bjtaken') toast('That seat is taken. Try another one.');
     else if (n.id === 'sign' && n.plot)
@@ -810,6 +840,33 @@ export function createLobby(env: LobbyEnv) {
     nameOf: uid => pf?.names.get(uid) || 'Golfer',
     myGolfer: () => me,
   });
+  // the lounge's slot machines and video poker: sit down and play in first person (lobby/vlt.ts)
+  const vlt = createVlt({
+    toast: h => toast(h, 2200),
+    onClose: () => {
+      if (P.mode === 'vlt') {
+        P.mode = 'walk';
+        camEase = 0.8;
+      }
+      me.root.visible = true;
+      sendPres(true);
+    },
+    sendPres: () => sendPres(true),
+    myGolfer: () => me,
+  });
+  function openVlt(i: number) {
+    if (P.mode !== 'walk' || flop) return;
+    if (vlt.isTaken(i)) {
+      toast('Someone is on that machine.');
+      return;
+    }
+    if (document.pointerLockElement) document.exitPointerLock();
+    P.mode = 'vlt';
+    P.vx = P.vz = 0;
+    for (const k in keys) keys[k] = false;
+    garden.putAway();
+    void vlt.sit(i);
+  }
   function openBJ(seat: number) {
     if (!bjGame.sit(seat)) return;
     if (document.pointerLockElement) document.exitPointerLock();
@@ -922,7 +979,7 @@ export function createLobby(env: LobbyEnv) {
     me: () => pf?.uid || 'me',
     myGolfer: () => me,
     myYaw: () => P.yaw,
-    canAct: () => P.mode !== 'drive' && P.mode !== 'bj' && !flop,
+    canAct: () => P.mode !== 'drive' && P.mode !== 'bj' && P.mode !== 'vlt' && !flop,
     free: () => P.mode === 'walk',
     toast: (h, ms) => toast(h, ms),
     nameOf: uid => pf?.names.get(uid) || 'Golfer',
@@ -1287,7 +1344,7 @@ export function createLobby(env: LobbyEnv) {
       controls.set('roll', t, rows);
       return;
     }
-    const m = P.mode;
+    const m = P.mode === 'vlt' && vlt.kind() === 'poker' ? 'vltp' : P.mode;
     let [title, rows] = TOWN_KEYS[m] || TOWN_KEYS.panel;
     if (m === 'walk') {
       rows = rows.slice();
@@ -1981,6 +2038,7 @@ export function createLobby(env: LobbyEnv) {
       ge: gest && clock - gest.t0 < 3 ? [gest.i, gest.n] : undefined,
       rd: cart.car && RS.on && radio.ready ? [RS.band, Math.round(RS.vol * 10) / 10] : undefined,
       bj: bjGame.pres(),
+      vm: vlt.pres(),
       sm: smoke.pres(),
       hd: garden.pres(),
       gw: P.gw && Date.now() - P.gw.at < 60000 ? P.gw : undefined,
@@ -2285,6 +2343,7 @@ export function createLobby(env: LobbyEnv) {
       );
       if (!alive) flop = null;
     } else if (P.mode === 'bj' && bjGame.isOpen()) bjGame.seatGolfer(me, bjGame.mySeat(), clock);
+    else if (P.mode === 'vlt' && vlt.isOpen()) vlt.seatMe(me, clock);
     else {
       myPose();
       if (gest && gest.i < 3 && P.mode === 'walk') gestureOn(me, gest.i, clock - gest.t0);
@@ -2373,6 +2432,7 @@ export function createLobby(env: LobbyEnv) {
       } else if (!away && !riding) {
         const bs = r.pres?.bj?.s;
         if (typeof bs === 'number' && bs >= 0 && bs < 5) bjGame.seatGolfer(r.golfer, bs, clock);
+        else if (typeof r.pres?.vm === 'number') vlt.seatGolfer(r.golfer, r.pres.vm, clock);
         else {
           rPose();
           // their gesture, timed from when we first saw it
@@ -2402,12 +2462,17 @@ export function createLobby(env: LobbyEnv) {
     if (gOff > 0.002) camera.setViewOffset(innerWidth, innerHeight, innerWidth * gOff, 0, innerWidth, innerHeight);
     else if (camera.view?.enabled) camera.clearViewOffset();
     if (P.mode === 'build') build.update(dt, camPos, camLook);
-    else if (P.mode === 'bj') {
-      bjGame.camTargets(bjCam, bjLook);
+    else if (P.mode === 'bj' || P.mode === 'vlt') {
+      if (P.mode === 'vlt') {
+        vlt.camTargets(bjCam, bjLook);
+        // on the way to your own eyes the camera passes through your head: you're drawn once it has arrived
+        me.root.visible = vlt.fov() === 50 || camPos.distanceTo(bjCam) < 0.035;
+      } else bjGame.camTargets(bjCam, bjLook);
       camPos.lerp(bjCam, 1 - Math.exp(-dt * 4));
       camLook.lerp(bjLook, 1 - Math.exp(-dt * 5));
-      if (Math.abs(camera.fov - 50) > 0.05) {
-        camera.fov += (50 - camera.fov) * (1 - Math.exp(-dt * 4));
+      const wantFov = P.mode === 'vlt' ? vlt.fov() : 50;
+      if (Math.abs(camera.fov - wantFov) > 0.05) {
+        camera.fov += (wantFov - camera.fov) * (1 - Math.exp(-dt * 4));
         camera.updateProjectionMatrix();
       }
     } else if (P.mode === 'gacha') {
@@ -2478,7 +2543,9 @@ export function createLobby(env: LobbyEnv) {
       })),
     );
     smoke.update(dt, camera);
-    if (P.mode !== 'bj') smoke.sway(camera);
+    if (P.mode !== 'bj' && P.mode !== 'vlt') smoke.sway(camera);
+    vlt.update(dt, clock);
+    vlt.setTaken([...remotes.values()].map(r => (typeof r.pres?.vm === 'number' ? r.pres.vm : -1)));
     gacha.update(dt);
     bjGame.update(dt, camera);
     garden.update(dt);
@@ -2667,6 +2734,7 @@ export function createLobby(env: LobbyEnv) {
     };
   }
   function stop() {
+    if (vlt.isOpen()) vlt.leave();
     if (bjGame.isOpen()) {
       bjGame.leave(true);
       if (P.mode === 'bj') P.mode = 'walk';
