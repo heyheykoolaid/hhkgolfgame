@@ -233,8 +233,7 @@ const TOWN_KEYS: Record<string, [string, ControlRow[]]> = {
   vlt: [
     'Slot machine',
     [
-      ['Space', 'Spin', true],
-      ['L', 'Pull the lever'],
+      ['Space', 'Pull the lever', true],
       [['A', 'D'], 'Bet down / up'],
       ['M', 'Max bet'],
       ['V', 'Change view'],

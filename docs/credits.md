@@ -23,6 +23,7 @@ Decision (Nov 16): use the CC BY packs; leave out the two Sketchfab Standard pac
 | office is old abandoned FREE | dasy444 | CC BY 4.0 | interior pieces |
 | 1970s Mafia Hideout Props | Bársh | Sketchfab Standard | usable in the game; the Standard license does not allow passing the model file on, so it may not belong in a public repository |
 | street city (7) for games FREE | dasy444 | Sketchfab Standard | same caution |
+| Gameready Casino scene | Katydid | Sketchfab Standard | same caution; a closed room of 392,000 triangles and 32 MB, in centimetres |
 | gt racing 2 - montreal | amogusstrikesback2 | CC BY 4.0 (as uploaded) | the title says it comes from a commercial game (GT Racing 2); the uploader may not hold the rights |
 | town square track | amogusstrikesback2 | CC BY 4.0 (as uploaded) | same uploader; origin unclear |
 

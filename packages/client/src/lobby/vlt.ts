@@ -178,6 +178,7 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number): VltSpot[
     for (let b = 0; b < 3; b++) add(G, new THREE.CylinderGeometry(0.032, 0.032, 0.03, 10), mat(btnCols[b], 0.3), x - 0.26 + b * 0.11, 1.05, z + 0.3);
     const spinBtn = add(G, new THREE.CylinderGeometry(0.055, 0.055, 0.04, 14), mat('#c8452f', 0.3), x + 0.2, 1.055, z + 0.3);
     spinBtn.userData.noBatch = true;
+    spinBtn.visible = def.kind === 'poker'; // the slot machines have no spin button: the lever is the only way
     add(G, new THREE.BoxGeometry(0.3, 0.1, 0.04), chrome, x, 0.5, z + 0.32); // coin tray
     // a lever on the right-hand side of the slot machines
     let lever: THREE.Group | null = null;
@@ -255,7 +256,7 @@ export function createVlt(host: VltHost) {
     if (mine < 0) return;
     const slots = M().def.kind === 'slots';
     ui.innerHTML = `<button data-a="betdn">Bet −</button><b>${money(bet)}</b><button data-a="betup">Bet +</button><button data-a="max">Max bet</button>
-      <button data-a="go" class="primary">${slots ? 'Spin' : phase === 'bet' ? 'Deal' : 'Draw'}</button>${slots ? '<button data-a="lever">Pull the lever</button>' : ''}
+      ${slots ? '<button data-a="lever" class="primary">Pull the lever</button>' : `<button data-a="go" class="primary">${phase === 'bet' ? 'Deal' : 'Draw'}</button>`}
       <button data-a="view">View</button><button data-a="leave">Stand up</button>`;
     ui.querySelectorAll<HTMLButtonElement>('[data-a]').forEach(
       b =>
@@ -425,7 +426,7 @@ export function createVlt(host: VltHost) {
   /** Reach for the spin button or the lever; the game acts when the hand gets there. */
   function press(kind: 'spin' | 'lever') {
     if (mine < 0 || busy()) return;
-    if (kind === 'lever' && !M().lever) kind = 'spin';
+    kind = M().lever ? 'lever' : 'spin'; // slot machines spin by the lever only; the poker cabinets have a deal button
     if ((M().def.kind === 'slots' || phase === 'bet') && cash < bet) {
       msg = "YOU CAN'T COVER THAT BET";
       playSample('error', 0.5);
@@ -503,7 +504,7 @@ export function createVlt(host: VltHost) {
     held = [false, false, false, false, false];
     phase = 'bet';
     result = 'none';
-    msg = machines[i].def.kind === 'slots' ? 'PRESS SPIN OR PULL THE LEVER' : 'PRESS DEAL';
+    msg = machines[i].def.kind === 'slots' ? 'PULL THE LEVER' : 'PRESS DEAL';
     reel.forEach(r => (r.spinning = false));
     ui.classList.remove('hidden');
     renderBar();
@@ -646,7 +647,7 @@ export function createVlt(host: VltHost) {
         win = pendingWin;
         if (win > bet) celebrate(win >= bet * 18);
         else {
-          msg = win ? 'CHERRY · BET BACK' : 'NO LUCK · SPIN AGAIN';
+          msg = win ? 'CHERRY · BET BACK' : 'NO LUCK · PULL AGAIN';
           win = 0;
         }
         renderBar();
