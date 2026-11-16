@@ -4,7 +4,8 @@
 // are (`W`) and your cart. Carts themselves are vehicles/vehicles.ts.
 import * as THREE from 'three';
 import { COURSE, heightAt, clamp, treesNear, pondPd, WATER_Y, CART_SLOTS } from '@gh/shared';
-import { VEHICLES, type Vehicle } from '../vehicles/vehicles';
+import { myVehicleKind, type Vehicle } from '../vehicles/vehicles';
+import { progress } from '../avatar/progress';
 import { Flop, type PhysWorld } from '../physics/ragdoll';
 import type { GameNet } from '../net/types';
 
@@ -62,7 +63,7 @@ export function createRoaming(host: RoamHost) {
     const ord = [...new Set([...turns.listOrder, ...[...net.players().values()].map(p => p.uid).sort()])],
       i = Math.max(0, ord.indexOf(host.uid())),
       [x, z] = CART_SLOTS[i % CART_SLOTS.length];
-    cart = VEHICLES.cart.make(pw, scene, colorFor(host.uid()), true);
+    cart = myVehicleKind(progress()).make(pw, scene, colorFor(host.uid()), true); // your own car from the lobby, or the golf cart
     cart.placeAt(x, heightAt(x, z) + 0.2, z, 0); // your own cart, in your parking slot behind the tee
   }
   /** Walk-blocking: tree trunks, ponds, carts. */
@@ -266,7 +267,7 @@ export function createRoaming(host: RoamHost) {
           : db < 3.2
             ? '<kbd>E</kbd> Address your ball'
             : cart && Math.hypot(cart.root.position.x - W.x, cart.root.position.z - W.z) < 2.8
-              ? `<kbd>E</kbd> Drive the cart · your ball is ${Math.round(db * 1.0936)} yd away`
+              ? `<kbd>E</kbd> Drive the ${cart.kind === 'cart' ? 'cart' : cart.name.toLowerCase()} · your ball is ${Math.round(db * 1.0936)} yd away`
               : `Your ball: ${Math.round(db * 1.0936)} yd`; // (the controls panel lists the keys)
     } else if (S.phase === 'drive' && cartStuck)
       pr = `<kbd>E</kbd> ${cartStuck === 'water' ? 'Haul the cart out of the water' : 'Flip the cart back over'}`;

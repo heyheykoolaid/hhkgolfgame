@@ -22,7 +22,7 @@ import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
 import { colorFor } from '../avatar/colors';
 import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed, thumb } from './build';
-import { VEHICLES, type Vehicle, type VehState } from '../vehicles/vehicles';
+import { vehicleKind, cartModel, CARS, CAR, CAR_PAINTS, CAR_RIMS, carModel, loadCarKit, type Vehicle, type VehState } from '../vehicles/vehicles';
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
   buildLobby,
@@ -61,10 +61,11 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { buyItem, setPlaced, ownAtLeast, setTrail } from '../avatar/progress';
+import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar } from '../avatar/progress';
 import { TRAILS } from '../avatar/trails';
 import type { Shop } from './wardrobe';
 import { ITEMS, loadItemModels } from './catalog';
+import { objectImage } from '../world/trophy';
 import { invIcon } from './invIcons';
 import { PAPERS_PRICE, GRINDER_PRICE } from './dealer';
 import { tickWater } from '../world/water';
@@ -746,6 +747,7 @@ export function createLobby(env: LobbyEnv) {
     else if (n.id === 'shop') toast('The pro shop has moved to the West Side: clothes, a barber, tattoos and golf gear are all up the hill.', 4200);
     else if (n.id === 'store:pro') void openProShop();
     else if (n.id === 'store:home') void openFurniture();
+    else if (n.id === 'store:auto') void openAuto();
     else if (n.id.startsWith('store:')) void openWardrobe(n.id.slice(6) as Shop);
     else if (n.id === 'gacha') openGacha();
     else if (n.id === 'rv') openCollection();
@@ -1761,6 +1763,87 @@ export function createLobby(env: LobbyEnv) {
       );
   }
   /** Homestead Furniture (West Side): everything for your lot. Bought pieces go to the lot's storage (Build Mode). */
+  /** Wrench & Ride (West Side): buy a car, choose the one you drive, repaint it. Your car replaces the golf cart in town
+   *  and on the course; it still comes out of your lot's garage. */
+  const carPics = new Map<string, string>();
+  async function openAuto() {
+    await loadCarKit().catch(() => 0); // (the pictures are drawn from the models)
+    const pr = await loadProgress(),
+      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
+      look = (id: string) => (pr.carLook[id] || ':').split(':') as [string, string],
+      pic = (id: string) => {
+        const k = id + (pr.carLook[id] || ''),
+          spec = CAR.get(id)!;
+        if (!carPics.has(k)) carPics.set(k, objectImage(carModel(spec, ...look(id)).root, 220));
+        return carPics.get(k)!;
+      },
+      cur = CAR.get(pr.car),
+      PAINT = 150,
+      sw = (kind: 'paint' | 'rim', list: string[], on: string) =>
+        list
+          .map(
+            c =>
+              `<button class="swatch${c === on ? ' on' : ''}" data-${kind}="${c}" title="${c ? '#' + c : 'Factory finish'}" style="background:${c ? '#' + c : 'repeating-linear-gradient(45deg,#d8d2c2 0 5px,#8a867c 5px 10px)'}"></button>`,
+          )
+          .join('');
+    openModal(
+      'Wrench & Ride Auto',
+      `<div class="shop"><div class="shophead"><p class="muted">"Whatever you pick drives out of your garage, here and up at the course."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
+       ${
+         cur
+           ? `<h3>Your ${cur.name}</h3><div class="carpaint"><img src="${pic(cur.id)}" alt=""><div>
+               <p><b>Paint</b> <span class="muted">${money(PAINT)} a respray, factory finish free</span></p><div class="swatches">${sw('paint', CAR_PAINTS, look(cur.id)[0])}</div>
+               <p><b>Rims</b> <span class="muted">${money(PAINT)}</span></p><div class="swatches">${sw('rim', CAR_RIMS, look(cur.id)[1] || CAR_RIMS[0])}</div></div></div>`
+           : ''
+       }
+       <h3>On the lot</h3><div class="cars">
+         <div class="carcard${pr.car ? '' : ' on'}"><img class="carpic" src="${carPics.get('cart') || (carPics.set('cart', objectImage(cartModel('#c8452f').root, 220)), carPics.get('cart'))}" alt=""><b>Golf cart</b><p>The one that came with the place.</p>
+           <button data-car="" ${pr.car ? '' : 'disabled'}>${pr.car ? 'Drive this' : 'Driving'}</button></div>
+         ${CARS.map(c => {
+           const own = pr.cars.includes(c.id),
+             on = pr.car === c.id;
+           return `<div class="carcard${on ? ' on' : ''}"><img class="carpic" src="${pic(c.id)}" alt=""><b>${c.name}</b><p>${c.blurb}</p>
+             <button data-car="${c.id}" ${on || (!own && pr.cash < c.price) ? 'disabled' : ''}>${on ? 'Driving' : own ? 'Drive this' : money(c.price)}</button></div>`;
+         }).join('')}</div>
+       <p class="muted" style="margin-top:10px">Your car comes out of the cart garage on your lot (<kbd>E</kbd> at the garage) and waits behind the tee on the course.</p></div>`,
+    );
+    const card = $('lmodal').querySelector('.card');
+    card?.classList.add('wide');
+    const again = async () => {
+      const sc = card?.scrollTop || 0;
+      await openAuto();
+      const c = $('lmodal').querySelector('.card');
+      if (c) c.scrollTop = sc;
+    };
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-car]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const id = b.dataset.car || '',
+              ok = await setCar(id, CAR.get(id)?.price || 0);
+            playSample(ok ? 'confirm' : 'error', 0.5);
+            if (!ok) toast("You can't afford that right now.");
+            else toast(id ? `${CAR.get(id)!.name}: it's in your garage.` : 'Back to the golf cart.');
+            await again();
+          }),
+      );
+    const respray = async (paint: string, rim: string) => {
+      if (!cur) return;
+      const [p0, r0] = look(cur.id),
+        free = (paint === p0 && rim === r0) || (!paint && rim === r0),
+        ok = await paintCar(cur.id, paint, rim, free ? 0 : PAINT);
+      playSample(ok ? 'confirm' : 'error', 0.5);
+      if (!ok) toast("You can't afford that right now.");
+      await again();
+    };
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-paint]')
+      .forEach(b => (b.onclick = () => respray(b.dataset.paint || '', look(cur!.id)[1])));
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-rim]')
+      .forEach(b => (b.onclick = () => respray(look(cur!.id)[0], b.dataset.rim || '')));
+  }
   /** Which aisle of the furniture store a piece is in (by what it is called; the first match wins). */
   const AISLES: [string, RegExp][] = [
     ['For the cart', /garage/i],
@@ -2476,7 +2559,7 @@ export function createLobby(env: LobbyEnv) {
           r.cart.dispose();
           r.cart = null;
         }
-        if (!r.cart) r.cart = VEHICLES[cs.k].make(pw, scene, colorFor(r.by), false);
+        if (!r.cart) r.cart = vehicleKind(cs.k).make(pw, scene, colorFor(r.by), false);
         r.cart.follow(cs, dt);
         r.cart.contacts?.().forEach((c, i) => grass.press(r.peer + 'c' + i, c.x, c.z, 0.35));
       } else if (r.cart) {

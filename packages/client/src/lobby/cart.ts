@@ -2,7 +2,8 @@
 // frame drives it (input, crashes, running people over) and publishes its state. Other players' carts are plain
 // vehicles the lobby keeps per remote player.
 import * as THREE from 'three';
-import { VEHICLES, type Vehicle, type VehState } from '../vehicles/vehicles';
+import { VEHICLES, cleanKind, myVehicleKind, type Vehicle, type VehState } from '../vehicles/vehicles';
+import { progress } from '../avatar/progress';
 import { toWorld, BOUND, type Plot, type Collider } from './world';
 import type { Placed } from './build';
 import type { Golfer } from '../characters/golfer';
@@ -55,7 +56,7 @@ export const cleanVeh = (v: any): VehState | null => {
   if (!v || typeof v !== 'object' || !Array.isArray(v.p) || !Array.isArray(v.q) || v.p.length < 3 || v.q.length < 4) return null;
   const n = (x: any, a: number) => clamp(+x || 0, -a, a);
   return {
-    k: v.k === 'kart' ? 'kart' : 'cart',
+    k: cleanKind(v.k),
     p: v.p.slice(0, 3).map((x: any) => n(x, BOUND + 160)),
     q: v.q.slice(0, 4).map((x: any) => n(x, 1)),
     s: n(v.s, 40),
@@ -87,8 +88,13 @@ export function createLobbyCart(host: CartHost) {
       host.toast('One moment…');
       return;
     }
+    const mine = myVehicleKind(progress());
+    if (car && car.kind !== mine.kind) {
+      car.dispose(); // a different car since last time (the auto shop): the old one goes
+      car = null;
+    }
     if (!car) {
-      car = VEHICLES.cart.make(host.pw()!, host.scene, host.myPlot()!.color, true);
+      car = mine.make(host.pw()!, host.scene, host.myPlot()!.color, true);
       car.placeAt(g.x, 0.12, g.z, g.yaw);
     }
     enterCart();

@@ -79,7 +79,7 @@ import {
 import { colorFor } from '../avatar/colors';
 import { TrophyView } from '../world/trophy';
 import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
-import { VEHICLES, type Vehicle } from '../vehicles/vehicles';
+import { vehicleKind, cleanKind, type Vehicle } from '../vehicles/vehicles';
 import { Grass, type GrassKind } from '../world/grass';
 import { stepLength } from '../characters/golfer';
 
@@ -1356,8 +1356,13 @@ export function createGolf(env: GolfEnv) {
         // their cart, parked or driven
         if (body?.v && pw) {
           let c = remoteCarts.get(id);
-          if (!c && VEHICLES[body.v.k]) {
-            c = VEHICLES[body.v.k].make(pw, scene, colorFor(p.uid), false);
+          const vk = cleanKind(body.v.k);
+          if (c && c.kind !== vk) {
+            c.dispose();
+            c = undefined;
+          }
+          if (!c) {
+            c = vehicleKind(vk).make(pw, scene, colorFor(p.uid), false);
             remoteCarts.set(id, c);
           }
           c?.follow(body.v, dt);

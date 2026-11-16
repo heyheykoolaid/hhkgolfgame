@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { PhysWorld, rapier, G_STATIC, G_RAG, G_VEH, grp } from '../physics/ragdoll';
+import { loadProps, type PropPack } from '../world/propPacks';
 
 /** What goes over the network (presence) for a vehicle. */
 export interface VehState {
@@ -827,9 +828,231 @@ function cyRod(len: number, r: number, m: THREE.Material, x: number, y: number, 
   return o;
 }
 
+// ---------------------------------------------------------------- cars (the auto shop on the West Side)
+// A player's own car replaces the golf cart everywhere: in town and on the course. The bodies are from the
+// "54 Vehicle Pack" (PorscheAaron, CC BY 4.0; docs/credits.md), on the golf cart's running gear with each car's own
+// wheelbase, track, size, top speed and pull. The pack's wheels are part of each body and can't turn, so each car gets
+// turning wheels of its own standing over them. Forward is +X (the pack's noses point along -x; the body is turned round).
+export interface CarSpec {
+  id: string;
+  /** the model's name in the pack */
+  obj: string;
+  name: string;
+  blurb: string;
+  price: number;
+  /** length, width, height (m) */
+  size: [number, number, number];
+  /** front and rear axle (x), the tyres' outer and inner faces (|z|), wheel radius */
+  axles: [number, number];
+  tyre: [number, number];
+  r: number;
+  /** where the driver sits (x; and the cab's height when it isn't the whole height) */
+  seatX: number;
+  cabH?: number;
+  bike?: boolean;
+  /** top speed and pull against the golf cart's */
+  speed: number;
+  power: number;
+  /** a bigger body on bigger wheels (the monster truck): body scale, and its lift off the ground */
+  scale?: number;
+  lift?: number;
+}
+const car = (
+  id: string,
+  obj: number,
+  name: string,
+  blurb: string,
+  price: number,
+  size: [number, number, number],
+  axles: [number, number],
+  tyre: [number, number],
+  r: number,
+  seatX: number,
+  speed: number,
+  power: number,
+  extra: Partial<CarSpec> = {},
+): CarSpec => ({ id, obj: 'Object_' + obj, name, blurb, price, size, axles, tyre, r, seatX, speed, power, ...extra });
+export const CARS: CarSpec[] = [
+  car('rusty', 20, 'Rusty pickup', 'Runs. Mostly.', 1500, [4.48, 1.79, 1.8], [1.47, -1.32], [0.82, 0.66], 0.38, 0.05, 1.1, 1.0),
+  car('dirt', 23, 'Dirt bike', 'Light, loud and quick off the line.', 1800, [2.22, 0.8, 1.3], [0.75, -0.75], [0.36, 0.28], 0.38, -0.1, 1.45, 1.6, {
+    bike: true,
+  }),
+  car(
+    'sedan',
+    25,
+    'Brougham sedan',
+    'Velour seats and a boat for a bonnet.',
+    2500,
+    [4.72, 2.03, 1.25],
+    [1.54, -1.12],
+    [0.95, 0.73],
+    0.35,
+    -0.25,
+    1.25,
+    1.15,
+  ),
+  car('town', 49, 'Town sedan', 'Sensible. Teal.', 3500, [4.95, 1.86, 1.41], [1.51, -1.25], [0.87, 0.67], 0.34, -0.15, 1.3, 1.2),
+  car(
+    'van',
+    14,
+    'Work van',
+    'Room for the whole foursome and their bags.',
+    4000,
+    [4.54, 2.06, 1.93],
+    [1.53, -1.27],
+    [0.96, 0.7],
+    0.37,
+    0.75,
+    1.1,
+    1.0,
+  ),
+  car(
+    'cruiser',
+    17,
+    'Cruiser',
+    'A motorcycle for arriving slowly on purpose.',
+    4500,
+    [2.3, 0.9, 1.28],
+    [0.84, -0.77],
+    [0.36, 0.28],
+    0.33,
+    -0.25,
+    1.6,
+    1.5,
+    { bike: true },
+  ),
+  car(
+    'classic',
+    21,
+    'Classic pickup',
+    'Red, round and older than the course.',
+    6000,
+    [4.53, 1.86, 1.73],
+    [1.59, -1.25],
+    [0.87, 0.61],
+    0.36,
+    0.1,
+    1.2,
+    1.15,
+  ),
+  car(
+    'yacht',
+    19,
+    'Land yacht',
+    'Six metres of teal and a white vinyl roof.',
+    6500,
+    [4.77, 2.09, 1.23],
+    [1.54, -1.19],
+    [0.98, 0.74],
+    0.36,
+    -0.2,
+    1.35,
+    1.2,
+  ),
+  car('sport', 36, 'Sport sedan', 'The quick one.', 9000, [4.4, 1.83, 1.37], [1.34, -1.39], [0.87, 0.6], 0.36, -0.1, 1.55, 1.5),
+  car('fourby', 2, '4×4', 'Short, tall and happy in the rough.', 10000, [3.91, 1.89, 1.75], [1.2, -1.01], [0.93, 0.6], 0.38, 0, 1.25, 1.35),
+  car(
+    'tow',
+    58,
+    'Tow truck',
+    'For when your friends drive into the pond.',
+    12000,
+    [5.92, 2.18, 2.3],
+    [2.22, -1.16],
+    [0.87, 0.56],
+    0.37,
+    1.2,
+    1.15,
+    1.3,
+    { cabH: 1.7 },
+  ),
+  car(
+    'ambulance',
+    4,
+    'Ambulance',
+    'Retired from service. The lights are for show.',
+    18000,
+    [6.11, 2.56, 2.42],
+    [2.3, -1.65],
+    [1.06, 0.78],
+    0.43,
+    1.5,
+    1.3,
+    1.4,
+    { cabH: 1.9 },
+  ),
+  car('monster', 2, 'Monster truck', 'The 4×4, after some decisions.', 40000, [5.1, 3.0, 2.7], [1.56, -1.31], [1.5, 0.78], 0.9, 0, 1.2, 1.7, {
+    scale: 1.3,
+    lift: 0.41,
+    cabH: 2.6,
+  }),
+];
+export const CAR = new Map(CARS.map(c => [c.id, c]));
+/** Paint and rim colours the auto shop offers ('' = as it left the factory). */
+export const CAR_PAINTS = ['', 'e23b2f', 'f08a1c', 'f2cf3a', '5fae4a', '2f8fa8', '3a57c8', '8a4fc0', 'e86aa6', '4a4a50', 'f4f1ea'];
+export const CAR_RIMS = ['c9ccd0', '1d1d1f', 'e2b23a', 'c8452f', 'f4f1ea', '2f8fa8'];
+let carKit: PropPack | null = null;
+export const loadCarKit = () =>
+  loadProps('vehicles', n => n).then(k => {
+    carKit = k;
+    return k;
+  });
+export function carModel(spec: CarSpec, paint = '', rim = '') {
+  const root = new THREE.Group(),
+    body = new THREE.Group(),
+    k = spec.scale ?? 1;
+  root.add(body);
+  const fill = (kit: PropPack) => {
+    const o = kit.make(spec.obj, 25 * k);
+    if (!o) return;
+    const m = (o.material as THREE.MeshStandardMaterial).clone();
+    if (paint) m.color.set('#' + paint); // (a tint over the body's own texture)
+    o.material = m;
+    o.rotation.y = Math.PI;
+    o.position.y = spec.lift ?? 0;
+    body.add(o);
+  };
+  if (carKit) fill(carKit);
+  else void loadCarKit().then(fill);
+  const rubber = M('#17171a', 0.9),
+    hub = M('#' + (rim || 'c9ccd0'), 0.35, 0.7),
+    dark = M('#0c0c0e', 0.8),
+    wheels: THREE.Object3D[] = [],
+    w = spec.tyre[0] - spec.tyre[1] + 0.07,
+    zc = (spec.tyre[0] + spec.tyre[1]) / 2 + 0.015,
+    R = spec.r * 1.04;
+  for (const x of spec.axles)
+    for (const z of [zc, -zc]) {
+      const g = new THREE.Group();
+      g.position.set(x, spec.r, z);
+      if (!spec.bike) {
+        const tyre = new THREE.Mesh(new THREE.CylinderGeometry(R, R, w, 20), rubber),
+          face = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.62, R * 0.62, w + 0.02, 16), hub),
+          cap = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.2, R * 0.2, w + 0.05, 10), dark);
+        for (const p of [tyre, face, cap]) p.rotation.x = Math.PI / 2;
+        g.add(tyre, face, cap);
+        for (let i = 0; i < 5; i++) {
+          // five slots in the rim, so you can see it turning
+          const slot = new THREE.Mesh(new THREE.BoxGeometry(R * 0.2, R * 0.12, w + 0.03), dark),
+            a = (i / 5) * Math.PI * 2;
+          slot.position.set(Math.cos(a) * R * 0.42, Math.sin(a) * R * 0.42, 0);
+          slot.rotation.z = a;
+          g.add(slot);
+        }
+      }
+      body.add(g);
+      wheels.push(g);
+    }
+  root.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) m.castShadow = m.receiveShadow = true;
+  });
+  return { root, body, wheels, wheel: new THREE.Object3D() as THREE.Object3D };
+}
+
 class Cart implements Vehicle {
-  readonly kind: string = 'cart';
-  readonly name: string = 'Golf cart';
+  kind: string = 'cart';
+  name: string = 'Golf cart';
   root: THREE.Object3D;
   seatParent: THREE.Object3D;
   /** golfer root in body space: hips land on the cushion, slightly to the driver's side */
@@ -845,6 +1068,14 @@ class Cart implements Vehicle {
   private inp: DriveInput = { throttle: 0, steer: 0, brake: true };
   private steer = 0;
   private spin = 0;
+  // running gear: front and rear axle (x), half the track, the wheels' attachment height and radius, the chassis' half size
+  private ax: [number, number] = [0.8, -0.8];
+  private tz = 0.58;
+  private wy = 0.46;
+  private wr = 0.22;
+  private hx = 1.18;
+  private hz = 0.6;
+  private fixedW = false; // a car's wheels ride with its body (they stand over the wheels modelled into it)
   private remoteSpeed = 0;
   private tp = V();
   private tq = new THREE.Quaternion();
@@ -865,8 +1096,24 @@ class Cart implements Vehicle {
     color: string,
     owner: boolean,
     private kart = false,
+    private spec: CarSpec | null = null,
+    paint = '',
+    rim = '',
   ) {
-    const m = kart ? kartModel(color) : cartModel(color);
+    const m = spec ? carModel(spec, paint, rim) : kart ? kartModel(color) : cartModel(color);
+    if (spec) {
+      this.kind = `car:${spec.id}:${paint}:${rim}`;
+      this.name = spec.name;
+      const top = (spec.cabH ?? spec.size[2]) * 0.96;
+      this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX, top - 1.62, 0.36); // (the driver's head just under the roof)
+      this.ax = spec.axles;
+      this.tz = spec.bike ? 0.34 : (spec.tyre[0] + spec.tyre[1]) / 2;
+      this.wr = spec.r;
+      this.wy = spec.r + 0.25;
+      this.hx = (spec.size[0] / 2) * 0.95;
+      this.hz = spec.bike ? 0.36 : (spec.size[1] / 2) * 0.9;
+      this.fixedW = true;
+    }
     if (kart) {
       this.kind = 'kart';
       this.name = 'Go-kart';
@@ -886,7 +1133,7 @@ class Cart implements Vehicle {
       );
       // chassis box (the canopy isn't solid: the cart can roll under branches) + low ballast for a planted centre of mass
       pw.world.createCollider(
-        R.ColliderDesc.cuboid(1.18, 0.24, 0.6)
+        R.ColliderDesc.cuboid(this.hx, 0.24, this.hz)
           .setTranslation(0, 0.5, 0)
           .setMass(260)
           .setFriction(0.4)
@@ -896,12 +1143,12 @@ class Cart implements Vehicle {
       pw.world.createCollider(R.ColliderDesc.cuboid(0.6, 0.05, 0.4).setTranslation(0, 0.18, 0).setMass(160).setCollisionGroups(0), b);
       const vc = pw.world.createVehicleController(b);
       for (const [x, z] of [
-        [0.8, 0.58],
-        [0.8, -0.58],
-        [-0.8, 0.58],
-        [-0.8, -0.58],
+        [this.ax[0], this.tz],
+        [this.ax[0], -this.tz],
+        [this.ax[1], this.tz],
+        [this.ax[1], -this.tz],
       ])
-        vc.addWheel({ x, y: 0.46, z }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, 0.32, 0.22);
+        vc.addWheel({ x, y: this.wy, z }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, 0.32, this.wr);
       for (let i = 0; i < 4; i++) {
         // soft, long-travel springs; grippy tyres
         vc.setWheelSuspensionStiffness(i, 16);
@@ -919,9 +1166,10 @@ class Cart implements Vehicle {
         const v = this.vc!,
           sp = v.currentVehicleSpeed(),
           i = this.inp,
-          K = 1,
+          K = this.spec?.power ?? 1,
+          S = this.spec?.speed ?? 1,
           // a kart is tuned to its little track: quick off the line and through the hairpins, but a modest top speed
-          top = this.kart ? (this.drift ? 10.5 : i.boost ? 13.8 : 11.6) : this.boostT > 0 ? 23 : i.boost ? 19 : 14;
+          top = this.kart ? (this.drift ? 10.5 : i.boost ? 13.8 : 11.6) : (this.boostT > 0 ? 23 : i.boost ? 19 : 14) * S;
         // steering: quick at walking pace, calmer at speed, returns to centre on its own
         // drift: starts when the brake goes down mid-turn at speed, ends when it comes up (boost!) or the cart slows right down
         if (!this.drift && i.brake && Math.abs(i.steer) > 0.3 && sp > (this.kart ? 4.5 : 6.5) && i.throttle >= 0) {
@@ -994,7 +1242,7 @@ class Cart implements Vehicle {
       // someone else's cart: a moving solid so our cart (and ragdolls) bump into it
       const b = pw.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
       pw.world.createCollider(
-        R.ColliderDesc.cuboid(1.18, 0.45, 0.6)
+        R.ColliderDesc.cuboid(this.hx, 0.45, this.hz)
           .setTranslation(0, 0.7, 0)
           .setCollisionGroups(grp(G_VEH, G_RAG | G_VEH)),
         b,
@@ -1008,12 +1256,20 @@ class Cart implements Vehicle {
   private _ct = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   contacts() {
     this.root.updateMatrixWorld();
-    this.wheels.forEach((w, i) => this._ct[i].set(w.position.x, w.position.y - 0.22, w.position.z).applyMatrix4(this.root.matrixWorld));
+    this.wheels.forEach((w, i) => this._ct[i].set(w.position.x, w.position.y - this.wr, w.position.z).applyMatrix4(this.root.matrixWorld));
     return this._ct;
   }
   grips() {
     // hands at ten-to-two on the rim, turned with the wheel; feet on the floor mat
-    const [WC, WN, WR] = this.kart ? [KART_WC, KART_WN, KART_WR] : [WHEEL_C, WHEEL_N, WHEEL_R];
+    const sp = this.spec,
+      st = this.seat;
+    const [WC, WN, WR] = sp
+      ? sp.bike
+        ? [V(st.x + 0.62, 1.02, 0), V(-1, 0.15, 0).normalize(), 0.3] // handlebars
+        : [V(st.x + 0.48, st.y + 1.17, st.z), WHEEL_N, WHEEL_R]
+      : this.kart
+        ? [KART_WC, KART_WN, KART_WR]
+        : [WHEEL_C, WHEEL_N, WHEEL_R];
     const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), WN),
       turn = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -this.steer * 2.2),
       hand = (a: number) =>
@@ -1023,7 +1279,13 @@ class Cart implements Vehicle {
           .add(WC);
     return {
       hands: [hand(Math.PI * 0.85), hand(Math.PI * 0.15)] as [THREE.Vector3, THREE.Vector3],
-      feet: (this.kart ? [V(0.62, 0.3, 0.15), V(0.62, 0.3, -0.15)] : [V(0.3, 0.58, 0.38), V(0.33, 0.58, 0.17)]) as [THREE.Vector3, THREE.Vector3],
+      feet: (sp
+        ? sp.bike
+          ? [V(st.x + 0.25, 0.42, 0.22), V(st.x + 0.25, 0.42, -0.22)]
+          : [V(st.x + 0.66, st.y + 0.65, st.z + 0.11), V(st.x + 0.69, st.y + 0.65, st.z - 0.1)]
+        : this.kart
+          ? [V(0.62, 0.3, 0.15), V(0.62, 0.3, -0.15)]
+          : [V(0.3, 0.58, 0.38), V(0.33, 0.58, 0.17)]) as [THREE.Vector3, THREE.Vector3],
     };
   }
   placeAt(x: number, y: number, z: number, yaw: number) {
@@ -1060,8 +1322,9 @@ class Cart implements Vehicle {
       tBob = (0.25 - avg) * 0.35;
     S.vb += ((tBob - S.bob) * 120 - S.vb * 10) * dtc;
     S.bob += S.vb * dtc;
-    this.body3.rotation.set(S.roll, 0, S.pitch);
-    this.body3.position.y = S.bob;
+    const soft = this.spec ? 0.45 : 1; // (a car's wheels ride with its body, so it leans less than the cart)
+    this.body3.rotation.set(S.roll * soft, 0, S.pitch * soft);
+    this.body3.position.y = S.bob * soft;
   }
   drive(dt: number, inp: DriveInput) {
     this.inp = inp;
@@ -1071,11 +1334,11 @@ class Cart implements Vehicle {
     this.root.position.set(t.x, t.y, t.z);
     this.root.quaternion.set(r.x, r.y, r.z, r.w);
     const sp = this.vc.currentVehicleSpeed();
-    this.spin += (sp * dt) / 0.22;
+    this.spin += (sp * dt) / this.wr;
     this.wheels.forEach((w, i) => {
       const sl = this.vc!.wheelSuspensionLength(i) ?? 0.25;
       this.susp[i] = sl;
-      w.position.y = 0.46 - sl;
+      if (!this.fixedW) w.position.y = this.wy - sl;
       w.rotation.set(0, i < 2 ? this.steer : 0, 0);
       w.rotateZ(-this.spin);
     });
@@ -1169,9 +1432,9 @@ class Cart implements Vehicle {
     this.root.quaternion.slerp(this.tq, k);
     this.remoteSpeed = st.s || 0;
     this.steer = st.st || 0;
-    this.spin += (this.remoteSpeed * dt) / 0.22;
+    this.spin += (this.remoteSpeed * dt) / this.wr;
     this.wheels.forEach((w, i) => {
-      w.position.y = 0.21;
+      if (!this.fixedW) w.position.y = 0.21;
       w.rotation.set(0, i < 2 ? this.steer : 0, 0);
       w.rotateZ(-this.spin);
     });
@@ -1201,3 +1464,15 @@ class Cart implements Vehicle {
 }
 VEHICLES.cart = { kind: 'cart', name: 'Golf cart', make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner) };
 VEHICLES.kart = { kind: 'kart', name: 'Go-kart', make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner, true) };
+/** The kind a published state names: 'cart', 'kart', or a car as 'car:<id>:<paint>:<rims>' (hex colours, either may be empty). */
+export function vehicleKind(k: string): VehicleKind {
+  const m = /^car:([a-z]{2,10}):([0-9a-f]{6})?:([0-9a-f]{6})?$/.exec(k || ''),
+    spec = m && CAR.get(m[1]);
+  if (!spec) return VEHICLES[k] || VEHICLES.cart;
+  return { kind: k, name: spec.name, make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner, false, spec, m![2] || '', m![3] || '') };
+}
+export const cleanKind = (k: any) =>
+  k === 'kart' ? 'kart' : typeof k === 'string' && /^car:[a-z]{2,10}:([0-9a-f]{6})?:([0-9a-f]{6})?$/.test(k) && CAR.has(k.split(':')[1]) ? k : 'cart';
+/** What the player drives: their chosen car in its paint, or the golf cart. */
+export const myVehicleKind = (pr: { car: string; carLook: Record<string, string> }) =>
+  CAR.has(pr.car) ? vehicleKind(`car:${pr.car}:${pr.carLook[pr.car] || ':'}`) : VEHICLES.cart;

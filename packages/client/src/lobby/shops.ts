@@ -367,6 +367,44 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
     G.add(s.g);
     col(-79.2 - w / 2, -79.2 + w / 2, front, front + 9);
   }
+  // ---- Wrench & Ride Auto: a grey block garage at the west end of the row; tyres stacked by the door, oil drums, a
+  // tool chest and a jack in the windows
+  {
+    const w = 12,
+      s = storefront({
+        x: -124,
+        z: front,
+        w,
+        h: 5,
+        d: 9,
+        wall: wallM('plaster', '#8d939b', '#777d86', w, 5),
+        trim: '#1d2a3a',
+        sign: ['WRENCH & RIDE AUTO', '#1d2a3a', '#ffd27a'],
+      });
+    const rubber = M('#17171a', 0.9),
+      red = M('#b8322a', 0.5, 0.3),
+      steel = M('#8a8f96', 0.4, 0.7);
+    for (const [tx, n] of [
+      [-1.5, 4],
+      [1.5, 3],
+      [2.25, 2],
+    ] as [number, number][])
+      for (let i = 0; i < n; i++) {
+        const t = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.12, 8, 16), rubber);
+        t.rotation.x = Math.PI / 2;
+        t.position.set(tx, 0.14 + i * 0.24, -0.55);
+        s.g.add(t);
+      }
+    // left window: a tool chest with drawers; right window: a trolley jack and a row of oil cans
+    s.g.add(box(1.3, 0.9, 0.5, red, -s.wx, s.sillY + 0.48, 0.5));
+    for (let i = 0; i < 4; i++) s.g.add(box(1.2, 0.03, 0.02, steel, -s.wx, s.sillY + 0.2 + i * 0.2, 0.24));
+    s.g.add(box(0.9, 0.12, 0.3, red, s.wx - 0.4, s.sillY + 0.1, 0.5), cyl(0.02, 0.02, 0.7, 6, steel, s.wx - 0.75, s.sillY + 0.4, 0.5).rotateZ(0.5));
+    for (let i = 0; i < 4; i++)
+      s.g.add(cyl(0.07, 0.07, 0.22, 10, M(['#e2b23a', '#2f6a8a', '#b8322a', '#3f8a4a'][i], 0.4), s.wx + 0.3 + i * 0.22, s.sillY + 0.14, 0.55));
+    for (const dx of [-5.2, -4.5]) s.g.add(cyl(0.3, 0.3, 0.9, 12, M(dx < -5 ? '#2f6a8a' : '#b8322a', 0.5, 0.3), dx, 0.45, -0.5));
+    G.add(s.g);
+    col(-124 - w / 2, -124 + w / 2, front, front + 9);
+  }
   // ---- Homestead Furniture: cream plaster with big windows, a sofa and a floor lamp on show
   {
     const w = 10,

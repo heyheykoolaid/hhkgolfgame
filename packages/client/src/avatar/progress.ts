@@ -69,6 +69,10 @@ export interface Progress {
   /** Ball trails you own, and the one in use ('' = the plain white one). */
   trails: string[];
   trail: string;
+  /** Cars you own (vehicles.ts CARS), the one you drive ('' = the golf cart), and each one's paint and rims ('rrggbb:rrggbb'). */
+  cars: string[];
+  car: string;
+  carLook: Record<string, string>;
   at?: number; /* when this copy was last saved (ms): the newer copy wins between devices */
 }
 const cleanTrophy = (t: any): TrophyRec | null =>
@@ -94,7 +98,9 @@ const cleanTrophy = (t: any): TrophyRec | null =>
 const LS = 'gh.progress.v1';
 /** Cash: the second currency (street-dealer-economy.md). Never converts to or from Birdie Dollars. */
 export const STARTING_CASH = 5000;
-const clean0 = (p: any): Omit<Progress, 'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail'> => {
+const clean0 = (
+  p: any,
+): Omit<Progress, 'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail' | 'cars' | 'car' | 'carLook'> => {
   const owned = Array.isArray(p?.owned) ? ([...new Set(p.owned.filter((id: any) => BALL.has(id)))] as string[]) : [];
   if (!owned.includes(DEFAULT_BALL)) owned.unshift(DEFAULT_BALL);
   return {
@@ -144,6 +150,13 @@ const clean = (p: any): Progress => ({
     ? [...new Set<string>(p.trails.filter((s: any) => typeof s === 'string' && /^[a-z]{2,12}$/.test(s)))].slice(0, 30)
     : [],
   trail: typeof p?.trail === 'string' && /^[a-z]{0,12}$/.test(p.trail) ? p.trail : '',
+  cars: Array.isArray(p?.cars) ? [...new Set<string>(p.cars.filter((s: any) => typeof s === 'string' && /^[a-z]{2,10}$/.test(s)))].slice(0, 40) : [],
+  car: typeof p?.car === 'string' && /^[a-z]{0,10}$/.test(p.car) && (!p.car || (Array.isArray(p?.cars) && p.cars.includes(p.car))) ? p.car : '',
+  carLook: Object.fromEntries(
+    Object.entries(p?.carLook && typeof p.carLook === 'object' ? p.carLook : {})
+      .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && typeof v === 'string' && /^([0-9a-f]{6})?:([0-9a-f]{6})?$/.test(v))
+      .slice(0, 40),
+  ) as Record<string, string>,
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
       .filter(([k, v]) => /^[a-z0-9_]{2,24}$/.test(k) && +(v as any) > 0)
@@ -423,6 +436,27 @@ export async function addToCloset(keys: string[], cost: number, seed = false) {
   cur.cash -= cost;
   for (const k of keys) if (!cur.closet.includes(k)) cur.closet.push(k);
   if (seed) cur.closetInit = true;
+  await save();
+  return true;
+}
+/** Cars: buy one (and drive it), or switch to one you own ('' = back to the golf cart). */
+export async function setCar(id: string, price: number) {
+  await loadProgress();
+  if (id && !cur.cars.includes(id)) {
+    if (cur.cash < price) return false;
+    cur.cash -= price;
+    cur.cars.push(id);
+  }
+  cur.car = id;
+  await save();
+  return true;
+}
+/** Repaint a car you own (paint and rims as 'rrggbb', '' = factory). */
+export async function paintCar(id: string, paint: string, rim: string, price: number) {
+  await loadProgress();
+  if (!cur.cars.includes(id) || cur.cash < price) return false;
+  cur.cash -= price;
+  cur.carLook[id] = `${paint}:${rim}`;
   await save();
   return true;
 }

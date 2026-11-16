@@ -423,7 +423,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       G.add(o);
     }
   });
-  G.add(tile(flat(58, 3.4, pavers, -90, 36.5, 0.05), 2)); // the walk along the shopfronts
+  G.add(tile(flat(71, 3.4, pavers, -96.5, 36.5, 0.05), 2)); // the walk along the shopfronts
   const shopRow = buildShopRow(G, 38.2, (a, b, c, d) => col(a, b, c, d)); // Threads, the barber, Ink Spot and the Pro Shop (lobby/shops.ts)
   let vltSpots: VltSpot[] = [];
   // 2 · the Lucky Lie Lounge: a brick shell, open to the street, and inside it the front two-thirds of a real bar room
@@ -760,6 +760,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
       { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
       { id: 'store:home', x: -67.3, z: 36.2, r: 2.6, label: 'Homestead · furniture for your lot' },
+      { id: 'store:auto', x: -124, z: 36.2, r: 2.6, label: 'Wrench & Ride · cars' },
       ...vltSpots,
     ].map(sp => ({ ...sp, x: sp.x + WEST_OFF.x })) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
     /** Per frame. The van slows for anyone in its way (people: x, z). */
