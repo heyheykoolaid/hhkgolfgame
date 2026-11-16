@@ -1,22 +1,7 @@
 // Lobby mode: walk your golfer around Golden Hills, see and chat with everyone here, claim a lot, change your look
 // at the pro shop, and start a round (solo or as a group) from the tee-time board.
 import * as THREE from 'three';
-import {
-  cleanGarden,
-  useHole,
-  codeSeed,
-  holeCode,
-  matchIdFor,
-  randomHoleSeed,
-  HOLE_LEN,
-  COURSE,
-  tournamentIdFor,
-  randomTourSeed,
-  cupFor,
-  tournamentHoles,
-  holeIdea,
-  type TourSize,
-} from '@gh/shared';
+import { cleanGarden } from '@gh/shared';
 import { createTeeBoard } from './teeBoard';
 import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
@@ -30,6 +15,7 @@ import {
   CARS,
   CAR,
   CAR_PAINTS,
+  CAR_PARTS,
   CAR_RIMS,
   carModel,
   loadCarKit,
@@ -48,10 +34,8 @@ import {
   BOUND,
   FUN,
   WEST,
-  WEST_OFF,
   SHADY_OFF,
   SHADY,
-  shadySurface,
   inWorld,
   type Plot,
   type Collider,
@@ -78,7 +62,7 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar, sellTrophy, isPlaced } from '../avatar/progress';
+import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar, fitPart, sellTrophy, isPlaced } from '../avatar/progress';
 import { TRAILS } from '../avatar/trails';
 import type { Shop } from './wardrobe';
 import { ITEMS, loadItemModels } from './catalog';
@@ -91,7 +75,7 @@ import { playSample, wireUiSounds } from '../audio/samples';
 import { patchCloudShadows } from '../world/sky';
 import { createSmoke, type SmokePres } from './smoke';
 import { createMail } from './mail';
-import { SWATCH, sanitizeLook, lookKey, randomLook, loadLocalLook, saveLocalLook } from '../avatar/outfit';
+import { sanitizeLook, lookKey, randomLook, loadLocalLook, saveLocalLook } from '../avatar/outfit';
 import { platform, resolveNames, type Platform } from '../platform';
 import { Sfx } from '../fx';
 import { snapSun } from '../world/course';
@@ -478,10 +462,7 @@ export function createLobby(env: LobbyEnv) {
     claimedAt = 0;
   const plotDocs = new Map<string, any>();
   // your golf cart: lives in your garage; out on the streets once you take it (see "your cart" below)
-  const _cv = new THREE.Vector3(),
-    _q1 = new THREE.Quaternion(),
-    _q2 = new THREE.Quaternion(),
-    UP = new THREE.Vector3(0, 1, 0);
+  const _cv = new THREE.Vector3();
   const inCartBox = insideVehicle; // (each vehicle's own length and width: a sedan is twice a golf cart)
   function cartAt(x: number, z: number, r: number) {
     if (cart.car && P.mode !== 'drive' && inCartBox(cart.car, x, z, r)) return true;
@@ -938,7 +919,6 @@ export function createLobby(env: LobbyEnv) {
     if (P.mode === 'grow' || P.mode === 'dealer' || P.mode === 'mail' || P.mode === 'stash') P.mode = 'walk';
   };
   const mail = createMail({ toast: (h, ms) => toast(h, ms), onClose: panelClosed, setFlag: () => {}, setBadge: () => renderWallet() });
-  let gardenT = 0;
   /** My lot's record (layout + garden) has ONE writer: changes merge into the local copy and the whole record is
    *  written a moment later. While a write is on its way, the echo of an older write is ignored, so it can't undo
    *  a newer change (placing two items quickly used to be able to lose the second). */
@@ -1363,7 +1343,6 @@ export function createLobby(env: LobbyEnv) {
       return STARTER;
     }
   }
-  let saveT = 0;
   const build = createBuild({
     scene,
     camera,
@@ -1723,7 +1702,7 @@ export function createLobby(env: LobbyEnv) {
           }),
       );
   }
-  // ---------------- Grow Supply (West Side): the shop counter ----------------
+  // ---------------- Grow Supply (Shady Lane): the shop counter ----------------
   /** A shop counter: goods as cards with a picture, what they do, the price and how many you have. */
   interface Good {
     id: string;
@@ -1826,7 +1805,7 @@ export function createLobby(env: LobbyEnv) {
       mood = 0.88 + ((t.seed >>> 0) % 25) / 100;
     return Math.max(500, Math.round(((base + under) * mood) / 50) * 50);
   };
-  /** Lucky Pawn (West Side): sell trophies from your case for cash. Gone for good; not while one stands on your lot. */
+  /** Lucky Pawn (Shady Lane): sell trophies from your case for cash. Gone for good; not while one stands on your lot. */
   async function openPawn(armed = '') {
     const pr = await loadProgress(),
       money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
@@ -1907,7 +1886,13 @@ export function createLobby(env: LobbyEnv) {
          cur
            ? `<h3>Your ${cur.name}</h3><div class="carpaint"><img src="${pic(cur.id)}" alt=""><div>
                <p><b>Paint</b> <span class="muted">${money(PAINT)} a respray, factory finish free</span></p><div class="swatches">${sw('paint', CAR_PAINTS, look(cur.id)[0])}</div>
-               <p><b>Rims</b> <span class="muted">${money(PAINT)}</span></p><div class="swatches">${sw('rim', CAR_RIMS, look(cur.id)[1] || CAR_RIMS[0])}</div></div></div>`
+               <p><b>Rims</b> <span class="muted">${money(PAINT)}</span></p><div class="swatches">${sw('rim', CAR_RIMS, look(cur.id)[1] || CAR_RIMS[0])}</div></div></div>
+               <div class="carparts">${CAR_PARTS.map((p, i) => {
+                 const lv = +(pr.carParts[cur.id] || '000')[i];
+                 return `<div class="part"><b>${p.name}</b> <span class="pips">${[1, 2, 3].map(n => `<i class="${n <= lv ? 'on' : ''}"></i>`).join('')}</span>
+                   <p class="muted">${p.what}<br>Fitted: ${p.stages[lv]}</p>
+                   ${lv < 3 ? `<button data-part="${i}" ${pr.cash < p.price[lv + 1] ? 'disabled' : ''}>${p.stages[lv + 1]} · ${money(p.price[lv + 1])}</button>` : '<em>Fully fitted</em>'}</div>`;
+               }).join('')}</div>`
            : ''
        }
        <h3>On the lot</h3><div class="cars">
@@ -1934,11 +1919,44 @@ export function createLobby(env: LobbyEnv) {
       .forEach(
         b =>
           (b.onclick = async () => {
-            const id = b.dataset.car || '',
-              ok = await setCar(id, CAR.get(id)?.price || 0);
+            const id = b.dataset.car || '';
+            // buying (not switching) asks first: a car is the dearest thing in town and one stray click shouldn't buy it
+            if (id && !progress().cars.includes(id) && b.dataset.sure !== '1') {
+              b.dataset.sure = '1';
+              b.textContent = `Buy for ${money(CAR.get(id)?.price || 0)}?`;
+              playSample('select', 0.4);
+              setTimeout(() => {
+                if (b.isConnected && b.dataset.sure === '1') {
+                  b.dataset.sure = '';
+                  b.textContent = money(CAR.get(id)?.price || 0);
+                }
+              }, 4000);
+              return;
+            }
+            const ok = await setCar(id, CAR.get(id)?.price || 0);
             playSample(ok ? 'confirm' : 'error', 0.5);
             if (!ok) toast("You can't afford that right now.");
             else toast(id ? `${CAR.get(id)!.name}: it's in your garage.` : 'Back to the golf cart.');
+            await again();
+          }),
+      );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-part]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            if (!cur) return;
+            const i = +b.dataset.part!,
+              part = CAR_PARTS[i],
+              stage = +(progress().carParts[cur.id] || '000')[i] + 1,
+              ok = await fitPart(cur.id, i, stage, part.price[stage]);
+            playSample(ok ? 'confirm' : 'error', 0.5);
+            toast(
+              ok
+                ? `${part.stages[stage]} fitted to your ${cur.name}. Take it out of the garage again to feel it.`
+                : "You can't afford that right now.",
+              3200,
+            );
             await again();
           }),
       );
@@ -2062,30 +2080,6 @@ export function createLobby(env: LobbyEnv) {
       },
       'Gear goes into your inventory (<kbd>I</kbd>). Place it in Build Mode on your own lot, under Grow. Seeds are bought when you plant.',
     );
-
-  // ---------------- trophy case (T) ----------------
-  async function openTrophies() {
-    const pr = await loadProgress(),
-      list = [...pr.trophies].sort((a, b) => b.at - a.at);
-    const tp = (v: number) => (v === 0 ? 'E' : v > 0 ? '+' + v : '−' + -v);
-    const items = list
-      .map(
-        t => `<div class="trophy"><img src="${trophyPic(t.seed, t.n, `${t.who} · ${tp(t.toPar)}`, 200)}" alt=""><div class="cupname">${esc(t.title)}</div>
-      <div class="muted">${t.n === 9 ? 'Championship' : 'Mini cup'} · ${tp(t.toPar)} (${t.strokes})${t.field > 1 ? ` · beat ${t.field - 1}` : ' · solo'}<br>${new Date(t.at).toLocaleDateString()}</div>${
-        t.board?.length
-          ? `<table class="tboard">${t.board.map((r, i) => `<tr${r.n === t.who ? ' class="me"' : ''}><td>${i + 1}</td><td>${esc(r.n)}</td><td>${r.s}</td><td>${tp(r.p)}</td></tr>`).join('')}</table>`
-          : ''
-      }</div>`,
-      )
-      .join('');
-    openModal(
-      'Trophy case',
-      list.length
-        ? `<p class="muted">${list.length} cup${list.length > 1 ? 's' : ''} won. Once you can build on your lot, each one can go on display there.</p><div class="trophies">${items}</div>`
-        : '<p class="muted">No trophies yet. Win a tournament from the tee times board (Mini cup or Championship) to take one home.</p>',
-    );
-    $('lmodal').querySelector('.card')?.classList.add('wide');
-  }
 
   // ---------------- ragdoll ----------------
   let flop: Flop | null = null,
@@ -3016,6 +3010,11 @@ export function createLobby(env: LobbyEnv) {
     sendPres(true);
     renderStatus();
     (window as any).__lobby = {
+      mail,
+      openFurniture,
+      openAuto,
+      openPawn,
+      openInventory,
       colliders,
       streetAt,
       inWorld,

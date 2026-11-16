@@ -75,6 +75,8 @@ export interface Progress {
   cars: string[];
   car: string;
   carLook: Record<string, string>;
+  /** Bolt-on parts per car you own: three digits, engine · tyres · brakes, each 0 to 3 (vehicles.ts CAR_PARTS). */
+  carParts: Record<string, string>;
   at?: number; /* when this copy was last saved (ms): the newer copy wins between devices */
 }
 const cleanTrophy = (t: any): TrophyRec | null =>
@@ -102,7 +104,10 @@ const LS = 'gh.progress.v1';
 export const STARTING_CASH = 5000;
 const clean0 = (
   p: any,
-): Omit<Progress, 'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail' | 'cars' | 'car' | 'carLook'> => {
+): Omit<
+  Progress,
+  'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail' | 'cars' | 'car' | 'carLook' | 'carParts'
+> => {
   const owned = Array.isArray(p?.owned) ? ([...new Set(p.owned.filter((id: any) => BALL.has(id)))] as string[]) : [];
   if (!owned.includes(DEFAULT_BALL)) owned.unshift(DEFAULT_BALL);
   return {
@@ -162,10 +167,15 @@ const clean = (p: any): Progress => ({
       .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && typeof v === 'string' && /^([0-9a-f]{6})?:([0-9a-f]{6})?$/.test(v))
       .slice(0, 40),
   ) as Record<string, string>,
+  carParts: Object.fromEntries(
+    Object.entries(p?.carParts && typeof p.carParts === 'object' ? p.carParts : {})
+      .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && typeof v === 'string' && /^[0-3]{3}$/.test(v))
+      .slice(0, 40),
+  ) as Record<string, string>,
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
       .filter(([k, v]) => /^[a-z0-9_]{2,24}$/.test(k) && +(v as any) > 0)
-      .slice(0, 80)
+      .slice(0, 400) // (the catalog is past a hundred kinds of thing and growing: a low cap here would quietly drop what you own)
       .map(([k, v]) => [k, Math.min(99, Math.floor(+(v as any)))]),
   ),
   joints: Array.isArray(p?.joints)
@@ -236,6 +246,22 @@ async function doLoad() {
   save();
   return cur;
 }
+// The same player in a second tab of this browser: whichever tab saved last holds the truth, so the other adopts it
+// instead of later saving its own stale copy over it (which would undo a purchase or bring back spent cash).
+if (typeof window !== 'undefined')
+  window.addEventListener('storage', e => {
+    if (e.key !== LS || !e.newValue || !loading) return;
+    try {
+      const other = clean(JSON.parse(e.newValue));
+      if ((other.at || 0) <= (cur.at || 0)) return;
+      cur = other;
+      for (const f of listeners) {
+        try {
+          f(cur);
+        } catch {}
+      }
+    } catch {}
+  });
 /** Save here and to the account. Account writes go out one at a time, always with the latest state, so an older
  *  write can never land after a newer one. */
 let remoteBusy = false,
@@ -477,6 +503,16 @@ export async function paintCar(id: string, paint: string, rim: string, price: nu
   if (!cur.cars.includes(id) || cur.cash < price) return false;
   cur.cash -= price;
   cur.carLook[id] = `${paint}:${rim}`;
+  await save();
+  return true;
+}
+/** Fit the next stage of a part (0 engine, 1 tyres, 2 brakes) to a car you own. Stages go on in order, one at a time. */
+export async function fitPart(id: string, part: number, stage: number, price: number) {
+  await loadProgress();
+  const cur0 = cur.carParts[id] || '000';
+  if (!cur.cars.includes(id) || part < 0 || part > 2 || stage !== +cur0[part] + 1 || stage > 3 || cur.cash < price) return false;
+  cur.cash -= price;
+  cur.carParts[id] = cur0.slice(0, part) + stage + cur0.slice(part + 1);
   await save();
   return true;
 }

@@ -15,7 +15,10 @@ export function showWelcome() {
     <ul>
       <li><b>Play golf</b><span>Walk to the Tee Times board at the top of the plaza and press E.</span></li>
       <li><b>Your place</b><span>One of the RV lots is yours. Press B there to build on it.</span></li>
-      <li><b>The plaza</b><span>Pro shop for clothes, the Birdie Ball machine, a blackjack table and a dealer.</span></li>
+      <li><b>Shady Lane</b><span>North, under the golf arch: the Lucky Lie Lounge (blackjack, slots, the Birdie Ball machine), Grow Supply, Lucky Pawn and the Street Dealer.</span></li>
+      <li><b>The West Side</b><span>West, up the hill: clothes, a barber, tattoos, the pro shop, furniture and cars.</span></li>
+      <li><b>Fun Land</b><span>East: mini putt, a driving range and go-karts.</span></li>
+      <li><b>Lost?</b><span>Press M for the town map, or Tab for the menu.</span></li>
       <li><b>Controls</b><span>The panel on the right always shows what the keys do right now.</span></li>
       <li><b>Options</b><span>Press Esc, or the gear in the corner, for sound and picture settings.</span></li>
     </ul>

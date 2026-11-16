@@ -426,7 +426,13 @@ export function buildLobby(scene: THREE.Scene) {
     }
     const tg = new THREE.Group();
     tg.name = 'lobbyTrees';
-    buildTrees(tg, trees);
+    // built as six wedges round the town, so the wedges behind you are skipped: as one lot, all 324,000 triangles of
+    // grove were drawn wherever you looked (half of everything on screen)
+    for (let k = 0; k < 6; k++)
+      buildTrees(
+        tg,
+        trees.filter(t => Math.floor(((Math.atan2(t.x, t.z) + Math.PI) / (Math.PI * 2)) * 6) % 6 === k),
+      );
     // These groves are merged into a few big meshes far outside town: as shadow casters they were all drawn into the
     // shadow map every frame (about 150,000 triangles) for shadows that fall where nobody walks.
     tg.traverse(o => (o.castShadow = false));

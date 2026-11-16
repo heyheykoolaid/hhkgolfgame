@@ -33,9 +33,7 @@ const W = 960,
   MEDAL = ['#c9823f', '#d9dde2', '#f6c545'], // bronze, silver, gold
   PAPER = { x: 560, y: 310, w: 480, h: 160 },
   DISH = { x: 150, y: 330, r: 86 },
-  INK = '#2a1a10',
-  SKIN = '#e9b98f',
-  SKIN_D = '#c98f66';
+  INK = '#2a1a10';
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rnd = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) & 0xffffff) / 0xffffff;
 const medalOf = (s: number) => (s >= 0.8 ? 2 : s >= 0.5 ? 1 : 0);

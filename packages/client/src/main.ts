@@ -54,7 +54,7 @@ async function enterGolf(matchId: string, group: boolean, order: string[] = []) 
   setHash('golf-' + matchId);
   golf.start({ matchId, group, look: lobby.look, name: pf.name, uid: pf.uid, order });
 }
-const m = /^#golf-([a-z0-9]{4,12})$/.exec(location.hash || '');
+const m = /^#golf-([a-z0-9]{4,16})$/.exec(location.hash || '');
 if (m) lobby.ready.then(() => enterGolf(m[1], true));
 else {
   lobby.start();

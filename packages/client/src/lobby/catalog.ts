@@ -35,8 +35,7 @@ const g = (...o: THREE.Object3D[]) => {
   return r;
 };
 const leg = (x: number, z: number, h: number, m: THREE.Material, r = 0.025) => cyl(r, r, h, 6, m, x, h / 2, z);
-const WOOD = () => M('#a2774e', 0.8),
-  DARKWOOD = () => M('#6a4a2e', 0.8),
+const DARKWOOD = () => M('#6a4a2e', 0.8),
   ALU = () => M('#c9ccd0', 0.35, 0.7),
   WHITE = () => M('#f1eee6', 0.6);
 function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void) {

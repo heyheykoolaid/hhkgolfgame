@@ -38,7 +38,7 @@ Each file that takes data from other players also exports its **cleaner**: `clea
 **The pattern everything follows:** a feature is `createThing(host)`. `host` is a small object of callbacks the feature needs from its owner (the player's state, a toast, "publish my presence"). The feature returns its own API (`update`, `key`, `pres`, `peers`…). The owner calls it; the feature never reaches into the owner's variables. To add a feature, copy the nearest module.
 
 ### Lobby (`lobby/`)
-`lobby.ts` (about 1,990 lines) is the town's core, one closure (`createLobby`) with section banners (`// ---------------- name`): the player and input, the camera, other players, presence, lots, and the frame.
+`lobby.ts` (about 3,100 lines on Nov 16; the next file to split) is the town's core, one closure (`createLobby`) with section banners (`// ---------------- name`): the player and input, the camera, other players, presence, lots, and the frame.
 
 | Module | Feature |
 |---|---|
@@ -59,6 +59,17 @@ Each file that takes data from other players also exports its **cleaner**: `clea
 | `putt.ts` | The mini putt game. It reuses the course's swing meter (`ui/arcMeter.ts`) and timing (`windows`, `swingTempo`, `evaluateImpact` from shared). The ball is a frictionless Rapier ball in its own collision group (`G_PUTT`): flat felt is one slab, the tiles' triangle mesh supplies walls and bumps (flat and hidden faces are filtered out), and a per-step hook applies the felt's steady drag and keeps the spin matched. `window.__putt` shows its state and has `press()`. |
 | `funland.ts` | Fun Land, east of town: the gates, Birdie Burger and its back yard, the mini putt layout (`PUTT_HOLES`: every tile, tee and cup), the driving range, the kart track (a closed curve, `TRACK_PTS`) and its lap timer. Kenney models come from `public/funland/kit.json` (`tools/funland/pack.py`) and are merged into one mesh per colour (`Baker`). `funSurface(x, z)` says what the ground is. **`world.ts` imports this file, so nothing at its top level may read a value from `world.ts`.** |
 | `gachaMachine.ts` | The Birdie Ball machine model. |
+
+| `roads.ts` | **The town's street plan (Nov 16).** Every flat street is one line in `STREETS` (centre line, width, pavement width). From that list: the asphalt and pavement meshes (no overlapping pieces), centre and stop lines, street-name blades, `streetAt` (what is underfoot), `paveY`, `PAVES` (kerbs for the physics), `SIDEWALKS` (where walkers go) and the map's streets. Add a street here, not by hand. It imports nothing from `world.ts`. |
+| `westside.ts` | The West Side on its rise (`WEST_OFF`): the street and car park, the clubhouse, the water tower, the delivery van, and the `spots` you can press E at for both districts. It lends its building helpers to `shady.ts`. |
+| `shady.ts` | **Shady Lane's four buildings** (the Lucky Lie Lounge, the alley, Grow Supply, Lucky Pawn), split out of `westside.ts` on Nov 16. They are laid out in the West Side's frame and stood at `SHADY_OFF`; the lane itself is in `roads.ts`. |
+| `shops.ts` | The code-drawn shop row behind the West Side car park (Threads, The Clip Joint, Ink Spot, the Pro Shop, Homestead Furniture, Wrench & Ride). |
+| `filler.ts`, `litter.ts` | Nobody's buildings from the buildings pack (placed by street front); litter as one merged mesh from a fixed seed. |
+| `townLife.ts` | Two walkers on `SIDEWALKS` and three cars on laps along street centres (`ROUNDS`). Each player's own scenery, not synced. `plan()` returns the laps and the walk network for tests. |
+| `vlt.ts`, `vltArt.ts` | The lounge's slot and video poker cabinets and their printed artwork (rules in `shared/src/vlt.ts`). |
+| `fairground.ts`, `fountain.ts`, `range.ts`, `invIcons.ts`, `attendants.ts` | The code-built fairground, the plaza fountain, the driving range game, inventory pictures, booth attendants. |
+
+Outside `lobby/`, added since the audit: **`vehicles/vehicles.ts`** now holds the cars (`CARS`, `carProfile`, the gearbox, `CAR_PARTS` and `partsTune`); a vehicle's kind travels as `car:<id>:<paint>:<rims>[:<parts>]` and anything received goes through `cleanKind`. **`world/propPacks.ts`** loads model packs (`loadProps`, `loadPiece`). **`golf/homeCourse.ts`** is the real-course list. **`avatar/progress.ts`** is every saved thing a player owns; all spending goes through its functions.
 
 Still inside `lobby.ts`: chat, the Birdie Ball and ball-collection panels, the trophy case (each small), the ragdoll section, remote players and the frame.
 
@@ -158,8 +169,13 @@ Everything multiplayer follows from four rules.
 - **CC0 textures on GitHub are often stored with Git LFS.** The raw address returns a 130-byte pointer; fetch from `media.githubusercontent.com/media/…` instead.
 - **A scripted edit that fails half-way writes nothing.** The edit scripts check each replacement and stop on the first miss, before saving. After one fails, re-check what was and wasn't applied before building.
 
+- **Two modules that import each other** (`world.ts` ↔ `westside.ts`, `world.ts` ↔ `funland.ts`): a value read at the top level of one may not exist yet ("Cannot access before initialization" at start-up). Read the other module's values inside functions, or through a getter. `roads.ts` avoids the problem by importing nothing from `world.ts`.
+- **The test browser runs about twenty times slow.** Anything that waits on the game clock (the static batcher folding meshes in, distance culling, a car driving a lap) has not happened yet when a test looks. Draw counts read there are far too high; test geometry directly instead (for example `__life.plan()` against `streetAt`).
+- **A cap in `progress.ts`'s `clean` silently drops what is over it** on the next load. The owned-items cap was 80 with the catalog past 100 kinds; it is 400 now. Check the caps when a list grows.
+- **The same player in two tabs:** each tab held its own copy of the save and the last to write won. A `storage` listener now makes a tab adopt a newer copy saved by another.
+
 ## 6. Checking a change
-- `npm run check` first.
+- `npm run check` first. Since Nov 16 it also fails on **unused imports and locals** (`--noUnusedLocals`); 62 were removed that day.
 - **Automated browser tests** live outside the repo in `test/m0/*.py` (Playwright, software rendering, a mock of the platform in `test/mock_claude.js`). Two tabs in one browser context share a room. They're slow (about 1 frame a second), so tests drive the game through the debug hooks rather than real input, and set `window.__betSlow` to stretch betting timers.
   - `bets.py`: a two-player, three-hole tournament with bets. It exercises turns, tournament cards, hole changes and settlement, so it's the one to re-run after touching `golf/`. It takes about 15 minutes; run it alone.
   - `tee.py`: two players queue at the tee board and start a group round.
@@ -216,3 +232,12 @@ Everything multiplayer follows from four rules.
 - The cart in town only creeps in the test browser (forward and back both respond, a few centimetres in 15 s at about one frame a second). It was the same before these passes. A person should confirm it drives normally.
 - Frame rate with eight detailed RVs casting shadows, two more skinned characters in town and the swaying foliage.
 - The new balls in play (only their previews were looked at).
+
+## 9. Review record (Nov 16)
+After a day that added cars, the pawn shop, real-course rounds, town life, Shady Lane and the street plan.
+- **Saves and money:** owned-items cap raised (above); two-tab saves adopt the newer copy; buying a car asks twice (it was one click for up to $40,000); Build Mode's leftover price code removed (placing has been free since storage came in).
+- **Multiplayer:** a real-course match id had no random part, so two groups starting the same course together shared a round and every win was the same trophy. `courseIdFor` now takes a random tail (match ids may be 16 characters, were 12). Vehicle kinds and machine seats from other players were already checked on arrival.
+- **Structure:** Shady Lane's buildings moved to `shady.ts`; 62 unused imports and locals removed, including the old trophy-case panel.
+- **Frame cost:** the far groves were one lot of 324,000 triangles drawn wherever you looked; they are six wedges now (about 140,000 in a typical view). Real frame rate still needs a person with F3 on: see the slow-browser trap.
+- **Stale words fixed:** the welcome card still described the plaza as having the pro shop, blackjack and the dealer.
+- **Not done:** splitting `lobby.ts` (shops, the map and the menu are the obvious pieces); disposing a retired car's geometry; walkers and cars are still unsynced between players.

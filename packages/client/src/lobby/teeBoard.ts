@@ -273,7 +273,7 @@ export function createTeeBoard(host: TeeHost) {
   }
   /** The match id for the chosen hole (the hole travels inside the id, so everyone in the group gets the same one). */
   function teeMatchId() {
-    if (homeOn && home) return withLocale(courseIdFor(homeN, home.card, home.i), teeLoc);
+    if (homeOn && home) return withLocale(courseIdFor(homeN, home.card, home.i, newId()), teeLoc);
     if (teeFmt !== 'one') {
       const id = tournamentIdFor(teeFmt, tourSeed, newId());
       tourSeed = randomTourSeed();
@@ -502,7 +502,7 @@ export function createTeeBoard(host: TeeHost) {
             .slice(0, GROUP_MAX)
             .map(x => x.uid),
           id0 = teeMatchId(),
-          id = teeCasual ? 'c' + id0.slice(0, 11) : id0; // 'c…' = casual: everyone plays at once
+          id = teeCasual ? 'c' + id0.slice(0, 15) : id0; // 'c…' = casual: everyone plays at once
         host.setGo({ id, at: Date.now(), m: members });
         host.closeModal();
         setTimeout(() => go(id, true, members), 900);
@@ -534,7 +534,7 @@ export function createTeeBoard(host: TeeHost) {
         go(
           String(g.id)
             .replace(/[^a-z0-9]/g, '')
-            .slice(0, 12),
+            .slice(0, 16),
           true,
           g.m.map((x: any) => String(x)).slice(0, 8),
         );

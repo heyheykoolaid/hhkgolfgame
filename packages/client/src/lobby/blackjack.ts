@@ -24,7 +24,7 @@ import {
   type SeatPres,
   type RoundView,
 } from '@gh/shared';
-import { progress, addCash, loadProgress, onProgress } from '../avatar/progress';
+import { progress, addCash, loadProgress } from '../avatar/progress';
 import { Golfer } from '../characters/golfer';
 import { sanitizeLook } from '../avatar/outfit';
 

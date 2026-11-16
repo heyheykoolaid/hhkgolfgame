@@ -90,7 +90,6 @@ export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?
         <button class="primary dl-sell" data-hold><i></i><span>Hold to sell for ${money(total)}</span> <kbd>E</kbd></button>`;
     }
     {
-      const pr = progress();
       h += `<div class="dl-sup"><span>Papers and grinders are at Grow Supply, next door.</span></div>`;
     }
     h += `<div class="gfoot">Cash ${money(progress().cash)}<span>Close <kbd>Esc</kbd></span></div></div>`;

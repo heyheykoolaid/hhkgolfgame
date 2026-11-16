@@ -45,6 +45,10 @@ describe('a real course card', () => {
     }
     const three = parseTournament(courseIdFor(3, digits, 7))!;
     expect(three.card!.pars).toEqual([4, 5, 4]);
+    // a random tail makes the round its own without changing the course, the card or the holes
+    const tailed = courseIdFor(9, digits, 4321, 'Zq7!x9');
+    expect(tailed).toBe(id + 'zq7x');
+    expect(parseTournament(tailed)).toEqual(parseTournament(id));
     expect(parseTournament('t9abcde0xxxxx')!.card).toBeUndefined();
   });
 });

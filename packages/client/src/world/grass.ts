@@ -194,7 +194,6 @@ export class Grass {
       cols: THREE.Color[] = [],
       m = new THREE.Matrix4(),
       q = new THREE.Quaternion(),
-      up = new THREE.Vector3(0, 1, 0),
       s = new THREE.Vector3(),
       p = new THREE.Vector3();
     // sample on a jittered grid; each cell decides its own kind (keeps edges like bunker lips and fairway lines crisp)

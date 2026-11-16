@@ -54,3 +54,12 @@ Shown once, on a first visit: what the game is, where to play golf, your lot, th
 - **Drifting:** in a cart, Space is the brake; held while steering at speed it starts a drift, and letting go gives a boost.
 - **Wardrobe:** now five tabs (Body, Hair & hat, Top, Legs & feet, Extras). Rows that don't apply are hidden (no jacket row with overalls, no paint colour without paint). While it's open the controls card moves to the bottom left so it doesn't cover the panel.
 - **The tee tip toast is gone** from the start of each hole.
+
+## State on Nov 16 (after the review)
+- **One panel style.** Every centred panel (shops, mailbox, inventory, dealer, garden, map, Build Mode) is dark glass with a gold serif title. The cream sticker look is kept for game moments only: the swing meter, power bars, result pop-ups, the rolling game and the welcome card. Item 1 of the review list above is done.
+- **The controls card hides while a centred panel is open** (it sat on top of the panel's right-hand side, over the mailbox's letter and the shops' prices). Each panel has its own close button and Esc.
+- **Build Mode's bottom bar stops short of the options gear** (the gear covered Undo).
+- **The welcome card says where things are now:** Shady Lane, the West Side, Fun Land, M for the map and Tab for the menu.
+- **Keys added since this doc was written:** Tab (menu), M (map), I (inventory; J and T also open it), Q (emotes), C (controls card), F3 (frame readout). On the course T addresses your ball from anywhere.
+- **Buying a car asks twice.** The pawn shop already did.
+- Still open from the review list: touch screens.

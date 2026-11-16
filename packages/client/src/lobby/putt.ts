@@ -21,8 +21,7 @@ const G_RELIEF = 0x0010, // the smoothed humps and hills: the ball rolls on them
   DECEL = 0.68, // how hard the felt slows a rolling ball, m/s² (steady, like a real green)
   MAX_ROLL = 11.5, // metres a full-power putt runs on the flat (the longest hole is about 10 m of lane)
   SWEEP = 1.25, // seconds for the power bar to run from empty to full
-  FT = 3.28084,
-  PUTTER = { putter: true };
+  FT = 3.28084;
 
 export interface PuttHost {
   scene: THREE.Scene;

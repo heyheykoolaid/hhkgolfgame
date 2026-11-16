@@ -80,7 +80,6 @@ export class ArtifactNet implements GameNet {
   private live = false;
   private meP: NetPlayer;
   private peers = new Map<string, NetPlayer & { lastShot: number }>();
-  private seenNames = new Map<string, string>();
   private windV: { x: number; z: number };
   private myShot: ShotRef | null = null;
   private busyTimer = 0;

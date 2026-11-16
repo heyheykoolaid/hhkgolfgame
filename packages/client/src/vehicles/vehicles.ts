@@ -1054,6 +1054,36 @@ export function carProfile(c: CarSpec): CarProfile {
     pitch: lim(H / wb / (FLEET.h / FLEET.wb), 0.7, 1.4),
   };
 }
+/** Bolt-on parts from the auto shop: three kinds, each fitted in stages 1 to 3 (0 = as it left the factory). A car's
+ *  parts are written as three digits, engine · tyres · brakes ('210'), and ride along at the end of its kind. */
+export const CAR_PARTS = [
+  {
+    id: 'engine',
+    name: 'Engine',
+    stages: ['Stock', 'Intake and exhaust', 'Cam and tune', 'Turbo'],
+    price: [0, 900, 2400, 6000],
+    what: 'More pull at every speed and a higher top speed.',
+  },
+  {
+    id: 'tyres',
+    name: 'Tyres',
+    stages: ['Stock', 'Street', 'Sport', 'Semi-slick'],
+    price: [0, 500, 1300, 3200],
+    what: 'More grip in corners before the back steps out.',
+  },
+  {
+    id: 'brakes',
+    name: 'Brakes',
+    stages: ['Stock', 'Pads', 'Big discs', 'Race kit'],
+    price: [0, 400, 1000, 2500],
+    what: 'Stops in a shorter distance.',
+  },
+] as const;
+/** What a set of parts does to a car: multipliers on its pull, top speed, grip and braking. */
+export function partsTune(parts: string) {
+  const [e, t, b] = /^[0-3]{3}$/.test(parts) ? [...parts].map(Number) : [0, 0, 0];
+  return { power: 1 + 0.12 * e, speed: 1 + 0.05 * e, grip: 1 + 0.07 * t, brake: 1 + 0.15 * b };
+}
 /** What the car you're driving wants from the camera this frame: extra degrees of lens as the speed builds. */
 export const DRIVE_FX = { fov: 0 };
 const GEAR_RATIO = [0, 130, 82, 56, 41, 32, 25], // revs per unit of speed in each gear; sixth at full speed sits just under the red line
@@ -1177,6 +1207,8 @@ class Cart implements Vehicle {
   private boostT = 0;
   private smoke: { pts: THREE.Points; pos: Float32Array; col: Float32Array; vel: Float32Array; age: Float32Array; i: number; emit: number } | null =
     null;
+  /** what its bolt-on parts do (cars only; see partsTune) */
+  private tune = partsTune('');
   constructor(
     private pw: PhysWorld | null,
     scene: THREE.Object3D,
@@ -1186,10 +1218,12 @@ class Cart implements Vehicle {
     private spec: CarSpec | null = null,
     paint = '',
     rim = '',
+    parts = '',
   ) {
     const m = spec ? carModel(spec, paint, rim) : kart ? kartModel(color) : cartModel(color);
     if (spec) {
-      this.kind = `car:${spec.id}:${paint}:${rim}`;
+      this.kind = `car:${spec.id}:${paint}:${rim}${parts ? ':' + parts : ''}`;
+      this.tune = partsTune(parts);
       this.name = spec.name;
       const top = (spec.cabH ?? spec.size[2]) * 0.96;
       this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX - 0.12, top - 1.93, 0.36); // (low in the seat: the driver's head sits under the roof, behind the screen)
@@ -1255,13 +1289,13 @@ class Cart implements Vehicle {
         const v = this.vc!,
           sp = v.currentVehicleSpeed(),
           i = this.inp,
-          K = this.spec?.power ?? 1,
-          S = this.spec?.speed ?? 1,
+          K = (this.spec?.power ?? 1) * this.tune.power,
+          S = (this.spec?.speed ?? 1) * this.tune.speed,
           car = this.spec,
           PF = this.prof,
           rough = car ? Math.max(0, this.terrain) * (1 - (car.offroad ?? 0.3)) : 0, // how much this ground costs this car
           vmax = 19 * S, // flat out with the pedal buried: the top of sixth gear
-          grip = car ? PF.grip * (1 - 0.3 * Math.min(1, rough)) : 1,
+          grip = car ? PF.grip * this.tune.grip * (1 - 0.3 * Math.min(1, rough)) : 1,
           // a kart is tuned to its little track: quick off the line and through the hairpins, but a modest top speed
           top = this.kart
             ? this.drift
@@ -1325,7 +1359,10 @@ class Cart implements Vehicle {
           coast = !i.throttle && !i.brake;
         const over = car && sp > top * 1.04; // faster than this ground allows: it scrubs off at about braking pace
         for (let k = 0; k < 4; k++)
-          v.setWheelBrake(k, braking ? (this.kart ? 30 : car ? 30 * PF.brake : 22) : over ? 14 : coast ? (this.kart ? 5 : car ? 3.2 : 2.2) : 0); // a kart sheds speed when you lift, to set up the corner
+          v.setWheelBrake(
+            k,
+            braking ? (this.kart ? 30 : car ? 30 * PF.brake * this.tune.brake : 22) : over ? 14 : coast ? (this.kart ? 5 : car ? 3.2 : 2.2) : 0,
+          ); // a kart sheds speed when you lift, to set up the corner
         v.updateVehicle(dt, undefined, groups);
         if (D) {
           // hold the slide: turn at a steady rate set by the stick (tighter when steering in, wider when steering out)
@@ -1686,13 +1723,23 @@ VEHICLES.cart = { kind: 'cart', name: 'Golf cart', make: (pw, scene, color, owne
 VEHICLES.kart = { kind: 'kart', name: 'Go-kart', make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner, true) };
 /** The kind a published state names: 'cart', 'kart', or a car as 'car:<id>:<paint>:<rims>' (hex colours, either may be empty). */
 export function vehicleKind(k: string): VehicleKind {
-  const m = /^car:([a-z]{2,10}):([0-9a-f]{6})?:([0-9a-f]{6})?$/.exec(k || ''),
+  const m = /^car:([a-z]{2,10}):([0-9a-f]{6})?:([0-9a-f]{6})?(?::([0-3]{3}))?$/.exec(k || ''),
     spec = m && CAR.get(m[1]);
   if (!spec) return VEHICLES[k] || VEHICLES.cart;
-  return { kind: k, name: spec.name, make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner, false, spec, m![2] || '', m![3] || '') };
+  return {
+    kind: k,
+    name: spec.name,
+    make: (pw, scene, color, owner) => new Cart(pw, scene, color, owner, false, spec, m![2] || '', m![3] || '', m![4] || ''),
+  };
 }
 export const cleanKind = (k: any) =>
-  k === 'kart' ? 'kart' : typeof k === 'string' && /^car:[a-z]{2,10}:([0-9a-f]{6})?:([0-9a-f]{6})?$/.test(k) && CAR.has(k.split(':')[1]) ? k : 'cart';
+  k === 'kart'
+    ? 'kart'
+    : typeof k === 'string' && /^car:[a-z]{2,10}:([0-9a-f]{6})?:([0-9a-f]{6})?(:[0-3]{3})?$/.test(k) && CAR.has(k.split(':')[1])
+      ? k
+      : 'cart';
 /** What the player drives: their chosen car in its paint, or the golf cart. */
-export const myVehicleKind = (pr: { car: string; carLook: Record<string, string> }) =>
-  CAR.has(pr.car) ? vehicleKind(`car:${pr.car}:${pr.carLook[pr.car] || ':'}`) : VEHICLES.cart;
+export const myVehicleKind = (pr: { car: string; carLook: Record<string, string>; carParts?: Record<string, string> }) =>
+  CAR.has(pr.car)
+    ? vehicleKind(`car:${pr.car}:${pr.carLook[pr.car] || ':'}${pr.carParts?.[pr.car] ? ':' + pr.carParts[pr.car] : ''}`)
+    : VEHICLES.cart;

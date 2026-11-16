@@ -61,8 +61,10 @@ function cardFromCode(code: string, n: TourSize): Card {
   return cardFromDigits(digits, n);
 }
 /** Match id for a round on a real course's card: "k" + size + a slot for our own course's letter + the card (5 chars)
- *  + the real course's number in the shipped list (3 chars). 11 characters, so a casual "c" still fits in front. */
-export function courseIdFor(n: TourSize, digits: string, course: number) {
+ *  + the real course's number in the shipped list (3 chars) + a few random characters, so two groups who start the
+ *  same course at the same moment get separate rounds and every win is its own trophy. 15 characters, so a casual
+ *  "c" still fits in front of the 16 a match id may have. The holes and the cup's name come from the first 11 only. */
+export function courseIdFor(n: TourSize, digits: string, course: number, rand = '') {
   return (
     'k' +
     n +
@@ -70,7 +72,11 @@ export function courseIdFor(n: TourSize, digits: string, course: number) {
     cardCode(cardFromDigits(digits, n)) +
     Math.max(0, Math.min(36 ** 3 - 1, course))
       .toString(36)
-      .padStart(3, '0')
+      .padStart(3, '0') +
+    rand
+      .toLowerCase()
+      .replace(/[^0-9a-z]/g, '')
+      .slice(0, 4)
   );
 }
 export function randomTourSeed() {

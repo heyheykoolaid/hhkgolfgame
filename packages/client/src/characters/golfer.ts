@@ -2,7 +2,7 @@
 // curled grip hands, skate shoes, and a club. The swing is driven by the meter: s = 0 address → 1 top → 2 impact
 // → 3 finish. Arms and legs are solved with two-bone IK so hands stay on the grip and feet stay planted.
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { knit, twill, skin, face, solid, capCloth, hair as hairTex, type ClothSet } from './textures';
 import { gripHand, relaxedHand } from './hand';
 import { MeshoptSimplifier } from 'meshoptimizer';
@@ -281,21 +281,6 @@ function finalize(parts: Part[]) {
   });
   return mergeGeometries(geos, false)!;
 }
-/** Displace a sphere-ish geometry's vertices with a function of their unit direction from `c`. */
-function sculpt(g: THREE.BufferGeometry, f: (d: THREE.Vector3, p: THREE.Vector3) => void) {
-  const p = g.attributes.position,
-    v = new THREE.Vector3(),
-    d = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    v.fromBufferAttribute(p as any, i);
-    d.copy(v).normalize();
-    f(d, v);
-    p.setXYZ(i, v.x, v.y, v.z);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-const gauss = (x: number, y: number, sx: number, sy: number) => Math.exp(-((x / sx) ** 2 + (y / sy) ** 2));
 
 // ---------------------------------------------------------------- the look
 export interface Outfit {
@@ -424,8 +409,7 @@ function buildBody(o: Outfit) {
   const P: Record<string, Part[]> = { skin: [], face: [], shirt: [], pants: [], shoe: [], sole: [], cap: [], hair: [], gripHands: [], openHands: [] };
   const X = V(1, 0, 0),
     Y = V(0, 1, 0),
-    Z = V(0, 0, 1),
-    DOWN = V(0, -1, 0);
+    Z = V(0, 0, 1);
 
   // --- torso (tee) from hem up to the collar; boxy superellipse, chest forward
   const tee = loft(
@@ -1630,8 +1614,7 @@ export class Golfer {
 
     // --- club along the swing circle
     const X = V(1, 0, 0),
-      n = new THREE.Vector3().crossVectors(X, P.v).normalize(),
-      C = P.H0.clone().addScaledVector(P.v, P.R);
+      n = new THREE.Vector3().crossVectors(X, P.v).normalize();
     const a = k.a;
     let H: THREE.Vector3, u: THREE.Vector3, fUnturned: THREE.Vector3 | undefined;
     const addrU = P.v.clone().negate();

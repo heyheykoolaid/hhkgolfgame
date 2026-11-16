@@ -9,7 +9,7 @@ import { HALF, toWorld, type Plot, type Collider } from './world';
 import { ITEMS, ITEM, trophyItem, packReady, loadItemModels, type ItemDef, type Cat } from './catalog';
 import { objectImage, trophyImage } from '../world/trophy';
 import { propReady } from '../world/props';
-import { progress, addCash, onProgress, type TrophyRec } from '../avatar/progress';
+import { progress, onProgress, type TrophyRec } from '../avatar/progress';
 
 /** Grow gear is bought at Grow Supply and carried: Build Mode places what you own instead of selling it. */
 const owned = (def: ItemDef) => (def.cat === 'trophies' ? Infinity : progress().gear[def.id] || 0);
@@ -389,7 +389,7 @@ export function createBuild(h: BuildHost) {
               `<button class="it${hand?.def.id === def.id && !hand.moving ? ' on' : ''}${placed ? ' placed' : ''}" data-i="${i}"><img src="${thumb(def, color, list[i].t)}" alt=""><span class="nm">${esc(def.name)}</span><span class="pr">${def.cat === 'trophies' ? (placed ? 'on display' : 'won') : placed ? 'placed' : `${Math.max(0, owned(def) - items.filter(p => p.k === def.id).length)} of ${owned(def)} in storage`}</span></button>`,
           )
           .join('')
-      : `<p class="muted">${cat === 'trophies' ? 'No trophies yet. Win a Mini cup or Championship from the tee times board.' : cat === 'grow' ? 'Nothing in storage. Grow Supply on the West Side sells pots, beds and sprinklers.' : 'Nothing in storage. Homestead Furniture on the West Side sells things for your lot.'}</p>`;
+      : `<p class="muted">${cat === 'trophies' ? 'No trophies yet. Win a Mini cup or Championship from the tee times board.' : cat === 'grow' ? 'Nothing in storage. Grow Supply on Shady Lane sells pots, beds and sprinklers.' : 'Nothing in storage. Homestead Furniture on the West Side sells things for your lot.'}</p>`;
     ui.querySelectorAll<HTMLButtonElement>('.bm-items .it').forEach(
       b =>
         (b.onclick = () => {
@@ -417,30 +417,12 @@ export function createBuild(h: BuildHost) {
     if (undo.length > 60) undo.shift();
   }
   // Cash: every change settles the difference in what's on the lot (so placing, removing and undo all balance out).
-  // Whatever was already on the lot when you opened Build Mode counts as paid for.
-  let paid = 0;
-  const lotValue = (list: Placed[]) => list.reduce((a, p) => a + 0 * (defOf(p)?.price || 0), 0);
   const showCash = () => {
     const el = document.getElementById('bm-cashv');
     if (el) el.textContent = money(progress().cash);
   };
   onProgress(showCash);
   function commit() {
-    const v = lotValue(items),
-      d = v - paid;
-    if (d > 0 && progress().cash < d) {
-      const s = undo.pop();
-      if (s) items = JSON.parse(s);
-      h.toast(`Not enough cash: that needs ${money(d)}.`);
-      renderLotNow();
-      renderCatalog();
-      renderBottom();
-      return;
-    }
-    if (d) {
-      paid = v;
-      addCash(-d);
-    }
     dirty = true;
     h.save(items);
     renderLotNow();
@@ -645,7 +627,6 @@ export function createBuild(h: BuildHost) {
     if (!plot) return false;
     on = true;
     items = h.layout().map(p => ({ ...p }));
-    paid = lotValue(items);
     showCash();
     undo = [];
     hand = null;

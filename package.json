@@ -13,7 +13,7 @@
     "typecheck": "tsc -b packages/shared packages/server packages/client",
     "format": "prettier --write \"packages/client/src/**/*.ts\" \"packages/shared/src/**/*.ts\"",
     "lint": "node tools/lint/swallowed.mjs",
-    "check": "node tools/lint/swallowed.mjs && tsc --noEmit -p packages/client && npm -w @gh/shared run test"
+    "check": "node tools/lint/swallowed.mjs && tsc --noEmit --noUnusedLocals -p packages/client && npm -w @gh/shared run test"
   },
   "devDependencies": {
     "prettier": "^3.10.1",

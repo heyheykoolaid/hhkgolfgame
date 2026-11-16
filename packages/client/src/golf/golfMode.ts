@@ -29,10 +29,6 @@ import {
   gradAt,
   greenEd,
   TREES,
-  treesNear,
-  pondPd,
-  WATER_Y,
-  CENTER_PTS,
   type ShotBroadcast,
   type ShotInput,
 } from '@gh/shared';
@@ -60,23 +56,7 @@ import { createRoaming, cartYaw } from './roaming';
 import { cupStart, cupStep, CUP_DEPTH, CUP_PIN_R, type CupSim } from './cup';
 import { trackCards, tourStandings, tourWaiting, tourWinners, tourCardHTML, toParText, type Tour } from './tournament';
 import { CUP_HOLE_R } from '../world/nature';
-import {
-  parseTournament,
-  tournamentHoles,
-  cupFor,
-  holeIdea,
-  turnOf,
-  teeOrderFor,
-  groupStrokes,
-  TURN_SECONDS,
-  TURN_WARN,
-  TURN_GRACE,
-  CART_SLOTS,
-  type Cup,
-  type TourSize,
-  type TurnPlayer,
-  type Turn,
-} from '@gh/shared';
+import { parseTournament, tournamentHoles, cupFor, holeIdea, teeOrderFor } from '@gh/shared';
 import { colorFor } from '../avatar/colors';
 import { TrophyView } from '../world/trophy';
 import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
@@ -322,8 +302,7 @@ export function createGolf(env: GolfEnv) {
   // ---------------- players ----------------
   /** Follow-through: fast release that decelerates into a slight over-rotation (s ≈ 3.1), then settles back into the held finish. */
   const followCurve = (t: number) => (t < 0.75 ? 1.1 * (1 - (1 - t / 0.75) ** 2.6) : 1.1 - 0.1 * easeInOut(Math.min(1, (t - 0.75) / 0.9)));
-  const easeOut = (t: number) => 1 - (1 - t) ** 3,
-    easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+  const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
   interface Avatar {
     beam?: THREE.Mesh;
     teeSeen?: boolean;
@@ -620,11 +599,7 @@ export function createGolf(env: GolfEnv) {
     S.win = windows(S.p0, CLUBS[S.club], lieOf(), undefined, slopeOf());
     if (!isPutt()) sfx.swoosh(S.tempo.hang, S.tempo.down, Math.min(1, S.p0));
   }
-  let firedAt = -9,
-    firedU0 = -4;
   function fire() {
-    firedU0 = swingU0();
-    firedAt = clock;
     S.phase = 'follow';
     S.followT = 0;
     {
@@ -785,14 +760,6 @@ export function createGolf(env: GolfEnv) {
   // ---------------- green-reading arrows: a field of chevrons drifting downhill, coloured by how steep it is ----------------
   // (white/blue = barely breaks, yellow = noticeable, orange/red = strong). Rebuilt per hole; animated while putting.
   const SLOPE_MAX = 900;
-  const slopeGeo = (() => {
-    const g = new THREE.BufferGeometry(),
-      w = 0.13,
-      l = 0.14,
-      n = -0.05; // filled arrowhead with a notch, pointing +z
-    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, l, -w, 0, -l, 0, 0, n, 0, 0, l, 0, 0, n, w, 0, -l], 3));
-    return g;
-  })();
   const softArrow = (() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -1096,10 +1063,6 @@ export function createGolf(env: GolfEnv) {
     pw.terrain(heightAt, B.x0 + 15, B.x1 - 15, B.z0 + 15, B.z1 - 15, 2);
     for (const t of TREES) pw.cylinder(t.x, t.y + 3, t.z, 3, 0.3 * t.s);
     roam.spawnCart();
-  }
-  function addressSpot() {
-    const a = avatars.get(net.sessionId);
-    return a ? a.root.position : new THREE.Vector3();
   }
   /** Knock my own golfer flat (cart hit, crash, F to flop) and tell everyone. */
   function flopMe(vel: THREE.Vector3, imp: THREE.Vector3, at = 'Spine1', tone = 0.04) {

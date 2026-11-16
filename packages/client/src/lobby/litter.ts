@@ -125,7 +125,6 @@ export function buildLitter(scene: THREE.Scene) {
   patch(-40, -65, 40, -64.4, 14);
   patch(-100 + W, 20.5, -54 + W, 34.5, 26, 0.08);
   patch(-118 + W, 35.2, -62 + W, 37.6, 9);
-  patch(-125 + W, -12.5, -80 + W, -10.5, 8, 0.3); // the back street
   // Fun Land: cups and paper wherever people queue
   patch(84, -6, 128, 12, 45);
   patch(150, -2, 168, 12, 8);

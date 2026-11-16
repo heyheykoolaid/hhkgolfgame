@@ -39,8 +39,6 @@ export interface HeldPres {
 }
 const PAD_Y = 0.06,
   CAN_CAP = 3,
-  FERT_PRICE = 25,
-  FERT_DOSES = 3,
   POUR_RATE = 0.5,
   SPREAD_RATE = 0.75,
   REACH = 1.25;
@@ -333,7 +331,6 @@ export function createGarden(host: GardenHost) {
   const views = new Map<string, { o: THREE.Object3D; k: string }>(),
     layers = new Map<number, THREE.Group>();
   const LS = 'gh.garden.v1';
-  const myPlanters = () => (host.myPlot() ? host.layoutOf(host.me()).filter(p => !!GEAR[p.k]) : []);
   function load() {
     if (loaded) return;
     const fromDb = host.gardenOf(host.me());
