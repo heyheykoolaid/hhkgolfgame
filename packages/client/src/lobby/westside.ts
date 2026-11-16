@@ -464,13 +464,16 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
         const mesh = c as THREE.Mesh,
           m = mesh.material as THREE.MeshStandardMaterial;
         if (!mesh.isMesh) return;
-        mesh.castShadow = mesh.receiveShadow = false;
+        mesh.castShadow = false;
+        mesh.receiveShadow = true; // (the shell's roof keeps the evening sun off the room)
         m.clippingPlanes = cut;
         if (m.map && !m.emissiveMap) {
-          // lit from inside: the room keeps its own warm light whatever the sun is doing
+          // dim by itself: a faint glow so nothing goes black, bright only where the lamps' own glass is; the light in the
+          // room comes from the lamps below
           m.emissiveMap = m.map;
           m.emissive = new THREE.Color('#ffffff');
-          m.emissiveIntensity = /EMIT/i.test(m.name) ? 1.2 : 0.42;
+          m.emissiveIntensity = /EMIT/i.test(m.name) ? 1.6 : 0.09;
+          if (!/EMIT/i.test(m.name)) m.color.multiplyScalar(0.62);
         }
       });
       G.add(o);
@@ -489,9 +492,21 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       bulb.position.set(BJ_AT[0] + dx, 2.66, BJ_AT[1]);
       G.add(shade, bulb, box(0.02, h - 2.9, 0.02, trim, BJ_AT[0] + dx, (h + 2.9) / 2, BJ_AT[1]));
     }
-    const lamp = new THREE.PointLight('#ffd9a0', 22, 13, 1.6);
-    lamp.position.set(BJ_AT[0], 3, BJ_AT[1] + 0.6);
+    const lamp = new THREE.PointLight('#ffd9a0', 11, 8, 1.5);
+    lamp.position.set(BJ_AT[0], 2.6, BJ_AT[1] + 0.3);
     G.add(lamp);
+    // the bar's own lamps light the room: the copper pendants over the counter, the sconces over the booths
+    // (scene x, height, scene z, strength, colour)
+    for (const [bx, y, bz, k, c] of [
+      [-0.6, 2.2, -18.6, 9, '#ffb869'],
+      [-0.6, 2.2, -22.6, 9, '#ffb869'],
+      [-7.0, 2.7, -15.3, 6, '#ff9d5c'],
+      [-6.6, 2.7, -23.6, 6, '#ff9d5c'],
+    ] as [number, number, number, number, string][]) {
+      const l = new THREE.PointLight(c, k, 7.5, 1.5);
+      l.position.set(bx + BAR.x, y + BAR.y, bz + BAR.z);
+      G.add(l);
+    }
     const s = sign(
       [
         { t: 'LUCKY LIE', s: 130, c: '#ff5a8a', b: true, y: 112 },

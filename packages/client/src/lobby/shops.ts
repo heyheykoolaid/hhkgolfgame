@@ -106,10 +106,10 @@ function storefront(f: Front) {
     g.add(box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY - 0.06, -0.02), box(ww + 0.2, 0.12, 0.2, trim, s * wx, sillY + winH + 0.06, -0.02));
     for (const e of [-1, 1]) g.add(box(0.12, winH + 0.24, 0.2, trim, s * wx + (e * (ww + 0.12)) / 2, sillY + winH / 2, -0.02));
     const pane = new THREE.Mesh(
-      new THREE.PlaneGeometry(ww, winH),
+      new THREE.PlaneGeometry(ww - 0.02, winH - 0.02), // (a hair inside the opening: the glass never crosses the wall)
       new THREE.MeshStandardMaterial({ color: '#bfd8e0', roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.16 }),
     );
-    pane.position.set(s * wx, sillY + winH / 2, -0.03);
+    pane.position.set(s * wx, sillY + winH / 2, 0.06); // set back into the reveal, behind the frame
     pane.rotation.y = Math.PI;
     g.add(pane);
   }
