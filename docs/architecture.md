@@ -38,7 +38,7 @@ Each file that takes data from other players also exports its **cleaner**: `clea
 **The pattern everything follows:** a feature is `createThing(host)`. `host` is a small object of callbacks the feature needs from its owner (the player's state, a toast, "publish my presence"). The feature returns its own API (`update`, `key`, `pres`, `peers`…). The owner calls it; the feature never reaches into the owner's variables. To add a feature, copy the nearest module.
 
 ### Lobby (`lobby/`)
-`lobby.ts` (about 3,100 lines on Nov 16; the next file to split) is the town's core, one closure (`createLobby`) with section banners (`// ---------------- name`): the player and input, the camera, other players, presence, lots, and the frame.
+`lobby.ts` (about 2,590 lines after the Nov 16 split) is the town's core, one closure (`createLobby`) with section banners (`// ---------------- name`): the player and input, the camera, other players, presence, lots, and the frame.
 
 | Module | Feature |
 |---|---|
@@ -60,6 +60,8 @@ Each file that takes data from other players also exports its **cleaner**: `clea
 | `funland.ts` | Fun Land, east of town: the gates, Birdie Burger and its back yard, the mini putt layout (`PUTT_HOLES`: every tile, tee and cup), the driving range, the kart track (a closed curve, `TRACK_PTS`) and its lap timer. Kenney models come from `public/funland/kit.json` (`tools/funland/pack.py`) and are merged into one mesh per colour (`Baker`). `funSurface(x, z)` says what the ground is. **`world.ts` imports this file, so nothing at its top level may read a value from `world.ts`.** |
 | `gachaMachine.ts` | The Birdie Ball machine model. |
 
+| `shopMenus.ts` | The shops' counters (Grow Supply, the Pro Shop, Lucky Pawn, Wrench & Ride, Homestead), split out of `lobby.ts` on Nov 16. The lobby lends it `toast`, `openModal` and `trophyPic`. |
+| `townMap.ts` | The town map (M), split out the same day. It draws its streets from `roads.ts`. |
 | `roads.ts` | **The town's street plan (Nov 16).** Every flat street is one line in `STREETS` (centre line, width, pavement width). From that list: the asphalt and pavement meshes (no overlapping pieces), centre and stop lines, street-name blades, `streetAt` (what is underfoot), `paveY`, `PAVES` (kerbs for the physics), `SIDEWALKS` (where walkers go) and the map's streets. Add a street here, not by hand. It imports nothing from `world.ts`. |
 | `westside.ts` | The West Side on its rise (`WEST_OFF`): the street and car park, the clubhouse, the water tower, the delivery van, and the `spots` you can press E at for both districts. It lends its building helpers to `shady.ts`. |
 | `shady.ts` | **Shady Lane's four buildings** (the Lucky Lie Lounge, the alley, Grow Supply, Lucky Pawn), split out of `westside.ts` on Nov 16. They are laid out in the West Side's frame and stood at `SHADY_OFF`; the lane itself is in `roads.ts`. |
@@ -240,4 +242,5 @@ After a day that added cars, the pawn shop, real-course rounds, town life, Shady
 - **Structure:** Shady Lane's buildings moved to `shady.ts`; 62 unused imports and locals removed, including the old trophy-case panel.
 - **Frame cost:** the far groves were one lot of 324,000 triangles drawn wherever you looked; they are six wedges now (about 140,000 in a typical view). Real frame rate still needs a person with F3 on: see the slow-browser trap.
 - **Stale words fixed:** the welcome card still described the plaza as having the pro shop, blackjack and the dealer.
-- **Not done:** splitting `lobby.ts` (shops, the map and the menu are the obvious pieces); disposing a retired car's geometry; walkers and cars are still unsynced between players.
+- **`lobby.ts` split (same day, later):** the shops' counters went to `shopMenus.ts` and the map to `townMap.ts` (about 500 lines, moved unchanged); `$`, `esc` and `money` are shared from `ui/dom.ts`; `tools/lint/prune-imports.py` removes the imports a move leaves behind. **Tried and left in place:** the Birdie Ball machine's panels (they share five pieces of changing state with the frame loop) and the Tab menu, emotes and clubhouse menu (79 lines needing 17 things from the lobby: more wiring than code). What remains in `lobby.ts` is the player, input, camera, other players, physics set-up and the frame, which all read the same changing state; splitting further means first gathering that state into one object.
+- **Not done:** disposing a retired car's geometry; walkers and cars are still unsynced between players.

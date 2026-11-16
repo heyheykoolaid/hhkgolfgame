@@ -6,22 +6,8 @@ import { createTeeBoard } from './teeBoard';
 import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
 import { colorFor } from '../avatar/colors';
-import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed, thumb } from './build';
-import {
-  vehicleKind,
-  insideVehicle,
-  cartModel,
-  DRIVE_FX,
-  CARS,
-  CAR,
-  CAR_PAINTS,
-  CAR_PARTS,
-  CAR_RIMS,
-  carModel,
-  loadCarKit,
-  type Vehicle,
-  type VehState,
-} from '../vehicles/vehicles';
+import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed } from './build';
+import { vehicleKind, insideVehicle, DRIVE_FX, type Vehicle, type VehState } from '../vehicles/vehicles';
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
   buildLobby,
@@ -32,17 +18,14 @@ import {
   surfaceOf,
   HALF,
   BOUND,
-  FUN,
-  WEST,
   SHADY_OFF,
-  SHADY,
   inWorld,
   EDGE,
   type Plot,
   type Collider,
 } from './world';
 import { buildFunLand, funSurface } from './funland';
-import { STREETS, PAVES, streetAt } from './roads';
+import { PAVES, streetAt } from './roads';
 import { createPutt } from './putt';
 import { ambience } from '../audio/ambience';
 import { controls, type ControlRow } from '../ui/controls';
@@ -63,16 +46,14 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { buyItem, setPlaced, ownAtLeast, setTrail, setCar, paintCar, fitPart, sellTrophy, isPlaced } from '../avatar/progress';
-import { TRAILS } from '../avatar/trails';
+import { setPlaced, ownAtLeast } from '../avatar/progress';
 import type { Shop } from './wardrobe';
-import { ITEMS, loadItemModels } from './catalog';
-import { objectImage } from '../world/trophy';
 import { speedo } from '../ui/speedo';
-import { invIcon } from './invIcons';
-import { PAPERS_PRICE, GRINDER_PRICE } from './dealer';
 import { tickWater } from '../world/water';
 import { playSample, wireUiSounds } from '../audio/samples';
+import { $, esc } from '../ui/dom';
+import { createShopMenus } from './shopMenus';
+import { createTownMap } from './townMap';
 import { patchCloudShadows } from '../world/sky';
 import { createSmoke, type SmokePres } from './smoke';
 import { createMail } from './mail';
@@ -83,8 +64,6 @@ import { snapSun } from '../world/course';
 import { createVlt } from './vlt';
 import { loadPhysics, PhysWorld, Flop, rapier, grp, G_STATIC, G_RAG, G_VEH } from '../physics/ragdoll';
 
-const $ = (id: string) => document.getElementById(id)!;
-const esc = (t: string) => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const LOT_ORDER = [7, 2, 4, 5, 1, 3, 6, 8];
 
@@ -1524,101 +1503,9 @@ export function createLobby(env: LobbyEnv) {
           }),
       );
   }
-  // ---------------- the town map (M) ----------------
-  function openMap() {
-    const c = document.createElement('canvas'),
-      S = 3.1, // pixels per metre
-      X0 = -156,
-      Z0 = -96,
-      W = 336,
-      Hh = 158;
-    c.width = Math.round(W * S);
-    c.height = Math.round(Hh * S);
-    const x = c.getContext('2d')!,
-      px = (wx: number) => (wx - X0) * S,
-      pz = (wz: number) => (wz - Z0) * S,
-      rect = (x0: number, z0: number, x1: number, z1: number, fill: string) => {
-        x.fillStyle = fill;
-        x.fillRect(px(x0), pz(z0), (x1 - x0) * S, (z1 - z0) * S);
-      },
-      label = (t: string, wx: number, wz: number, size = 15, col = '#fff7e0') => {
-        x.font = `800 ${size}px "Barlow Condensed", Inter, sans-serif`;
-        x.textAlign = 'center';
-        x.lineJoin = 'round';
-        x.lineWidth = 4;
-        x.strokeStyle = 'rgba(20,14,8,.85)';
-        x.strokeText(t, px(wx), pz(wz));
-        x.fillStyle = col;
-        x.fillText(t, px(wx), pz(wz));
-      };
-    rect(X0, Z0, X0 + W, Z0 + Hh, '#6f7a45'); // meadow
-    rect(-BOUND, -BOUND, BOUND, BOUND, '#7f8a52'); // the town
-    rect(BOUND, -FUN.z, FUN.x1, FUN.z, '#86905a'); // Fun Land
-    rect(WEST.x0, WEST.z0, WEST.x1, WEST.z1, '#86905a'); // the West Side, up its rise
-    rect(WEST.x1, 8, -BOUND, 20, '#86905a');
-    // streets
-    rect(BOUND, -17, 104, -10.5, '#55524c');
-    rect(-140, 10.5, -BOUND, 17.5, '#55524c');
-    rect(-124, 20, -78, 35, '#4c4a45');
-    rect(-9.5, -9.5, 9.5, 9.5, '#c9bca4'); // plaza
-    for (const l of LOTS) rect(l.cx - HALF, l.cz - HALF, l.cx + HALF, l.cz + HALF, '#a79a7c');
-    if (MY) rect(MY.cx - HALF, MY.cz - HALF, MY.cx + HALF, MY.cz + HALF, '#e2b23a');
-    // places
-    rect(54, -4, 64, 4, '#c8452f');
-    rect(73.5, -47.6, 104, -17.4, '#2f8a5a');
-    rect(76, 13, 81, 45, '#3a5a6a');
-    rect(81, 13, 172, 45, '#7c9a45');
-    x.strokeStyle = '#3a3835';
-    x.lineWidth = 7 * S * 0.5;
-    x.beginPath();
-    x.roundRect(px(109), pz(-43), (166 - 109) * S, 35 * S, 20);
-    x.stroke();
-    rect(-92, -5, -76, 8, '#ece6d8');
-    // Shady Lane: its ground, the lane, the road through it, and the pawn shop, Grow Supply and the lounge
-    rect(SHADY.x0, SHADY.z0, SHADY.x1, SHADY.z1, '#86905a');
-    for (const t of STREETS) {
-      const a = Math.max(t.a, t.v ? Z0 : X0);
-      if (t.v) rect(t.c - t.hw, a, t.c + t.hw, t.b, '#55524c');
-      else rect(a, t.c - t.hw, t.b, t.c + t.hw, '#55524c');
-    }
-    rect(-15.6, -86.5, -6, -74.4, '#6d5a3c');
-    rect(6, -86.5, 20, -74.4, '#4f7a4a');
-    rect(24, -90.4, 36.2, -74.4, '#5a3a30');
-    x.fillStyle = '#d8d2c4';
-    x.beginPath();
-    x.arc(px(-136), pz(-1), 2.8 * S, 0, 7);
-    x.fill();
-    label('PLAZA', 0, 1.5, 16);
-    label('tee times · pro shop', 0, 7, 11, '#f1e6c8');
-    label('▲ TO THE COURSE', 0, -92, 13, '#cfe8b0');
-    label('Fairway Loop', -27, 40.8, 10, '#d8d2c4');
-    label('FUN LAND', 110, 6, 20, '#ffd27a');
-    label('Birdie Burger', 59, -6.5, 12);
-    label('Mini putt', 89, -31, 13);
-    label('Go-karts', 138, -22, 13);
-    label('Driving range', 122, 30, 13);
-    label('WEST SIDE', -101, 29.5, 20, '#ffd27a');
-    label('Clubhouse', -79, -7, 13);
-    label('SHADY LANE', 8, -55.5, 17, '#ffd27a');
-    label('Pawn', -11, -89, 12);
-    label('Grow Supply', 13, -89, 12);
-    label('Lounge', 31, -93, 12);
-    label('Dealer', 22, -78, 10, '#f1e6c8');
-    if (MY) label('YOUR LOT', MY.cx, MY.cz + HALF + 4.5, 12, '#ffe9a8');
-    // you
-    x.fillStyle = '#ff5a4a';
-    x.strokeStyle = '#fff';
-    x.lineWidth = 3;
-    x.beginPath();
-    x.arc(px(clamp(P.x, X0 + 3, X0 + W - 3)), pz(clamp(P.z, Z0 + 3, Z0 + Hh - 3)), 7, 0, 7);
-    x.fill();
-    x.stroke();
-    openModal(
-      'Town map',
-      `<img src="${c.toDataURL('image/jpeg', 0.9)}" alt="" style="width:100%;border-radius:12px;display:block"><p class="muted" style="margin-top:8px">The red dot is you. North is up.</p>`,
-    );
-    $('lmodal').querySelector('.card')?.classList.add('mapcard');
-  }
+  // ---------------- the town map (M): lobby/townMap.ts
+  const { openMap } = createTownMap({ openModal, my: () => MY, where: () => P });
+
   // ---------------- emotes (Q) ----------------
   function openEmotes() {
     const list: [string, () => void][] = [
@@ -1668,384 +1555,8 @@ export function createLobby(env: LobbyEnv) {
           }),
       );
   }
-  // ---------------- Grow Supply (Shady Lane): the shop counter ----------------
-  /** A shop counter: goods as cards with a picture, what they do, the price and how many you have. */
-  interface Good {
-    id: string;
-    icon: string;
-    name: string;
-    desc: string;
-    price: number;
-    have: string;
-    sold?: boolean;
-    group: string;
-  }
-  async function openShop(title: string, keeper: string, goods: (pr: Awaited<ReturnType<typeof loadProgress>>) => Good[], note = '') {
-    const pr = await loadProgress(),
-      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
-      list = goods(pr),
-      groups = [...new Set(list.map(g => g.group))];
-    openModal(
-      title,
-      `<div class="shop"><div class="shophead"><p class="muted">${keeper}</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
-       ${groups.length > 4 ? `<div class="aisles" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px">${groups.map((gr, i) => `<button class="chip" data-aisle="${i}">${gr}</button>`).join('')}</div>` : ''}
-       ${groups
-         .map(
-           (gr, gi) =>
-             `<h3 data-aisle-h="${gi}">${gr}</h3><div class="goods">${list
-               .filter(g => g.group === gr)
-               .map(
-                 g => `<div class="good"><div class="gi">${g.icon}</div><div class="gt"><b>${g.name}</b><p>${g.desc}</p><em>${g.have}</em></div>
-                 <button data-buy="${g.id}" ${g.sold || pr.cash < g.price ? 'disabled' : ''}>${g.sold ? 'Owned' : money(g.price)}</button></div>`,
-               )
-               .join('')}</div>`,
-         )
-         .join('')}
-       ${note ? `<p class="muted" style="margin-top:10px">${note}</p>` : ''}</div>`,
-    );
-    $('lmodal').querySelector('.card')?.classList.add('wide');
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-aisle]')
-      .forEach(
-        b =>
-          (b.onclick = () =>
-            $('lmodal').querySelector(`[data-aisle-h="${b.dataset.aisle}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
-      );
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-buy]')
-      .forEach(
-        b =>
-          (b.onclick = async () => {
-            const g = list.find(x => x.id === b.dataset.buy)!,
-              r = await buyItem(g.id, g.price);
-            playSample(r === 'ok' ? 'confirm' : 'error', 0.5);
-            if (r !== 'ok')
-              toast(
-                r === 'full' ? 'Your inventory is full (32 slots).' : r === 'have' ? 'You already have one.' : "You can't afford that right now.",
-              );
-            else {
-              const sc = $('lmodal').querySelector('.card')?.scrollTop || 0;
-              await openShop(title, keeper, goods, note);
-              const c = $('lmodal').querySelector('.card');
-              if (c) c.scrollTop = sc;
-            }
-          }),
-      );
-  }
-  /** The pro shop (West Side): ball trails for now. Club skins and club effects are to come. */
-  async function openProShop() {
-    const pr = await loadProgress(),
-      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
-    openModal(
-      'Pro Shop',
-      `<div class="shop"><div class="shophead"><p class="muted">"Everything for the golfer who has everything. Trails today; club skins and effects are on order."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
-       <h3>Ball trails</h3><div class="goods">${TRAILS.map(t => {
-         const own = !t.id || pr.trails.includes(t.id),
-           on = pr.trail === t.id;
-         return `<div class="good"><div class="gi"><span class="trail" style="background:${t.color === 'rainbow' ? 'linear-gradient(90deg,#ff4f4f,#ffd24a,#9cff3a,#8fe3ff,#ff4fc3)' : t.color}"></span></div><div class="gt"><b>${t.name}</b><p>${t.desc}</p><em>${on ? 'In use' : own ? 'Owned' : ''}</em></div>
-           <button data-trail="${t.id}" ${on || (!own && pr.cash < t.price) ? 'disabled' : ''}>${on ? 'In use' : own ? 'Use' : money(t.price)}</button></div>`;
-       }).join('')}</div>
-       <p class="muted" style="margin-top:10px">A trail is the line your ball draws through the air on every course. Others don't see yours yet.</p></div>`,
-    );
-    $('lmodal').querySelector('.card')?.classList.add('wide');
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-trail]')
-      .forEach(
-        b =>
-          (b.onclick = async () => {
-            const t = TRAILS.find(x => x.id === b.dataset.trail)!,
-              ok = await setTrail(t.id, t.price);
-            playSample(ok ? 'confirm' : 'error', 0.5);
-            if (ok) void openProShop();
-            else toast("You can't afford that right now.");
-          }),
-      );
-  }
-  /** Homestead Furniture (West Side): everything for your lot. Bought pieces go to the lot's storage (Build Mode). */
-  /** What the pawnbroker pays for a trophy: more for a championship, a bigger field and a score under par, and then
-   *  his mood about that particular cup (fixed by the trophy, so it can't be re-rolled). */
-  const pawnOffer = (t: { seed: number; n: number; toPar: number; field: number }) => {
-    const big = t.n === 9,
-      base = (big ? 6000 : 2000) * (1 + 0.25 * Math.max(0, Math.min(3, (t.field || 1) - 1))),
-      under = Math.max(0, -t.toPar) * (big ? 250 : 150),
-      mood = 0.88 + ((t.seed >>> 0) % 25) / 100;
-    return Math.max(500, Math.round(((base + under) * mood) / 50) * 50);
-  };
-  /** Lucky Pawn (Shady Lane): sell trophies from your case for cash. Gone for good; not while one stands on your lot. */
-  async function openPawn(armed = '') {
-    const pr = await loadProgress(),
-      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
-      tp = (n: number) => (n === 0 ? 'even par' : n > 0 ? `+${n}` : `${n}`),
-      list = [...pr.trophies].sort((a, b) => pawnOffer(b) - pawnOffer(a));
-    openModal(
-      'Lucky Pawn',
-      `<div class="shop"><div class="shophead"><p class="muted">${
-        list.length
-          ? "\"Let's see what you've got. I pay cash, and I don't sell them back.\""
-          : '"Nothing to sell? Go and win something. I\'ll be here."'
-      }</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
-       ${
-         list.length
-           ? `<h3>Your trophies</h3><div class="goods">${list
-               .map(t => {
-                 const out = isPlaced('trophy:' + t.id),
-                   offer = pawnOffer(t);
-                 return `<div class="good"><div class="gi"><img src="${trophyPic(t.seed, t.n, '', 96)}" alt=""></div><div class="gt"><b>${esc(t.title)}</b>
-                   <p>${t.n === 9 ? 'Championship' : 'Mini cup'} · ${tp(t.toPar)}${t.field > 1 ? ` · beat ${t.field - 1}` : ''}</p><em>${out ? 'On your lot: take it down in Build Mode first' : ''}</em></div>
-                   <button data-pawn="${esc(t.id)}" ${out ? 'disabled' : ''}>${armed === t.id ? `Sell for ${money(offer)}?` : money(offer)}</button></div>`;
-               })
-               .join('')}</div>`
-           : ''
-       }
-       <p class="muted" style="margin-top:10px">A sold trophy is gone for good, on every device. Click a price once to be asked, again to sell.</p></div>`,
-    );
-    const card = $('lmodal').querySelector('.card');
-    card?.classList.add('wide');
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-pawn]')
-      .forEach(
-        b =>
-          (b.onclick = async () => {
-            const id = b.dataset.pawn!,
-              t = pr.trophies.find(x => x.id === id),
-              sc = card?.scrollTop || 0;
-            if (!t) return;
-            if (armed !== id) await openPawn(id);
-            else {
-              const ok = await sellTrophy(id, pawnOffer(t));
-              playSample(ok ? 'confirm' : 'error', 0.5);
-              toast(ok ? `Sold: ${esc(t.title)} for ${money(pawnOffer(t))}.` : "He won't take that one.");
-              await openPawn();
-            }
-            const c = $('lmodal').querySelector('.card');
-            if (c) c.scrollTop = sc;
-          }),
-      );
-  }
-  /** Wrench & Ride (West Side): buy a car, choose the one you drive, repaint it. Your car replaces the golf cart in town
-   *  and on the course; it still comes out of your lot's garage. */
-  const carPics = new Map<string, string>();
-  async function openAuto() {
-    await loadCarKit().catch(() => 0); // (the pictures are drawn from the models)
-    const pr = await loadProgress(),
-      money = (n: number) => '$' + Math.round(n).toLocaleString('en-US'),
-      look = (id: string) => (pr.carLook[id] || ':').split(':') as [string, string],
-      pic = (id: string) => {
-        const k = id + (pr.carLook[id] || ''),
-          spec = CAR.get(id)!;
-        if (!carPics.has(k)) carPics.set(k, objectImage(carModel(spec, ...look(id)).root, 220));
-        return carPics.get(k)!;
-      },
-      cur = CAR.get(pr.car),
-      PAINT = 150,
-      sw = (kind: 'paint' | 'rim', list: string[], on: string) =>
-        list
-          .map(
-            c =>
-              `<button class="swatch${c === on ? ' on' : ''}" data-${kind}="${c}" title="${c ? '#' + c : 'Factory finish'}" style="background:${c ? '#' + c : 'repeating-linear-gradient(45deg,#d8d2c2 0 5px,#8a867c 5px 10px)'}"></button>`,
-          )
-          .join('');
-    openModal(
-      'Wrench & Ride Auto',
-      `<div class="shop"><div class="shophead"><p class="muted">"Whatever you pick drives out of your garage, here and up at the course."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
-       ${
-         cur
-           ? `<h3>Your ${cur.name}</h3><div class="carpaint"><img src="${pic(cur.id)}" alt=""><div>
-               <p><b>Paint</b> <span class="muted">${money(PAINT)} a respray, factory finish free</span></p><div class="swatches">${sw('paint', CAR_PAINTS, look(cur.id)[0])}</div>
-               <p><b>Rims</b> <span class="muted">${money(PAINT)}</span></p><div class="swatches">${sw('rim', CAR_RIMS, look(cur.id)[1] || CAR_RIMS[0])}</div></div></div>
-               <div class="carparts">${CAR_PARTS.map((p, i) => {
-                 const lv = +(pr.carParts[cur.id] || '000')[i];
-                 return `<div class="part"><b>${p.name}</b> <span class="pips">${[1, 2, 3].map(n => `<i class="${n <= lv ? 'on' : ''}"></i>`).join('')}</span>
-                   <p class="muted">${p.what}<br>Fitted: ${p.stages[lv]}</p>
-                   ${lv < 3 ? `<button data-part="${i}" ${pr.cash < p.price[lv + 1] ? 'disabled' : ''}>${p.stages[lv + 1]} · ${money(p.price[lv + 1])}</button>` : '<em>Fully fitted</em>'}</div>`;
-               }).join('')}</div>`
-           : ''
-       }
-       <h3>On the lot</h3><div class="cars">
-         <div class="carcard${pr.car ? '' : ' on'}"><img class="carpic" src="${carPics.get('cart') || (carPics.set('cart', objectImage(cartModel('#c8452f').root, 220)), carPics.get('cart'))}" alt=""><b>Golf cart</b><p>The one that came with the place.</p>
-           <button data-car="" ${pr.car ? '' : 'disabled'}>${pr.car ? 'Drive this' : 'Driving'}</button></div>
-         ${CARS.map(c => {
-           const own = pr.cars.includes(c.id),
-             on = pr.car === c.id;
-           return `<div class="carcard${on ? ' on' : ''}"><img class="carpic" src="${pic(c.id)}" alt=""><b>${c.name}</b><p>${c.blurb}</p>
-             <button data-car="${c.id}" ${on || (!own && pr.cash < c.price) ? 'disabled' : ''}>${on ? 'Driving' : own ? 'Drive this' : money(c.price)}</button></div>`;
-         }).join('')}</div>
-       <p class="muted" style="margin-top:10px">Your car comes out of the cart garage on your lot (<kbd>E</kbd> at the garage) and waits behind the tee on the course.</p></div>`,
-    );
-    const card = $('lmodal').querySelector('.card');
-    card?.classList.add('wide');
-    const again = async () => {
-      const sc = card?.scrollTop || 0;
-      await openAuto();
-      const c = $('lmodal').querySelector('.card');
-      if (c) c.scrollTop = sc;
-    };
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-car]')
-      .forEach(
-        b =>
-          (b.onclick = async () => {
-            const id = b.dataset.car || '';
-            // buying (not switching) asks first: a car is the dearest thing in town and one stray click shouldn't buy it
-            if (id && !progress().cars.includes(id) && b.dataset.sure !== '1') {
-              b.dataset.sure = '1';
-              b.textContent = `Buy for ${money(CAR.get(id)?.price || 0)}?`;
-              playSample('select', 0.4);
-              setTimeout(() => {
-                if (b.isConnected && b.dataset.sure === '1') {
-                  b.dataset.sure = '';
-                  b.textContent = money(CAR.get(id)?.price || 0);
-                }
-              }, 4000);
-              return;
-            }
-            const ok = await setCar(id, CAR.get(id)?.price || 0);
-            playSample(ok ? 'confirm' : 'error', 0.5);
-            if (!ok) toast("You can't afford that right now.");
-            else toast(id ? `${CAR.get(id)!.name}: it's in your garage.` : 'Back to the golf cart.');
-            await again();
-          }),
-      );
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-part]')
-      .forEach(
-        b =>
-          (b.onclick = async () => {
-            if (!cur) return;
-            const i = +b.dataset.part!,
-              part = CAR_PARTS[i],
-              stage = +(progress().carParts[cur.id] || '000')[i] + 1,
-              ok = await fitPart(cur.id, i, stage, part.price[stage]);
-            playSample(ok ? 'confirm' : 'error', 0.5);
-            toast(
-              ok
-                ? `${part.stages[stage]} fitted to your ${cur.name}. Take it out of the garage again to feel it.`
-                : "You can't afford that right now.",
-              3200,
-            );
-            await again();
-          }),
-      );
-    const respray = async (paint: string, rim: string) => {
-      if (!cur) return;
-      const [p0, r0] = look(cur.id),
-        free = (paint === p0 && rim === r0) || (!paint && rim === r0),
-        ok = await paintCar(cur.id, paint, rim, free ? 0 : PAINT);
-      playSample(ok ? 'confirm' : 'error', 0.5);
-      if (!ok) toast("You can't afford that right now.");
-      await again();
-    };
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-paint]')
-      .forEach(b => (b.onclick = () => respray(b.dataset.paint || '', look(cur!.id)[1])));
-    $('lmodal')
-      .querySelectorAll<HTMLButtonElement>('[data-rim]')
-      .forEach(b => (b.onclick = () => respray(look(cur!.id)[0], b.dataset.rim || '')));
-  }
-  /** Which aisle of the furniture store a piece is in (by what it is called; the first match wins). */
-  const AISLES: [string, RegExp][] = [
-    ['For the cart', /garage/i],
-    ['Floors, fences and screens', /rug|deck|stepping|gravel|fence|screen|putting green/i],
-    ['Plants', /plant|palm|cactus|agave|fern|succulent|planter/i],
-    ['Lighting', /lamp|lights|torch|lantern|neon/i],
-    ['Seating', /chair|bench|sofa|stool|booth|hammock/i],
-    ['Tables and desks', /table|desk/i],
-    ['Bedroom and storage', /bed|wardrobe|cupboard|bookcase|shelves|coat|crate|box|basket/i],
-    ['Kitchen and appliances', /fridge|stove|washing|grill|cooler|television|fish tank|fan|bin|propane/i],
-    ['Yard fun', /pool|umbrella|fire pit|windmill|bird bath|flamingo|gnome|flag|statue|guitar|sign/i],
-  ];
-  const AISLE_ORDER = [
-    'Seating',
-    'Tables and desks',
-    'Bedroom and storage',
-    'Kitchen and appliances',
-    'Lighting',
-    'Plants',
-    'Yard fun',
-    'Floors, fences and screens',
-    'Odds and ends',
-    'For the cart',
-  ];
-  const aisle = (def: { name: string; cat: string }) =>
-    def.cat === 'garage' ? 'For the cart' : AISLES.find(a => a[1].test(def.name))?.[0] || 'Odds and ends';
-  const openFurniture = async () => {
-    await loadItemModels().catch(() => 0); // (the pictures are drawn from the models)
-    return openShop(
-      'Homestead Furniture',
-      '"Take your time. It all goes home with you: we deliver to your lot\'s storage."',
-      pr =>
-        ITEMS.filter(i => i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage')
-          .sort((a, b) => AISLE_ORDER.indexOf(aisle(a)) - AISLE_ORDER.indexOf(aisle(b)))
-          .map(def => {
-            const own = pr.gear[def.id] || 0;
-            return {
-              id: def.id,
-              icon: `<img src="${thumb(def, '#c8452f')}" alt="">`,
-              name: def.name,
-              desc: def.cat === 'garage' ? 'Keeps your cart at home. One per lot.' : def.cat === 'furniture' ? 'Furniture' : 'Decoration',
-              price: def.price,
-              have: own ? `You own ${own}` : '',
-              sold: !!def.max && own >= def.max,
-              group: aisle(def),
-            };
-          }),
-      "Bought pieces wait in your lot's storage. Press <kbd>B</kbd> on your own lot to place them; taking one off the lot puts it back in storage.",
-    );
-  };
-  const openGrowShop = () =>
-    openShop(
-      'Grow Supply',
-      '"Afternoon. Everything for the garden, and a few things for after."',
-      pr => {
-        const gear = (id: string, icon: string, desc: string): Good => {
-          const def = ITEMS.find(i => i.id === id)!,
-            own = pr.gear[id] || 0;
-          return {
-            id,
-            icon,
-            name: def.name.replace(/ \(.*/, ''),
-            desc,
-            price: def.price,
-            have: own ? `You own ${own}` : '',
-            group: 'For the garden',
-          };
-        };
-        return [
-          gear('growpot', invIcon('growpot'), 'One plant. Goes anywhere on your lot.'),
-          gear('growbed', invIcon('growbed'), 'Three plants, and they grow a little faster.'),
-          gear('sprinkler', invIcon('sprinkler'), 'Waters every plant within 2.6 m for you.'),
-          {
-            id: 'fert',
-            icon: invIcon('fert'),
-            name: 'Fertilizer',
-            desc: 'Three doses. Hungry plants lose quality.',
-            price: 25,
-            have: pr.fert ? `${pr.fert} doses` : '',
-            group: 'For the garden',
-          },
-          {
-            id: 'papers',
-            icon: invIcon('papers'),
-            name: 'Rolling papers',
-            desc: 'A pack of 20. One per joint.',
-            price: PAPERS_PRICE,
-            have: pr.papers ? `${pr.papers} left` : '',
-            group: 'For after',
-          },
-          {
-            id: 'grinder',
-            icon: invIcon('grinder'),
-            name: 'Grinder',
-            desc: 'Quicker, cleaner grinding when you roll.',
-            price: GRINDER_PRICE,
-            have: '',
-            sold: pr.grinder,
-            group: 'For after',
-          },
-        ];
-      },
-      'Gear goes into your inventory (<kbd>I</kbd>). Place it in Build Mode on your own lot, under Grow. Seeds are bought when you plant.',
-    );
+  // ---------------- the shops' counters (Grow Supply, the Pro Shop, Lucky Pawn, Wrench & Ride, Homestead): lobby/shopMenus.ts
+  const { openProShop, openPawn, openAuto, openFurniture, openGrowShop } = createShopMenus({ toast, openModal, trophyPic });
 
   // ---------------- ragdoll ----------------
   let flop: Flop | null = null,
