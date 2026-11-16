@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Golden Hills</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,700;0,800;1,800&family=Inter:wght@400;600;700&family=Permanent+Marker&display=swap" />
+<link rel="stylesheet" href="/src/ui/hud.css" />
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="grade"></div>
+<svg id="arcmeter" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="golfui">
+<div id="hud">
+  <div class="pill hole"><b id="h-num">1</b><div><div class="lbl" id="h-name">Golden Hills · Par 4</div><div class="v" id="h-stroke">Stroke 1</div></div></div>
+  <div class="pill"><div class="lbl">To pin</div><div class="v" id="h-pin">—</div></div>
+  <div class="pill"><div class="lbl">Wind</div><div class="v" id="h-wind">—</div></div>
+</div>
+<div id="board"></div>
+<canvas id="minimap"></canvas>
+<div id="clubcard"><div id="h-club">1W</div><div id="h-carry">—</div><div class="keys"><kbd>Q</kbd><kbd>E</kbd> club · <kbd>A</kbd><kbd>D</kbd> aim · <kbd>W</kbd><kbd>S</kbd> power · <kbd>Space</kbd> swing · <kbd>Shift</kbd> overhead · <kbd>M</kbd> map</div></div>
+<div id="toast"></div>
+  <div id="gprompt" style="display:none"></div>
+<div id="net"></div>
+<div id="golfcard" class="hidden"></div>
+</div>
+<div id="lobbyui">
+  <div id="lhud"><div class="pill brand"><b>GH</b><div><div class="lbl">Golden Hills</div><div class="v" id="llot">—</div></div></div><div class="pill net" id="lstatus"><i class="off"></i>Connecting…</div></div>
+  <div id="ltags"></div>
+  <div id="lprompt"></div>
+  <div id="lchat"></div>
+  <div id="lchatbox"><input id="lchatin" maxlength="120" placeholder="Say something… (Enter to send, Esc to cancel)" /></div>
+  <div id="lhints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> walk · <kbd>Space</kbd> jump · click to look (<kbd>Esc</kbd> frees the mouse) · <kbd>E</kbd> interact · <kbd>B</kbd> build (on your lot) · <kbd>T</kbd> trophies · <kbd>C</kbd> wardrobe · <kbd>F</kbd> flop · <kbd>Enter</kbd> chat</div>
+  <div id="ltoast"></div>
+  <div id="lmodal" class="hidden"></div>
+  <div id="lward" class="hidden"></div>
+  <div id="lgacha" class="hidden"></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

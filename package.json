@@ -1,0 +1,22 @@
+{
+  "name": "golden-hills",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm -w @gh/shared run test",
+    "dev:server": "npm -w @gh/server run dev",
+    "dev:client": "npm -w @gh/client run dev",
+    "build": "npm -w @gh/shared run build && npm -w @gh/server run build && npm -w @gh/client run build",
+    "typecheck": "tsc -b packages/shared packages/server packages/client",
+    "format": "prettier --write \"packages/client/src/**/*.ts\" \"packages/shared/src/**/*.ts\"",
+    "lint": "node tools/lint/swallowed.mjs",
+    "check": "node tools/lint/swallowed.mjs && tsc --noEmit -p packages/client && npm -w @gh/shared run test"
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1",
+    "typescript": "^5.6.0"
+  }
+}

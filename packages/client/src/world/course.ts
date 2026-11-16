@@ -1,0 +1,409 @@
+// Builds the Golden Hills Hole 1 scene from the shared course data, lit to the art target:
+// low amber sun, long shadows, dusty warm haze, desaturated olive turf.
+import * as THREE from 'three';
+import { waterMaterial } from './water';
+import { COURSE, heightAt, classify, fairwayHW, TREES, WATER_Y, CENTER_PTS, centerInfo, FLOOR } from '@gh/shared';
+import { loadAsset } from '../assets';
+import { terrainMaterial, buildTrees, buildBoulders } from './nature';
+import { photoSky, cloudLayer } from './sky';
+import { skyLife } from './skylife';
+import { buildCity } from './city';
+import { locale } from './locale';
+import { buildMountains } from './mountains';
+
+export const SKY_TOP = new THREE.Color('#d9925a'),
+  HAZE = new THREE.Color('#f0c99a');
+
+/** The sun: low in the west-north-west, 12° up (matches the sky photo's sunset; long golden-hour shadows). */
+export const SUN_AZ = Math.atan2(-0.55, -0.79);
+const SUN_DIR = (() => {
+  const h = new THREE.Vector2(-0.55, -0.79).normalize(),
+    e = THREE.MathUtils.degToRad(12);
+  return new THREE.Vector3(h.x * Math.cos(e), Math.sin(e), h.y * Math.cos(e));
+})();
+export function buildLighting(scene: THREE.Scene) {
+  scene.fog = new THREE.Fog(HAZE, 90, 520);
+  scene.add(new THREE.HemisphereLight('#f6d3a4', '#4a3c26', 0.9));
+  const sun = new THREE.DirectionalLight('#ffbf78', 4.0);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 });
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.04;
+  scene.add(sun, sun.target);
+  // sky dome: gold at the horizon, warm peach above, slightly cooler at the zenith
+  const R = 1500,
+    g = new THREE.SphereGeometry(R, 32, 16),
+    p = g.attributes.position,
+    cols: number[] = [];
+  const zen = new THREE.Color('#b9a48e');
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i) / R;
+    const c =
+      y > 0
+        ? HAZE.clone()
+            .lerp(SKY_TOP, Math.min(1, y * 2.2))
+            .lerp(zen, Math.max(0, y - 0.45) * 1.2)
+        : HAZE.clone().lerp(new THREE.Color('#8a7656'), Math.min(1, -y * 4));
+    cols.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  g.dispose();
+  const fallback = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+  const sky = photoSky(R, SUN_DIR, HAZE, fallback);
+  (sky.geometry as THREE.BufferGeometry).setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); // gradient until the photo loads
+  sky.name = 'sky';
+  scene.add(sky, cloudLayer(SUN_DIR), skyLife(SUN_DIR, HAZE));
+  const sunDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(40, 32),
+    new THREE.MeshBasicMaterial({ color: '#fff2c8', fog: false, transparent: true, opacity: 0.9 }),
+  );
+  sunDisc.visible = false; // the photo has its own sun
+  scene.add(sunDisc);
+  return { sun, sky, sunDisc, SUN_DIR };
+}
+
+/** Boulder Peak: cooler alpine greens, grey gravel for the paths, pale granite sand. */
+const TURF_PEAK: Record<string, string> = {
+  tee: '#5f9f6c',
+  fairway: '#579866',
+  fringe: '#64a672',
+  green: '#70b680',
+  rough: '#3d6a52',
+  heavy: '#2f5644',
+  bunker: '#cfc8b8',
+  path: '#9a9890',
+  hardpan: '#8a8478',
+  rock: '#8f8a82',
+  water: '#3c5a5a',
+  ob: '#35594a',
+};
+const turf = () => (locale.id === 'peak' ? TURF_PEAK : TURF);
+const TURF: Record<string, string> = {
+  tee: '#86a24c',
+  fairway: '#7f9c47',
+  fringe: '#8aa64e',
+  green: '#93b257',
+  rough: '#61793a',
+  heavy: '#53682f',
+  bunker: '#d6c196',
+  path: '#b4a78f',
+  hardpan: '#a1855f',
+  water: '#4d5a3c',
+  ob: '#5b6a34',
+};
+function hash(i: number, j: number) {
+  let h = (i * 374761393 + j * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+/** Follow `center` with the sun's shadow box, snapped to whole shadow-map texels so shadows don't shimmer/crawl. */
+const _q = new THREE.Quaternion(),
+  _qi = new THREE.Quaternion(),
+  _p = new THREE.Vector3(),
+  _m = new THREE.Matrix4();
+export function snapSun(sun: THREE.DirectionalLight, dir: THREE.Vector3, center: THREE.Vector3, dist = 150) {
+  const cam = sun.shadow.camera as THREE.OrthographicCamera,
+    texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
+  _m.lookAt(dir, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
+  _q.setFromRotationMatrix(_m);
+  _qi.copy(_q).invert();
+  _p.copy(center).applyQuaternion(_qi);
+  _p.x = Math.round(_p.x / texel) * texel;
+  _p.y = Math.round(_p.y / texel) * texel;
+  _p.applyQuaternion(_q);
+  sun.target.position.copy(_p);
+  sun.position.copy(_p).addScaledVector(dir, dist);
+  sun.target.updateMatrixWorld();
+}
+/** The current hole's ground (and pond), added to `scene` (a Group per hole, so it can be swapped). */
+export function buildTerrain(scene: THREE.Object3D) {
+  const B = COURSE.bounds,
+    W = B.x1 - B.x0,
+    L = B.z1 - B.z0,
+    RES = 1.25;
+  const nx = Math.round(W / RES) + 1,
+    nz = Math.round(L / RES) + 1;
+  const pos = new Float32Array(nx * nz * 3),
+    col = new Float32Array(nx * nz * 3),
+    uvs = new Float32Array(nx * nz * 2),
+    dirt = new Float32Array(nx * nz),
+    c = new THREE.Color(),
+    TU = turf(),
+    peakL = locale.id === 'peak';
+  for (let j = 0; j < nz; j++)
+    for (let i = 0; i < nx; i++) {
+      const x = B.x0 + (i * W) / (nx - 1),
+        z = B.z0 + (j * L) / (nz - 1),
+        o = (j * nx + i) * 3,
+        k = classify(x, z);
+      pos[o] = x;
+      pos[o + 1] = heightAt(x, z);
+      pos[o + 2] = z;
+      // greens, fringes and bunkers are drawn per pixel by the material: give their vertices the surrounding grass colour
+      const ks = k.s === 'green' || k.s === 'fringe' ? 'fringe' : k.s === 'bunker' ? 'rough' : k.s;
+      uvs[(j * nx + i) * 2] = x * 0.35;
+      uvs[(j * nx + i) * 2 + 1] = z * 0.35;
+      dirt[j * nx + i] = k.s === 'path' || k.s === 'hardpan' ? 1 : 0;
+      c.set(TU[ks] || TU.rough);
+      if (k.s === 'fairway') c.multiplyScalar(Math.floor(k.along / 9) & 1 ? 1.06 : 0.95);
+      if (k.s === 'rough' && k.d < fairwayHW(k.along) + 1.8 && k.along > 40) c.lerp(new THREE.Color(TU.fairway), 0.4);
+      const n = 1 + (hash(i, j) - 0.5) * 0.06;
+      // dry, sun-bleached patches in the rough (the reference's patchy turf)
+      if ((k.s === 'rough' || k.s === 'heavy' || k.s === 'ob') && hash(i >> 3, j >> 3) > 0.72)
+        c.lerp(new THREE.Color(peakL ? '#5f8f70' : '#9a8a55'), peakL ? 0.3 : 0.45);
+      col[o] = c.r * n;
+      col[o + 1] = c.g * n;
+      col[o + 2] = c.b * n;
+    }
+  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+  let q = 0;
+  for (let j = 0; j < nz - 1; j++)
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i,
+        b = a + 1,
+        cc = a + nx,
+        d = cc + 1;
+      idx[q++] = a;
+      idx[q++] = cc;
+      idx[q++] = b;
+      idx[q++] = b;
+      idx[q++] = cc;
+      idx[q++] = d;
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  g.setAttribute('dirt', new THREE.BufferAttribute(dirt, 1));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, terrainMaterial());
+  m.receiveShadow = true;
+  scene.add(m);
+  // endless ground just under the terrain's faded edge (per hole: hilly holes sit lower)
+  const far = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#6b6a3a' }));
+  far.position.y = FLOOR - 0.05;
+  scene.add(far);
+  if (!COURSE.pond) return;
+  // The pond: a sheet at water level that reaches exactly to the bank. From the middle, each of 96 spokes is walked
+  // outward until the ground comes up through the water; the sheet's rim sits just past that point, so the water always
+  // meets the terrain (the pond's nominal ellipse can be smaller or larger than the hollow the terrain really has).
+  // Every vertex also carries how deep the water is under it: the shader draws foam and clear shallows from that.
+  const pd = COURSE.pond,
+    SPOKES = 96,
+    RINGS = 22,
+    reach = Math.max(pd.rx, pd.rz) * 2.4,
+    wpos: number[] = [0, 0, 0],
+    wdepth: number[] = [WATER_Y - heightAt(pd.x, pd.z)],
+    widx: number[] = [];
+  for (let a = 0; a < SPOKES; a++) {
+    const ang = (a / SPOKES) * Math.PI * 2,
+      dx = Math.cos(ang),
+      dz = Math.sin(ang);
+    let bank = reach;
+    for (let r = 0.5; r < reach; r += 0.5)
+      if (heightAt(pd.x + dx * r, pd.z + dz * r) > WATER_Y + 0.04) {
+        bank = r;
+        break;
+      }
+    bank += 0.9; // a little way under the bank, so no gap shows on a steep edge
+    for (let k = 1; k <= RINGS; k++) {
+      // rings bunch up toward the bank, where the wdepth changes fastest
+      const r = bank * (1 - Math.pow(1 - k / RINGS, 1.6)),
+        x = dx * r,
+        z = dz * r;
+      wpos.push(x, 0, z);
+      wdepth.push(WATER_Y - heightAt(pd.x + x, pd.z + z));
+    }
+  }
+  const at = (a: number, k: number) => 1 + (a % SPOKES) * RINGS + (k - 1);
+  for (let a = 0; a < SPOKES; a++) {
+    widx.push(0, at(a + 1, 1), at(a, 1));
+    for (let k = 1; k < RINGS; k++) widx.push(at(a, k), at(a + 1, k), at(a, k + 1), at(a + 1, k), at(a + 1, k + 1), at(a, k + 1));
+  }
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
+  wg.setAttribute('aDepth', new THREE.Float32BufferAttribute(wdepth, 1));
+  wg.setIndex(widx);
+  wg.computeVertexNormals();
+  const water = new THREE.Mesh(wg, waterMaterial('#2a6f80', 0, 1, 0.9, true));
+  water.position.set(pd.x, WATER_Y, pd.z);
+  scene.add(water);
+}
+
+/** Vegetation: course trees become a mix of tall palms and scrubby oaks; instanced greybox until the kit lands. */
+export function buildVegetation(scene: THREE.Object3D) {
+  buildTrees(scene, TREES, locale.id === 'peak' ? 'pine' : 'mixed');
+  if (locale.id === 'peak') buildBoulders(scene);
+}
+/** The horizon for the current locale: the city for Golden Hills, the mountain range for Boulder Peak. */
+export function setBackdrop(scene: THREE.Object3D) {
+  const city = scene.getObjectByName('city');
+  let mts = scene.getObjectByName('mountains');
+  if (locale.id === 'peak' && !mts) scene.add((mts = buildMountains([20, 220], SUN_AZ)));
+  if (city) city.visible = locale.id !== 'peak';
+  if (mts) mts.visible = locale.id === 'peak';
+  // the light and the sky: Golden Hills is a low golden sun in haze; Boulder Peak is a clear, cool mountain afternoon
+  const peak = locale.id === 'peak',
+    root = scene as THREE.Scene,
+    hemi = root.children.find(o => (o as THREE.HemisphereLight).isHemisphereLight) as THREE.HemisphereLight | undefined,
+    sun = root.children.find(o => (o as THREE.DirectionalLight).isDirectionalLight) as THREE.DirectionalLight | undefined,
+    sky = root.getObjectByName('sky');
+  let dome = root.getObjectByName('peakSky');
+  if (peak && !dome) {
+    const R = 1480,
+      g = new THREE.SphereGeometry(R, 32, 18),
+      p = g.attributes.position,
+      cols: number[] = [],
+      zen = new THREE.Color('#4f86c6'),
+      mid = new THREE.Color('#9cc2e2'),
+      hor = new THREE.Color('#e4ecf0'),
+      warm = new THREE.Color('#ffe3b8'),
+      c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i) / R,
+        // a little warmth low in the west, where the sun is going down
+        w = Math.max(0, Math.cos(Math.atan2(p.getX(i), p.getZ(i)) - SUN_AZ)) ** 3 * Math.max(0, 1 - Math.abs(y) * 4);
+      c.copy(hor)
+        .lerp(mid, Math.min(1, Math.max(0, y) * 3.2))
+        .lerp(zen, Math.min(1, Math.max(0, y - 0.25) * 1.6))
+        .lerp(warm, w * 0.7);
+      cols.push(c.r, c.g, c.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    dome = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+    dome.name = 'peakSky';
+    dome.renderOrder = -10;
+    root.add(dome);
+  }
+  if (dome) dome.visible = peak;
+  if (sky) sky.visible = !peak;
+  if (hemi) {
+    hemi.color.set(peak ? '#dce8f4' : '#f6d3a4');
+    hemi.groundColor.set(peak ? '#56624e' : '#4a3c26');
+    hemi.intensity = peak ? 1.05 : 0.9;
+  }
+  if (sun) {
+    sun.color.set(peak ? '#fff0d6' : '#ffbf78');
+    sun.intensity = peak ? 3.5 : 4.0;
+  }
+  if (root.fog) {
+    const f = root.fog as THREE.Fog;
+    f.color.set(peak ? '#cfd8de' : HAZE);
+    f.near = peak ? 140 : 90;
+    f.far = peak ? 760 : 520;
+  }
+}
+
+/** Set dressing behind the tee (same for every hole: the tee is always at the origin): clubhouse, parking lot with
+ *  90s cars, power line along the road, a crate or two, the far ground plane and the horizon. */
+export async function buildDressing(scene: THREE.Scene) {
+  const lot = new THREE.Mesh(new THREE.PlaneGeometry(46, 22).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#6a655c' }));
+  lot.position.set(-6, heightAt(-6, -34) + 0.03, -34);
+  lot.receiveShadow = true;
+  scene.add(lot);
+  const club = (await loadAsset('bld_clubhouse')).scene;
+  club.position.set(14, heightAt(14, -26), -26);
+  club.rotation.y = Math.PI;
+  scene.add(club);
+  const cars = ['veh_sedan', 'veh_wagon', 'veh_sedan', 'veh_wagon', 'veh_sedan'];
+  for (let i = 0; i < cars.length; i++) {
+    const car = (await loadAsset(cars[i])).scene;
+    car.position.set(-24 + i * 4.2, heightAt(-24 + i * 4.2, -40), -40);
+    car.rotation.y = (Math.PI / 2) * (i % 2 ? 1 : -1) + Math.PI / 2;
+    scene.add(car);
+  }
+  const wires: THREE.Vector3[] = [];
+  for (let x = -60; x <= 60; x += 20) {
+    const pole = (await loadAsset('prop_power_pole')).scene;
+    const y = heightAt(x, -48);
+    pole.position.set(x, y, -48);
+    scene.add(pole);
+    wires.push(new THREE.Vector3(x - 1, y + 8.45, -48), new THREE.Vector3(x + 1, y + 8.45, -48));
+  }
+  const wm = new THREE.LineBasicMaterial({ color: '#1e1a16' });
+  for (let k = 0; k < 2; k++)
+    for (let i = 0; i < wires.length / 2 - 1; i++) {
+      const a = wires[i * 2 + k],
+        b = wires[i * 2 + 2 + k],
+        pts: THREE.Vector3[] = [];
+      for (let s = 0; s <= 12; s++) {
+        const t = s / 12;
+        pts.push(new THREE.Vector3().lerpVectors(a, b, t).add(new THREE.Vector3(0, -Math.sin(Math.PI * t) * 0.9, 0)));
+      }
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wm));
+    }
+  for (const [x, z] of [
+    [4, -21],
+    [5.2, -21.4],
+  ]) {
+    const cr = (await loadAsset('prop_crate')).scene;
+    cr.position.set(x, heightAt(x, z), z);
+    cr.rotation.y = x;
+    scene.add(cr);
+  }
+  /* the city skyline behind every course: art-deco towers toward the sunset, a ring of brick towers all round */
+  buildCity(scene, { center: [20, 220], keepOut: 0, sunAz: SUN_AZ, rings: [470, 640], tall: 1.5 });
+  setBackdrop(scene); // (this runs after the first hole has loaded: the city must not show behind Boulder Peak)
+}
+/** Chain-link fence along the right-hand OB line of the current hole. */
+export function buildFence(scene: THREE.Object3D) {
+  // chain-link fence down the right side (OB line) — instanced posts + a translucent mesh panel
+  const posts: THREE.Vector3[] = [];
+  for (const p of CENTER_PTS) {
+    if (Math.round(p.along) % 6) continue;
+    const i = CENTER_PTS.indexOf(p),
+      q = CENTER_PTS[Math.min(i + 1, CENTER_PTS.length - 1)],
+      r = CENTER_PTS[Math.max(i - 1, 0)];
+    const dx = q.x - r.x,
+      dz = q.z - r.z,
+      L = Math.hypot(dx, dz) || 1;
+    const x = p.x - (-dz / L) * COURSE.obDist * -1,
+      z = p.z - (dx / L) * COURSE.obDist * -1;
+    if (centerInfo(x, z).d > COURSE.obDist - 1) posts.push(new THREE.Vector3(x, heightAt(x, z), z));
+  }
+  const pm = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.04, 0.04, 2.2, 5).translate(0, 1.1, 0),
+    new THREE.MeshStandardMaterial({ color: '#9a9a94', metalness: 0.6, roughness: 0.5 }),
+    posts.length,
+  );
+  posts.forEach((v, i) => pm.setMatrixAt(i, new THREE.Matrix4().makeTranslation(v.x, v.y, v.z)));
+  scene.add(pm);
+  const fenceTex = chainLinkTexture();
+  for (let i = 0; i < posts.length - 1; i++) {
+    const a = posts[i],
+      b = posts[i + 1],
+      L = a.distanceTo(b);
+    if (L > 12) continue;
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(L, 2.1),
+      new THREE.MeshStandardMaterial({ map: fenceTex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, metalness: 0.5, roughness: 0.6 }),
+    );
+    panel.position.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 1.05, (a.z + b.z) / 2);
+    panel.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+    scene.add(panel);
+  }
+}
+function chainLinkTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d')!;
+  x.strokeStyle = 'rgba(190,190,182,1)';
+  x.lineWidth = 2;
+  for (let i = -64; i < 128; i += 12) {
+    x.beginPath();
+    x.moveTo(i, 0);
+    x.lineTo(i + 64, 64);
+    x.stroke();
+    x.beginPath();
+    x.moveTo(i + 64, 0);
+    x.lineTo(i, 64);
+    x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4, 2);
+  return t;
+}
