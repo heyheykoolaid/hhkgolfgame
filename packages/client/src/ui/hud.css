@@ -452,3 +452,5 @@ body.warding #controls{right:auto;left:12px;top:auto;bottom:12px;transform:none;
 #lstash .invgrid.clothes .slot{aspect-ratio:auto;min-height:62px;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center}
 #lstash .invgrid.clothes .cn{font:700 13px Inter,sans-serif}
 #lstash .invgrid.clothes em{position:static;font:500 10px Inter,sans-serif;opacity:.6;text-shadow:none}
+.shop .aisles button{font:600 12px/1 inherit;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:rgba(255,236,200,.07);color:#f3e6cc;cursor:pointer}
+.shop .aisles button:hover{background:rgba(255,210,122,.22);border-color:var(--gold)}

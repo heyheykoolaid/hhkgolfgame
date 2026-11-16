@@ -509,9 +509,16 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     col(x0, x1, z0, z0 + 0.3);
     col(x0 + 3.35, x0 + 3.85, z1 - 0.5, z1, 'sign');
     col(x1 - 3.85, x1 - 3.35, z1 - 0.5, z1, 'sign');
-    col(-78.25, x1, z0, 2.15, 'bench'); // the counter and everything behind it
-    col(x0, -82.55, z0, z1 - 2.5, 'bench'); // the booths
-    col(-74.3, x1, 2.15, 4.7, 'bench'); // crates by the bar's end
+    // the room's furniture, piece by piece (scene coordinates, moved by BAR), so you can walk right up to a booth
+    const bcol = (bx0: number, bx1: number, bz0: number, bz1: number) =>
+      col(bx0 + BAR.x, bx1 + BAR.x, Math.max(z0, bz0 + BAR.z), bz1 + BAR.z, 'bench');
+    bcol(-1.05, 5.3, -27, -15.6); // the counter and everything behind it
+    bcol(3, 5.3, -15.6, -12); // the wall at the bar's end
+    bcol(1.4, 3, -14.4, -12.6); // crates
+    for (const bz of [-12.8, -14.8, -15.8, -17.8, -21.8, -23.8, -24.8]) bcol(-7.8, -6.2, bz - 0.4, bz + 0.4); // benches
+    for (const bz of [-13.8, -16.8, -22.8, -25.8]) bcol(-8, -6.05, bz - 0.45, bz + 0.45); // their tables
+    for (const bz of [-12.3, -15.3, -18.3, -21.3, -24.3]) bcol(-8.3, -6, bz - 0.08, bz + 0.08); // the partitions between booths
+    bcol(-8.3, -5.3, -21.3, -18.3); // the shrine in its alcove
     // pictures on the walls ("Paintings and Posters Collection", Melon Polygons, CC BY 4.0; see docs/credits.md).
     // The pack is one welded mesh: the loader cuts it into separate frames (Art00, Art01… biggest first).
     void loadProps('paintings', n => n, 'Art').then(kit => {
@@ -539,7 +546,10 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     });
     // slot machines and video poker along the back wall (lobby/vlt.ts)
     const xs = [-82.0, -81.05, -80.1, -79.15];
-    vltSpots = buildMachines(G, xs, z0 + 0.72, WEST_OFF);
+    const floor = new THREE.Group(); // (the machines and their stools stand on the parquet, not under it)
+    floor.position.y = BAR.y - 0.02;
+    G.add(floor);
+    vltSpots = buildMachines(floor, xs, z0 + 0.72, { x: WEST_OFF.x, y: WEST_OFF.y + BAR.y - 0.02 });
     for (const mx of xs) col(mx - 0.4, mx + 0.4, z0 + 0.3, z0 + 1.15, 'bench');
   }
   // 3 · the alley between the lounge and the store, where the Street Dealer does business (lobby/dealer.ts)

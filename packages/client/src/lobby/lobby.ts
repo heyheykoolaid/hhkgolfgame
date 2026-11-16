@@ -1687,10 +1687,11 @@ export function createLobby(env: LobbyEnv) {
     openModal(
       title,
       `<div class="shop"><div class="shophead"><p class="muted">${keeper}</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
+       ${groups.length > 4 ? `<div class="aisles" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px">${groups.map((gr, i) => `<button class="chip" data-aisle="${i}">${gr}</button>`).join('')}</div>` : ''}
        ${groups
          .map(
-           gr =>
-             `<h3>${gr}</h3><div class="goods">${list
+           (gr, gi) =>
+             `<h3 data-aisle-h="${gi}">${gr}</h3><div class="goods">${list
                .filter(g => g.group === gr)
                .map(
                  g => `<div class="good"><div class="gi">${g.icon}</div><div class="gt"><b>${g.name}</b><p>${g.desc}</p><em>${g.have}</em></div>
@@ -1702,6 +1703,13 @@ export function createLobby(env: LobbyEnv) {
        ${note ? `<p class="muted" style="margin-top:10px">${note}</p>` : ''}</div>`,
     );
     $('lmodal').querySelector('.card')?.classList.add('wide');
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-aisle]')
+      .forEach(
+        b =>
+          (b.onclick = () =>
+            $('lmodal').querySelector(`[data-aisle-h="${b.dataset.aisle}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
+      );
     $('lmodal')
       .querySelectorAll<HTMLButtonElement>('[data-buy]')
       .forEach(
@@ -1753,25 +1761,53 @@ export function createLobby(env: LobbyEnv) {
       );
   }
   /** Homestead Furniture (West Side): everything for your lot. Bought pieces go to the lot's storage (Build Mode). */
+  /** Which aisle of the furniture store a piece is in (by what it is called; the first match wins). */
+  const AISLES: [string, RegExp][] = [
+    ['For the cart', /garage/i],
+    ['Floors, fences and screens', /rug|deck|stepping|gravel|fence|screen|putting green/i],
+    ['Plants', /plant|palm|cactus|agave|fern|succulent|planter/i],
+    ['Lighting', /lamp|lights|torch|lantern|neon/i],
+    ['Seating', /chair|bench|sofa|stool|booth|hammock/i],
+    ['Tables and desks', /table|desk/i],
+    ['Bedroom and storage', /bed|wardrobe|cupboard|bookcase|shelves|coat|crate|box|basket/i],
+    ['Kitchen and appliances', /fridge|stove|washing|grill|cooler|television|fish tank|fan|bin|propane/i],
+    ['Yard fun', /pool|umbrella|fire pit|windmill|bird bath|flamingo|gnome|flag|statue|guitar|sign/i],
+  ];
+  const AISLE_ORDER = [
+    'Seating',
+    'Tables and desks',
+    'Bedroom and storage',
+    'Kitchen and appliances',
+    'Lighting',
+    'Plants',
+    'Yard fun',
+    'Floors, fences and screens',
+    'Odds and ends',
+    'For the cart',
+  ];
+  const aisle = (def: { name: string; cat: string }) =>
+    def.cat === 'garage' ? 'For the cart' : AISLES.find(a => a[1].test(def.name))?.[0] || 'Odds and ends';
   const openFurniture = async () => {
     await loadItemModels().catch(() => 0); // (the pictures are drawn from the models)
     return openShop(
       'Homestead Furniture',
       '"Take your time. It all goes home with you: we deliver to your lot\'s storage."',
       pr =>
-        ITEMS.filter(i => i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage').map(def => {
-          const own = pr.gear[def.id] || 0;
-          return {
-            id: def.id,
-            icon: `<img src="${thumb(def, '#c8452f')}" alt="">`,
-            name: def.name,
-            desc: def.cat === 'garage' ? 'Keeps your cart at home. One per lot.' : def.cat === 'furniture' ? 'Furniture' : 'Decoration',
-            price: def.price,
-            have: own ? `You own ${own}` : '',
-            sold: !!def.max && own >= def.max,
-            group: def.cat === 'furniture' ? 'Furniture' : def.cat === 'decor' ? 'Decoration' : 'For the cart',
-          };
-        }),
+        ITEMS.filter(i => i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage')
+          .sort((a, b) => AISLE_ORDER.indexOf(aisle(a)) - AISLE_ORDER.indexOf(aisle(b)))
+          .map(def => {
+            const own = pr.gear[def.id] || 0;
+            return {
+              id: def.id,
+              icon: `<img src="${thumb(def, '#c8452f')}" alt="">`,
+              name: def.name,
+              desc: def.cat === 'garage' ? 'Keeps your cart at home. One per lot.' : def.cat === 'furniture' ? 'Furniture' : 'Decoration',
+              price: def.price,
+              have: own ? `You own ${own}` : '',
+              sold: !!def.max && own >= def.max,
+              group: aisle(def),
+            };
+          }),
       "Bought pieces wait in your lot's storage. Press <kbd>B</kbd> on your own lot to place them; taking one off the lot puts it back in storage.",
     );
   };
