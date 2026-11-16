@@ -3,9 +3,10 @@
 // prompt that says what E does. golfMode.ts owns the physics world, the avatars and the shot; this owns where you
 // are (`W`) and your cart. Carts themselves are vehicles/vehicles.ts.
 import * as THREE from 'three';
-import { COURSE, heightAt, clamp, treesNear, pondPd, WATER_Y, CART_SLOTS } from '@gh/shared';
+import { COURSE, heightAt, surfaceAt, clamp, treesNear, pondPd, WATER_Y, CART_SLOTS } from '@gh/shared';
 import { myVehicleKind, type Vehicle } from '../vehicles/vehicles';
 import { progress } from '../avatar/progress';
+import { speedo } from '../ui/speedo';
 import { Flop, type PhysWorld } from '../physics/ragdoll';
 import type { GameNet } from '../net/types';
 
@@ -171,6 +172,7 @@ export function createRoaming(host: RoamHost) {
     } else if (S.phase !== 'drive') W.spd = 0;
     W.gy = heightAt(W.x, W.z);
     // ---- the cart
+    speedo(S.phase === 'drive' && cart ? cart : null);
     if (cart) {
       const driving = S.phase === 'drive';
       const inp = driving
@@ -181,6 +183,8 @@ export function createRoaming(host: RoamHost) {
             boost: k('ShiftLeft') || k('ShiftRight'),
           }
         : { throttle: 0, steer: 0, brake: true };
+      const lie = surfaceAt(cart.root.position.x, cart.root.position.z);
+      cart.terrain = lie === 'path' || lie === 'tee' ? 0 : lie === 'fairway' ? 0.35 : lie === 'green' ? 0.2 : lie === 'sand' ? 1.4 : 1; // (cars mind the rough; the golf cart doesn't)
       cart.drive(dt, inp);
       const sp = Math.abs(cart.speed()),
         cp = cart.root.position;

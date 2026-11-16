@@ -79,7 +79,7 @@ import {
 import { colorFor } from '../avatar/colors';
 import { TrophyView } from '../world/trophy';
 import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
-import { vehicleKind, cleanKind, type Vehicle } from '../vehicles/vehicles';
+import { vehicleKind, cleanKind, DRIVE_FX, type Vehicle } from '../vehicles/vehicles';
 import { Grass, type GrassKind } from '../world/grass';
 import { stepLength } from '../characters/golfer';
 
@@ -1618,6 +1618,7 @@ export function createGolf(env: GolfEnv) {
           ? {
               speed: roam.cart.speed(),
               drift: roam.cart.drifting?.() || 0,
+              engine: roam.cart.engine?.() || null,
               throttle: (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0),
             }
           : null,
@@ -1795,7 +1796,11 @@ export function createGolf(env: GolfEnv) {
     }
     camera.lookAt(camLook);
     // lens: creeps in as power builds, punches out at impact
-    const wantFov = 52 - (S.phase === 'power' || S.phase === 'acc' ? 3 * Math.min(1, S.phase === 'power' ? S.power : S.p0) : 0) + fovPunch;
+    const wantFov =
+      52 -
+      (S.phase === 'power' || S.phase === 'acc' ? 3 * Math.min(1, S.phase === 'power' ? S.power : S.p0) : 0) +
+      fovPunch +
+      (S.phase === 'drive' ? DRIVE_FX.fov : 0);
     fovPunch *= Math.exp(-dt * 7);
     if (Math.abs(camera.fov - wantFov) > 0.01) {
       camera.fov += (wantFov - camera.fov) * (1 - Math.exp(-dt * 10));

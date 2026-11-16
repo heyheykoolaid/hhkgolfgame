@@ -11,6 +11,7 @@ const ROWS: [string, [string, string, string][]][] = [
       ['Storage shelves and boxes', 'teacherap123', '"PSX Storage Shelves & Cardboard Boxs" · CC BY 4.0'],
       ['Cars and the delivery van', 'PorscheAaron', '"54 Vehicle Pack" · CC BY 4.0'],
       ['Alley props', 'Tomitos', '"PSX Industrial Pack" · CC BY 4.0'],
+      ['Car handling, gearbox and engine-sound model (adapted)', 'OpenUG2 contributors', 'OpenUG2 · MIT License'],
       ['Pictures in the lounge', 'Melon Polygons', '"Paintings and Posters Collection" · CC BY 4.0'],
       ['Golfers, clothes and hair', 'MakeHuman community', 'CC0'],
       ['Lot furniture, textures, sky', 'Poly Haven', 'CC0'],

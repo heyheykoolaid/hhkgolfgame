@@ -13,6 +13,11 @@ Third-party work in Golden Hills, and what the game's credits screen must list. 
 | Twenty-three pieces of lot furniture sold at Homestead Furniture (sofa, armchair, dining set, bed, wardrobe, fish tank, television unit, desk, kitchen appliances, lamps, plants, rug, guitar) | House Interior \| PS1 Asset Pack | McPato | CC BY 4.0 | https://sketchfab.com/3d-models/house-interior-ps1-asset-pack-7fc3cef2c6ce43cc98a27ad975044811 |
 | Storage shelves and the cardboard box sold at Homestead Furniture | PSX Storage Shelves & Cardboard Boxs | teacherap123 | CC BY 4.0 | https://sketchfab.com/3d-models/psx-storage-shelves--cardboard-boxs-1a1972efe1ec4bd2a4a397bc32cfc2d8 |
 
+## Code adapted from other projects
+| Used for | Project | Authors | License | Source |
+|---|---|---|---|---|
+| How cars drive (per-car profile from measurements, tapering pull, speed-sensitive steering, off-road cost, body lean), the six-speed gearbox and the synthesized engine sound. Re-written in TypeScript for this game's physics; no game data, models or sounds were taken. | OpenUG2 (`src/physics.c`, `src/audio.c`) | OpenUG2 contributors | MIT (text in `docs/third-party/OpenUG2-LICENSE.txt`) | https://github.com/whoismept/OpenUG2 |
+
 ## Supplied by the user, not in the game yet
 Decision (Nov 16): use the CC BY packs; leave out the two Sketchfab Standard packs and the two tracks.
 

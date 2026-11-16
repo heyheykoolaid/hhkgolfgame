@@ -22,7 +22,19 @@ import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
 import { colorFor } from '../avatar/colors';
 import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed, thumb } from './build';
-import { vehicleKind, cartModel, CARS, CAR, CAR_PAINTS, CAR_RIMS, carModel, loadCarKit, type Vehicle, type VehState } from '../vehicles/vehicles';
+import {
+  vehicleKind,
+  cartModel,
+  DRIVE_FX,
+  CARS,
+  CAR,
+  CAR_PAINTS,
+  CAR_RIMS,
+  carModel,
+  loadCarKit,
+  type Vehicle,
+  type VehState,
+} from '../vehicles/vehicles';
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
   buildLobby,
@@ -66,6 +78,7 @@ import { TRAILS } from '../avatar/trails';
 import type { Shop } from './wardrobe';
 import { ITEMS, loadItemModels } from './catalog';
 import { objectImage } from '../world/trophy';
+import { speedo } from '../ui/speedo';
 import { invIcon } from './invIcons';
 import { PAPERS_PRICE, GRINDER_PRICE } from './dealer';
 import { tickWater } from '../world/water';
@@ -2509,6 +2522,7 @@ export function createLobby(env: LobbyEnv) {
     if (grounded) P.phase += ((dt * P.spd) / stride) * Math.PI;
     if (grounded && P.spd > 0.5 && Math.floor(before / Math.PI) !== Math.floor(P.phase / Math.PI))
       ambience.step(surfaceOf(P.x, P.z), Math.min(1, P.spd / 6.4));
+    speedo(P.mode === 'drive' && cart.car ? cart.car : null);
     if (cart.car) {
       // my cart: driven by me, or parked wherever I left it
       const driving = P.mode === 'drive' && !flop;
@@ -2520,6 +2534,8 @@ export function createLobby(env: LobbyEnv) {
             boost: !!(keys.ShiftLeft || keys.ShiftRight),
           }
         : { throttle: 0, steer: 0, brake: true };
+      const under = surfaceOf(cart.car.root.position.x, cart.car.root.position.z);
+      cart.car.terrain = under === 'grass' ? 1 : under === 'gravel' ? 0.3 : 0; // (cars mind leaving the road; the golf cart doesn't)
       cart.car.drive(dt, inp);
       const sp = Math.abs(cart.car.speed()),
         cp = cart.car.root.position;
@@ -2780,7 +2796,7 @@ export function createLobby(env: LobbyEnv) {
         camPos.copy(tmp);
         camLook.copy(look2);
       }
-      const wantFov = 55 + 6 * clamp((P.aspd - 3.7) / 2.7, 0, 1);
+      const wantFov = 55 + 6 * clamp((P.aspd - 3.7) / 2.7, 0, 1) + (P.mode === 'drive' ? DRIVE_FX.fov : 0);
       P.fov += (wantFov - P.fov) * (1 - Math.exp(-dt * 4));
       if (Math.abs(camera.fov - P.fov) > 0.02) {
         camera.fov = P.fov;
@@ -2906,6 +2922,7 @@ export function createLobby(env: LobbyEnv) {
               speed: cart.car.speed(),
               drift: cart.car.drifting?.() || 0,
               kart: cart.car.kind === 'kart',
+              engine: cart.car.engine?.() || null,
               throttle: (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0),
             }
           : null,

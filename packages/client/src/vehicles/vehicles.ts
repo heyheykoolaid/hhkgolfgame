@@ -46,6 +46,10 @@ export interface Vehicle {
   /** remote side: follow the owner's reported state */
   follow(st: VehState, dt: number): void;
   placeAt(x: number, y: number, z: number, yaw: number): void;
+  /** How rough the ground under it is, set by whoever drives it: 0 road … 1 long grass (more for sand). Cars care; carts don't. */
+  terrain?: number;
+  /** A car's engine right now (revs, gear with 0 = reverse, load 0–1, how deep or high its voice is); null for electric things. */
+  engine?(): { rpm: number; gear: number; load: number; tone: number } | null;
   dispose(): void;
 }
 export interface VehicleKind {
@@ -853,6 +857,10 @@ export interface CarSpec {
   /** top speed and pull against the golf cart's */
   speed: number;
   power: number;
+  /** how little it minds leaving the road: 0 a low sedan … 1 a 4×4 (default 0.3) */
+  offroad?: number;
+  /** the engine's voice: 1 a four-cylinder car, lower for trucks, higher for motorcycles */
+  tone?: number;
   /** a bigger body on bigger wheels (the monster truck): body scale, and its lift off the ground */
   scale?: number;
   lift?: number;
@@ -987,7 +995,65 @@ export const CARS: CarSpec[] = [
     cabH: 2.6,
   }),
 ];
+/** Each car's character off the road and in the ear: [how little it minds rough ground, the pitch of its engine]. */
+const FEEL: Record<string, [number, number]> = {
+  rusty: [0.7, 0.85],
+  dirt: [1, 1.9],
+  sedan: [0.2, 0.9],
+  town: [0.25, 1],
+  van: [0.35, 0.8],
+  cruiser: [0.15, 1.35],
+  classic: [0.7, 0.8],
+  yacht: [0.1, 0.75],
+  sport: [0, 1.2],
+  fourby: [1, 0.8],
+  tow: [0.6, 0.7],
+  ambulance: [0.4, 0.7],
+  monster: [1, 0.55],
+};
+for (const c of CARS) [c.offroad, c.tone] = FEEL[c.id] || [0.3, 1];
 export const CAR = new Map(CARS.map(c => [c.id, c]));
+
+// ---- how a car drives, worked out from its own measurements --------------------------------------------------------
+// The handling model below (the per-car profile from geometry, thrust that tapers toward top speed, steering that eases
+// off at speed, the off-road surface profile, cosmetic body lean, and the six-speed gearbox that feeds the engine
+// sound) is adapted from OpenUG2's arcade driving model (src/physics.c, src/audio.c; MIT, copyright (c) 2026 OpenUG2
+// contributors; see docs/third-party/OpenUG2-LICENSE.txt), rewritten for this game's wheel-and-spring physics. The
+// normalising figures are our own fleet's medians, not theirs.
+const FLEET = { vol: 12.5, h: 1.45, wb: 2.75, track: 1.6, tyre: 0.22 };
+const lim = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+export interface CarProfile {
+  accel: number; // pull: lighter (smaller) bodies get away quicker
+  brake: number;
+  steer: number; // a short wheelbase turns in harder
+  grip: number; // wide tyres on a wide track hold on longer
+  roll: number; // how much a tall, narrow body leans
+  pitch: number; // how much a tall, short body squats and dives
+}
+export function carProfile(c: CarSpec): CarProfile {
+  const [L, W, H] = c.size,
+    wb = c.axles[0] - c.axles[1],
+    track = c.bike ? 0.7 : c.tyre[0] + c.tyre[1],
+    tyre = c.tyre[0] - c.tyre[1],
+    m = Math.sqrt(FLEET.vol / (L * W * H)); // (the square root keeps a van from being three times slower than a bike)
+  return {
+    accel: lim(m, 0.75, 1.25),
+    brake: lim(m, 0.75, 1.25),
+    steer: lim(FLEET.wb / wb, 0.8, 1.2),
+    grip: c.bike ? 1 : lim(Math.sqrt(tyre / FLEET.tyre) * Math.pow(track / FLEET.track, 0.25), 0.9, 1.1),
+    roll: lim(H / track / (FLEET.h / FLEET.track), 0.7, 1.4),
+    pitch: lim(H / wb / (FLEET.h / FLEET.wb), 0.7, 1.4),
+  };
+}
+/** What the car you're driving wants from the camera this frame: extra degrees of lens as the speed builds. */
+export const DRIVE_FX = { fov: 0 };
+const GEAR_RATIO = [0, 130, 82, 56, 41, 32, 25], // revs per unit of speed in each gear; sixth at full speed sits just under the red line
+  RATIO_SCALE = 6800 / 25,
+  IDLE_RPM = 1000,
+  UPSHIFT_RPM = 7000,
+  DOWNSHIFT_RPM = 3200,
+  REDLINE_RPM = 8000,
+  SHIFT_S = 0.15; // the clutch is in: no pull, and the revs sag
 /** Paint and rim colours the auto shop offers ('' = as it left the factory). */
 export const CAR_PAINTS = ['', 'e23b2f', 'f08a1c', 'f2cf3a', '5fae4a', '2f8fa8', '3a57c8', '8a4fc0', 'e86aa6', '4a4a50', 'f4f1ea'];
 export const CAR_RIMS = ['c9ccd0', '1d1d1f', 'e2b23a', 'c8452f', 'f4f1ea', '2f8fa8'];
@@ -1050,6 +1116,9 @@ export function carModel(spec: CarSpec, paint = '', rim = '') {
   return { root, body, wheels, wheel: new THREE.Object3D() as THREE.Object3D };
 }
 
+const _mk = new THREE.Vector3(),
+  _mk2 = new THREE.Vector3(),
+  _mq = new THREE.Quaternion();
 class Cart implements Vehicle {
   kind: string = 'cart';
   name: string = 'Golf cart';
@@ -1076,6 +1145,14 @@ class Cart implements Vehicle {
   private hx = 1.18;
   private hz = 0.6;
   private fixedW = false; // a car's wheels ride with its body (they stand over the wheels modelled into it)
+  private prof: CarProfile = { accel: 1, brake: 1, steer: 1, grip: 1, roll: 1, pitch: 1 };
+  terrain = 0;
+  private gear = 1;
+  private rpm = IDLE_RPM;
+  private shiftT = 0;
+  private load = 0;
+  private marks: { mesh: THREE.Mesh; pos: Float32Array; col: Float32Array; age: Float32Array; i: number; last: (THREE.Vector3 | null)[] } | null =
+    null;
   private remoteSpeed = 0;
   private tp = V();
   private tq = new THREE.Quaternion();
@@ -1113,6 +1190,7 @@ class Cart implements Vehicle {
       this.hx = (spec.size[0] / 2) * 0.95;
       this.hz = spec.bike ? 0.36 : (spec.size[1] / 2) * 0.9;
       this.fixedW = true;
+      this.prof = carProfile(spec);
     }
     if (kart) {
       this.kind = 'kart';
@@ -1168,8 +1246,19 @@ class Cart implements Vehicle {
           i = this.inp,
           K = this.spec?.power ?? 1,
           S = this.spec?.speed ?? 1,
+          car = this.spec,
+          PF = this.prof,
+          rough = car ? Math.max(0, this.terrain) * (1 - (car.offroad ?? 0.3)) : 0, // how much this ground costs this car
+          vmax = 19 * S, // flat out with the pedal buried: the top of sixth gear
+          grip = car ? PF.grip * (1 - 0.3 * Math.min(1, rough)) : 1,
           // a kart is tuned to its little track: quick off the line and through the hairpins, but a modest top speed
-          top = this.kart ? (this.drift ? 10.5 : i.boost ? 13.8 : 11.6) : (this.boostT > 0 ? 23 : i.boost ? 19 : 14) * S;
+          top = this.kart
+            ? this.drift
+              ? 10.5
+              : i.boost
+                ? 13.8
+                : 11.6
+            : (this.boostT > 0 ? 23 : i.boost ? 19 : 14) * S * (1 - 0.5 * Math.min(1, rough));
         // steering: quick at walking pace, calmer at speed, returns to centre on its own
         // drift: starts when the brake goes down mid-turn at speed, ends when it comes up (boost!) or the cart slows right down
         if (!this.drift && i.brake && Math.abs(i.steer) > 0.3 && sp > (this.kart ? 4.5 : 6.5) && i.throttle >= 0) {
@@ -1184,12 +1273,15 @@ class Cart implements Vehicle {
         const D = this.drift;
         this.boostT = Math.max(0, this.boostT - dt);
         if (D && !this.kart) this.charge += dt * (0.7 + 0.5 * Math.max(0, i.steer * D));
-        for (const k of [2, 3]) v.setWheelSideFrictionStiffness(k, D ? (this.kart ? 0.46 : 0.38) : this.kart ? 1.5 : 1.1); // the back end lets go
+        for (const k of [2, 3]) v.setWheelSideFrictionStiffness(k, D ? (this.kart ? 0.46 : 0.38) : (this.kart ? 1.5 : 1.1) * grip); // the back end lets go
+        if (car) for (const k of [0, 1]) v.setWheelSideFrictionStiffness(k, 1.15 * grip);
         if (this.kart) for (const k of [0, 1]) v.setWheelSideFrictionStiffness(k, 1.6); // a kart's front end bites
         const want = D
           ? D * (this.kart ? 0.16 : 0.3) + i.steer * (this.kart ? 0.34 : 0.3)
-          : i.steer * (this.kart ? 0.7 : 0.62) * (1 - Math.min(this.kart ? 0.35 : 0.55, Math.abs(sp) / (this.kart ? 26 : 22)));
-        this.steer += (want - this.steer) * Math.min(1, dt * (i.steer ? (this.kart ? 9 : 6) : 9));
+          : car
+            ? i.steer * 0.62 * PF.steer * (1 - 0.7 * Math.min(1, Math.abs(sp) / vmax)) * (1 - 0.25 * Math.min(1, rough)) // tight in town, wide flat out
+            : i.steer * (this.kart ? 0.7 : 0.62) * (1 - Math.min(this.kart ? 0.35 : 0.55, Math.abs(sp) / (this.kart ? 26 : 22)));
+        this.steer += (want - this.steer) * Math.min(1, dt * (i.steer ? (this.kart ? 9 : car ? 8.5 : 6) : car ? 11 : 9)); // (it centres quicker than it turns in)
         if (D && this.kart && this.body) {
           // a kart's slide holds its angle instead of curling in: the spin is capped (more when steering in, less out)
           const w = this.body.angvel(),
@@ -1199,7 +1291,8 @@ class Cart implements Vehicle {
         }
         v.setWheelSteering(0, this.steer);
         v.setWheelSteering(1, this.steer);
-        const dir = i.throttle > 0 ? (sp < top ? 1 : 0) : i.throttle < 0 ? (sp > 0.6 ? 0 : sp > -4.5 ? -1 : 0) : 0,
+        if (car) this.gearbox(dt, sp, vmax, i.throttle);
+        const dir = i.throttle > 0 ? (sp < top ? 1 : 0) : i.throttle < 0 ? (sp > 0.6 ? 0 : sp > (car ? -0.2 * vmax : -4.5) ? -1 : 0) : 0,
           force =
             this.boostT > 0
               ? 3400 * K
@@ -1207,12 +1300,21 @@ class Cart implements Vehicle {
                 (i.boost ? 2100 : 1550) *
                 K *
                 (this.kart && sp < 8 ? 1.5 : 1) *
-                (1 - Math.min(0.65, Math.abs(sp) / (top * 1.5)));
+                (car
+                  ? // punchy off the line, easing toward top speed; lighter cars pull harder; soft ground and a gear change both cost pull
+                    (1.15 - 0.55 * Math.min(1, Math.abs(sp) / top)) *
+                    PF.accel *
+                    (1 - 0.45 * Math.min(1, rough)) *
+                    (dir < 0 ? 0.7 : 1) *
+                    (this.shiftT > 0 ? 0.2 : 1)
+                  : 1 - Math.min(0.65, Math.abs(sp) / (top * 1.5)));
         v.setWheelEngineForce(2, force);
         v.setWheelEngineForce(3, force);
         const braking = (i.brake && !this.drift) || (i.throttle < 0 && sp > 0.6),
           coast = !i.throttle && !i.brake;
-        for (let k = 0; k < 4; k++) v.setWheelBrake(k, braking ? (this.kart ? 30 : 22) : coast ? (this.kart ? 5 : 2.2) : 0); // a kart sheds speed when you lift, to set up the corner
+        const over = car && sp > top * 1.04; // faster than this ground allows: it scrubs off at about braking pace
+        for (let k = 0; k < 4; k++)
+          v.setWheelBrake(k, braking ? (this.kart ? 30 : car ? 30 * PF.brake : 22) : over ? 14 : coast ? (this.kart ? 5 : car ? 3.2 : 2.2) : 0); // a kart sheds speed when you lift, to set up the corner
         v.updateVehicle(dt, undefined, groups);
         if (D) {
           // hold the slide: turn at a steady rate set by the stick (tighter when steering in, wider when steering out)
@@ -1249,6 +1351,101 @@ class Cart implements Vehicle {
       );
       this.body = b;
     }
+  }
+  /** A six-speed automatic: revs follow the speed in the current gear; it changes up near the red line and down when
+   *  the revs fall away, and each change up is a short moment with the clutch in. */
+  private gearbox(dt: number, sp: number, vmax: number, throttle: number) {
+    if (this.shiftT > 0) {
+      this.shiftT -= dt;
+      this.load = 0;
+      this.rpm += (IDLE_RPM - this.rpm) * Math.min(1, dt * 11);
+      return;
+    }
+    const frac = Math.min(1, Math.abs(sp) / vmax),
+      at = (g: number) => IDLE_RPM + frac * GEAR_RATIO[g] * RATIO_SCALE;
+    let target = at(this.gear);
+    if (target > UPSHIFT_RPM && this.gear < 6) {
+      this.gear++;
+      this.shiftT = SHIFT_S;
+      return;
+    }
+    if (target < DOWNSHIFT_RPM && this.gear > 1) {
+      this.gear--;
+      target = at(this.gear);
+    }
+    this.load = throttle > 0 ? 1 : throttle < 0 && sp < 0.5 ? 0.6 : 0;
+    this.rpm += (Math.min(REDLINE_RPM, target + (this.load && frac < 0.03 ? 1400 : 0)) - this.rpm) * Math.min(1, dt * 9); // (a blip when you floor it from rest)
+  }
+  engine() {
+    return this.spec ? { rpm: this.rpm, gear: this.speed() < -0.4 ? 0 : this.gear, load: this.load, tone: this.spec.tone ?? 1 } : null;
+  }
+  /** Tyre marks: dark strips laid under the back wheels while the car slides, fading over a quarter of a minute. */
+  private marksStep(dt: number, sliding: boolean) {
+    const N = 220;
+    if (!this.marks) {
+      if (!this.root.parent) return;
+      const pos = new Float32Array(N * 18),
+        col = new Float32Array(N * 24),
+        g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+      const mesh = new THREE.Mesh(
+        g,
+        new THREE.MeshBasicMaterial({
+          color: '#141210',
+          vertexColors: true,
+          transparent: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      );
+      mesh.frustumCulled = false;
+      mesh.userData.noBatch = true;
+      this.root.parent.add(mesh);
+      this.marks = { mesh, pos, col, age: new Float32Array(N).fill(99), i: 0, last: [null, null] };
+    }
+    const M = this.marks,
+      ct = this.contacts(),
+      hw = this.spec ? (this.spec.tyre[0] - this.spec.tyre[1]) / 2 + 0.02 : 0.09,
+      side = _mk.set(0, 0, 1).applyQuaternion(this.root.quaternion).multiplyScalar(hw);
+    for (let w = 0; w < 2; w++) {
+      const p = ct[2 + w],
+        on = sliding && !!this.vc?.wheelIsInContact(2 + w),
+        last = M.last[w];
+      if (!on) {
+        M.last[w] = null;
+        continue;
+      }
+      if (!last) {
+        M.last[w] = p.clone();
+        continue;
+      }
+      if (last.distanceToSquared(p) < 0.09) continue; // a new piece every 30 cm
+      const k = (M.i = (M.i + 1) % N),
+        y0 = last.y + 0.03,
+        y1 = p.y + 0.03,
+        q = [
+          [last.x - side.x, y0, last.z - side.z],
+          [last.x + side.x, y0, last.z + side.z],
+          [p.x + side.x, y1, p.z + side.z],
+          [last.x - side.x, y0, last.z - side.z],
+          [p.x + side.x, y1, p.z + side.z],
+          [p.x - side.x, y1, p.z - side.z],
+        ];
+      q.forEach((v, j) => M.pos.set(v, k * 18 + j * 3));
+      M.age[k] = 0;
+      last.copy(p);
+    }
+    for (let k = 0; k < N; k++) {
+      if (M.age[k] > 16) continue;
+      M.age[k] += dt;
+      const a = M.age[k] > 16 ? 0 : 0.55 * Math.min(1, (16 - M.age[k]) / 6);
+      for (let j = 0; j < 6; j++) M.col.set([1, 1, 1, a], k * 24 + j * 4);
+    }
+    M.mesh.geometry.attributes.position.needsUpdate = true;
+    M.mesh.geometry.attributes.color.needsUpdate = true;
   }
   steering() {
     return this.steer / 0.62;
@@ -1309,8 +1506,12 @@ class Cart implements Vehicle {
     S.lastV.copy(vel);
     const inv = this.root.quaternion.clone().invert(),
       la = acc.applyQuaternion(inv); // x: forward accel, z: sideways
-    const tRoll = THREE.MathUtils.clamp(la.z * 0.012, -0.07, 0.07) + this.drift * 0.11, // leaning hard into a drift
-      tPitch = THREE.MathUtils.clamp(-la.x * 0.01, -0.05, 0.05);
+    // a car's lean is set by its own shape (a tall narrow van rolls, a low wide sedan stays flat); it is for show only
+    const car = !!this.spec,
+      kr = car ? (0.085 * this.prof.roll) / 9.81 : 0.012,
+      kp = car ? (0.06 * this.prof.pitch) / 9.81 : 0.01;
+    const tRoll = THREE.MathUtils.clamp(la.z * kr, -0.09, 0.09) + this.drift * (car ? 0.05 : 0.11), // leaning hard into a drift
+      tPitch = THREE.MathUtils.clamp(-la.x * kp, -0.06, 0.06);
     const k = 90,
       c = 9,
       dtc = Math.min(dt, 0.05);
@@ -1322,7 +1523,7 @@ class Cart implements Vehicle {
       tBob = (0.25 - avg) * 0.35;
     S.vb += ((tBob - S.bob) * 120 - S.vb * 10) * dtc;
     S.bob += S.vb * dtc;
-    const soft = this.spec ? 0.45 : 1; // (a car's wheels ride with its body, so it leans less than the cart)
+    const soft = 1;
     this.body3.rotation.set(S.roll * soft, 0, S.pitch * soft);
     this.body3.position.y = S.bob * soft;
   }
@@ -1344,8 +1545,15 @@ class Cart implements Vehicle {
     });
     this.steerWheel.rotation.z = 0;
     this.steerWheel.rotateZ(-this.steer * 2.2);
-    this.swayStep(dt, this.velocity(V()));
+    const vel = this.velocity(V());
+    this.swayStep(dt, vel);
     this.smokeStep(dt);
+    // sliding: a held drift, or the tail simply stepping out (sideways speed in the car's own frame)
+    const side = Math.abs(_mk2.copy(vel).applyQuaternion(_mq.copy(this.root.quaternion).invert()).z);
+    this.marksStep(dt, !this.kart && (this.drift !== 0 || (side > 2.4 && Math.abs(sp) > 3)));
+    // the lens opens as the speed builds, and a little more on a boost
+    const want = Math.min(9, Math.max(0, Math.abs(sp) - 7) * 0.5) + (this.boostT > 0 ? 3 : 0);
+    DRIVE_FX.fov += (want - DRIVE_FX.fov) * Math.min(1, dt * 2.5);
   }
   /** 0 not drifting · 1 sliding · 2 charged (blue) · 3 fully charged (orange); also true for a moment while boosting */
   drifting() {
@@ -1459,6 +1667,7 @@ class Cart implements Vehicle {
         this.pw?.world.removeRigidBody(this.body);
       } catch {}
     this.smoke?.pts.removeFromParent();
+    this.marks?.mesh.removeFromParent();
     this.root.removeFromParent();
   }
 }

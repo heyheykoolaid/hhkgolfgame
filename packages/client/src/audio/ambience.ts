@@ -22,7 +22,7 @@ export type AmbientInput = {
   /** distance to the fountain (town), if there is one */
   fountain?: THREE.Vector3;
   /** my cart while I'm driving: speed in m/s and the throttle (−1…1) */
-  cart?: { speed: number; throttle: number; drift?: number; kart?: boolean } | null;
+  cart?: { speed: number; throttle: number; drift?: number; kart?: boolean; engine?: { rpm: number; load: number; tone: number } | null } | null;
   /** 0–1: duck the bed (first-person blackjack, panels) */
   duck?: number;
   /** other players' carts that are moving: the nearest one is heard */
@@ -34,6 +34,27 @@ const MIX: Record<Zone, { wind: number; road: number; crickets: number; birds: n
   course: { wind: 1.25, road: 0.4, crickets: 0.55, birds: 1.2, cars: 0.35 },
 };
 
+/** The engine's partials (multiples of the firing note) and how loud each is in the low, middle and high rev bands:
+ *  a lumpy idle, a growl through the middle, a scream at the top. */
+const ENG_MULT = [0.5, 1, 2, 3, 4],
+  ENG_HARM = [
+    [0.35, 0.8, 0.25, 0.1, 0],
+    [0, 0.45, 0.65, 0.4, 0.2],
+    [0, 0, 0.35, 0.55, 0.6],
+  ],
+  ENG_CENTER = [1400, 4000, 7000];
+function engBands(rpm: number): [number, number, number] {
+  if (rpm <= ENG_CENTER[0]) return [1, 0, 0];
+  if (rpm < ENG_CENTER[1]) {
+    const t = (rpm - ENG_CENTER[0]) / (ENG_CENTER[1] - ENG_CENTER[0]);
+    return [1 - t, t, 0];
+  }
+  if (rpm < ENG_CENTER[2]) {
+    const t = (rpm - ENG_CENTER[1]) / (ENG_CENTER[2] - ENG_CENTER[1]);
+    return [0, 1 - t, t];
+  }
+  return [0, 0, 1];
+}
 class Ambience {
   /** current gust strength, 0 (still) … 1 (a proper gust) */
   gust = 0;
@@ -46,6 +67,9 @@ class Ambience {
   private jetP!: StereoPannerNode;
   private whine!: OscillatorNode;
   private whine2!: OscillatorNode;
+  private engOsc: OscillatorNode[] = [];
+  private engGain: GainNode[] = [];
+  private engF!: BiquadFilterNode;
   private oWhine!: OscillatorNode;
   private oPan!: StereoPannerNode;
   /** the ambience level from the options menu; 0 turns the bed and its one-shots off */
@@ -216,6 +240,21 @@ class Ambience {
     this.whine2.connect(g(0.5, this.n.whine));
     this.whine.start();
     this.whine2.start();
+    // a car's engine: five partials of the firing note (half, 1, 2, 3, 4 times), mixed by how hard it is revving, through
+    // a filter that opens with revs and load. (The recipe of low, middle and high bands and the gearbox that drives the
+    // revs are adapted from OpenUG2's synthesized engine, MIT; see vehicles/vehicles.ts.)
+    this.engF = filt('lowpass', 600, 0.9);
+    this.n.engine = g(0, this.master);
+    this.engF.connect(this.n.engine);
+    ENG_MULT.forEach((_, k) => {
+      const o = c.createOscillator(),
+        og = g(0, this.engF);
+      o.type = k === 0 ? 'square' : k < 3 ? 'sawtooth' : 'triangle';
+      o.connect(og);
+      o.start();
+      this.engOsc.push(o);
+      this.engGain.push(og);
+    });
     this.n.tyres = g(0, this.master);
     white.connect(filt('bandpass', 650, 0.6)).connect(this.n.tyres);
     // somebody else's cart, placed by direction
@@ -547,10 +586,23 @@ class Ambience {
       const f = cart.kart ? 46 + sp * 15 + Math.abs(cart.throttle) * 14 + 5 * Math.sin(now * 31) : 70 + sp * 34;
       this.whine.frequency.setTargetAtTime(f, now, cart.kart ? 0.05 : 0.08);
       this.whine2.frequency.setTargetAtTime(f * (cart.kart ? 1.5 : 3.02), now, 0.08);
-      set(this.n.whine, cart.kart ? 0.02 + 0.04 * load : sp > 0.3 || Math.abs(cart.throttle) > 0.1 ? 0.006 + 0.016 * load : 0, 0.1);
+      const eng = cart.engine;
+      if (eng) {
+        // firing note of a four-cylinder (two bangs a turn), shifted for the car; idle lopes a little
+        const f0 = (eng.rpm / 30) * eng.tone * (1 + (eng.rpm < 1600 ? 0.035 * Math.sin(now * 23) : 0)),
+          w = engBands(eng.rpm);
+        ENG_MULT.forEach((m, k) => {
+          this.engOsc[k].frequency.setTargetAtTime(f0 * m, now, 0.03);
+          this.engGain[k].gain.setTargetAtTime(w[0] * ENG_HARM[0][k] + w[1] * ENG_HARM[1][k] + w[2] * ENG_HARM[2][k], now, 0.05);
+        });
+        this.engF.frequency.setTargetAtTime(380 + eng.rpm * 0.42 * (0.55 + 0.45 * eng.load), now, 0.06);
+        set(this.n.engine, 0.016 + 0.03 * eng.load + 0.012 * (eng.rpm / 8000), 0.06);
+      } else set(this.n.engine, 0, 0.12);
+      set(this.n.whine, eng ? 0 : cart.kart ? 0.02 + 0.04 * load : sp > 0.3 || Math.abs(cart.throttle) > 0.1 ? 0.006 + 0.016 * load : 0, 0.1);
       set(this.n.tyres, Math.min(0.05, sp * 0.005) * (cart.drift ? 3.2 : 1), 0.06); // a slide is loud
     } else {
       set(this.n.whine, 0, 0.15);
+      set(this.n.engine, 0, 0.15);
       set(this.n.tyres, 0, 0.15);
     }
     // the nearest of the other carts
