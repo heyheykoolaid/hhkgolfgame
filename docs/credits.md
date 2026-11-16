@@ -19,6 +19,7 @@ Decision (Nov 16): use the CC BY packs; leave out the two Sketchfab Standard pac
 | Grass pack (lowpoly, game-ready) | LOLIPOP | CC BY 4.0 | meadow and rough |
 | Undergrowth pack (lowpoly, game-ready) | LOLIPOP | CC BY 4.0 | dandelions and weeds for verges and lots |
 | Pine Trees Pack \| PS1 Low Poly | Vova Truestory | CC BY 4.0 | Boulder Peak |
+| Amusement park | Megame Studio | CC BY-NC-SA 4.0 | not used: its pieces were tried in Fun Land and looked wrong, so the fairground was built in code with the pack only as loose inspiration (no geometry or textures taken) |
 | Food Collection - Game Ready | Melon Polygons | CC BY 4.0 | shop shelves |
 | office is old abandoned FREE | dasy444 | CC BY 4.0 | interior pieces |
 | 1970s Mafia Hideout Props | Bársh | Sketchfab Standard | usable in the game; the Standard license does not allow passing the model file on, so it may not belong in a public repository |

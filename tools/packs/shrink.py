@@ -17,6 +17,19 @@ f = open(src, 'rb'); f.read(12)
 clen, _ = struct.unpack('<II', f.read(8)); j = json.loads(f.read(clen))
 blen, _ = struct.unpack('<II', f.read(8)); bin_ = f.read(blen)
 views = j['bufferViews']
+# three.js no longer reads the old specular-glossiness materials: carry their colour and texture over to the standard ones
+for m in j.get('materials', []):
+    sg = m.get('extensions', {}).pop('KHR_materials_pbrSpecularGlossiness', None)
+    if sg:
+        pbr = m.setdefault('pbrMetallicRoughness', {})
+        if 'diffuseFactor' in sg: pbr['baseColorFactor'] = sg['diffuseFactor']
+        if 'diffuseTexture' in sg: pbr['baseColorTexture'] = sg['diffuseTexture']
+        pbr['metallicFactor'] = 0; pbr['roughnessFactor'] = 1 - sg.get('glossinessFactor', 0.2) * 0.5
+    if 'extensions' in m and not m['extensions']: del m['extensions']
+for k in ('extensionsUsed', 'extensionsRequired'):
+    if k in j:
+        j[k] = [e for e in j[k] if e != 'KHR_materials_pbrSpecularGlossiness']
+        if not j[k]: del j[k]
 used = None
 if keep:
     used = set(); mats = set(); keep_acc = set()

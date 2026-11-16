@@ -8,6 +8,7 @@ import { kartModel } from '../vehicles/vehicles';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { M, box, cyl, textTex, photoM, tile, FUN, BOUND, type Collider } from './world';
+import { buildFairground } from './fairground';
 
 // ---------------------------------------------------------------- the plan (world metres; +x is east, away from town)
 // world.ts imports this file (for funSurface), so nothing at the top level here may read a value from world.ts.
@@ -291,6 +292,7 @@ export function buildFunLand(scene: THREE.Scene, colliders: Collider[]) {
   G.name = 'funland';
   scene.add(G);
   const col = (x0: number, x1: number, z0: number, z1: number, tag = 'fun') => colliders.push({ x0, x1, z0, z1, tag });
+  const fair = buildFairground(G, (x0, x1, z0, z1) => col(x0, x1, z0, z1)); // the wheel, carousel, big top and stalls (lobby/fairground.ts)
   const cream = M('#efe6d2', 0.85),
     red = M('#c8452f', 0.7),
     dark = M('#2a2420', 0.8),
@@ -954,6 +956,7 @@ export function buildFunLand(scene: THREE.Scene, colliders: Collider[]) {
     },
     bestLap: () => best,
     update(dt: number, clock: number, car: { x: number; z: number } | null, carYaw = 0) {
+      fair.update(clock);
       for (const b of spin) b.rotation.z = clock * 0.9;
       // your best lap drives round again as a ghost while you're on a lap; this lap is recorded in case it's better
       if (car && lap.on) {

@@ -3,6 +3,7 @@
 // re-centred to stand on the ground at its own origin, so the game can place them like its own models.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface PropPack {
   names: string[];
@@ -145,6 +146,88 @@ export function loadProps(pack: string, clean: (n: string) => string = n => n.re
       });
     packs.set(pack, p);
     ((window as any).__packs ??= {})[pack] = p;
+  }
+  return p;
+}
+
+// ---------------------------------------------------------------- a whole set piece (tools/packs/lift.py)
+export interface Piece {
+  /** A fresh copy standing on the ground at its own origin (the middle of its footprint): a few meshes, one per material. */
+  make(scale?: number): THREE.Group;
+  size: THREE.Vector3;
+}
+const pieces = new Map<string, Promise<Piece | null>>();
+/** Load a set piece lifted out of a larger scene: everything in the file, welded into one mesh per material. */
+export function loadPiece(pack: string): Promise<Piece | null> {
+  let p = pieces.get(pack);
+  if (!p) {
+    p = fetch(new URL(`packs/${pack}.json`, document.baseURI).href)
+      .then(r => r.json())
+      .then(async (j: { glb: string }) => {
+        const raw = atob(j.glb),
+          u8 = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) u8[i] = raw.charCodeAt(i);
+        const scene = (await new GLTFLoader().parseAsync(u8.buffer, '')).scene,
+          by = new Map<THREE.Material, THREE.BufferGeometry[]>();
+        scene.updateMatrixWorld(true);
+        scene.traverse(o => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+          const src = mesh.geometry,
+            g = new THREE.BufferGeometry(),
+            n = src.attributes.position.count;
+          g.setAttribute('position', src.attributes.position.clone());
+          g.setAttribute('normal', src.attributes.normal ? src.attributes.normal.clone() : new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+          g.setAttribute(
+            'uv',
+            src.attributes.uv
+              ? new THREE.BufferAttribute(new Float32Array(src.attributes.uv.array as ArrayLike<number>), 2)
+              : new THREE.BufferAttribute(new Float32Array(n * 2), 2),
+          );
+          g.setIndex(src.index ? Array.from(src.index.array as ArrayLike<number>) : Array.from({ length: n }, (_, i) => i));
+          g.applyMatrix4(mesh.matrixWorld);
+          if (!src.attributes.normal) g.computeVertexNormals();
+          by.set(mesh.material, [...(by.get(mesh.material) || []), g]);
+        });
+        const box = new THREE.Box3(),
+          merged: [THREE.BufferGeometry, THREE.Material][] = [];
+        for (const [m, gs] of by) {
+          const g = mergeGeometries(gs, false);
+          if (!g) continue;
+          g.computeBoundingBox();
+          box.union(g.boundingBox!);
+          const sm = m as THREE.MeshStandardMaterial;
+          sm.metalness = 0;
+          sm.roughness = Math.max(sm.roughness ?? 1, 0.8);
+          sm.side = THREE.DoubleSide; // canvas, awnings and bunting are single sheets
+          merged.push([g, m]);
+        }
+        const off = new THREE.Vector3(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
+        for (const [g] of merged) {
+          g.translate(off.x, off.y, off.z);
+          g.computeBoundingBox();
+          g.computeBoundingSphere();
+        }
+        return {
+          size: box.getSize(new THREE.Vector3()),
+          make(scale = 1) {
+            const G = new THREE.Group();
+            for (const [g, m] of merged) {
+              const o = new THREE.Mesh(g, m);
+              o.castShadow = o.receiveShadow = true;
+              G.add(o);
+            }
+            G.scale.setScalar(scale);
+            G.name = pack;
+            return G;
+          },
+        };
+      })
+      .catch(e => {
+        console.warn('set piece not loaded', pack, e);
+        return null;
+      });
+    pieces.set(pack, p);
   }
   return p;
 }
