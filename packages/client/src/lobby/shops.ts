@@ -281,7 +281,20 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
     open.rotation.y = Math.PI;
     s.g.add(open);
     // flash: little framed sheets on the display's back wall
-    const inks = ['#1c1a1c', '#8a2f28', '#27405e', '#3b4a2e'];
+    // flash: the game's own tattoo designs (golfer/tattoos.png is a sheet of 18, six across), one to a frame
+    const sheet = new THREE.TextureLoader().load(new URL('golfer/tattoos.png', document.baseURI).href);
+    sheet.colorSpace = THREE.SRGBColorSpace;
+    let fi = 0;
+    const flash = () => {
+      const t = sheet.clone(),
+        i = (fi++ * 5) % 18;
+      t.repeat.set(1 / 6, 1 / 3);
+      t.offset.set((i % 6) / 6, 1 - (Math.floor(i / 6) + 1) / 3);
+      t.needsUpdate = true;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: '#241c1c' }));
+      m.rotation.y = Math.PI;
+      return m;
+    };
     for (const sd of [-1, 1])
       for (let i = 0; i < 6; i++) {
         const fx = sd * s.wx + ((i % 3) - 1) * 0.62,
@@ -289,7 +302,11 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         if (sd > 0 && i >= 3) continue; // (the TATTOO sign hangs there)
         s.g.add(
           box(0.46, 0.58, 0.03, M('#f1e6d0', 0.9), fx, fy, 0.86),
-          box(0.26, 0.3, 0.02, M(inks[i % 4], 0.8), fx, fy + 0.04, 0.84),
+          (() => {
+            const m = flash();
+            m.position.set(fx, fy + 0.02, 0.838);
+            return m;
+          })(),
           box(0.5, 0.62, 0.02, M('#1c1a1c', 0.6), fx, fy, 0.875),
         );
       }

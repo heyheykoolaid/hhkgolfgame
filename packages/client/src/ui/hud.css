@@ -445,3 +445,10 @@ body.warding #controls{right:auto;left:12px;top:auto;bottom:12px;transform:none;
 #lward .pr{font-style:normal;font-size:10px;opacity:.75;color:#ffd27a;margin-left:4px}
 #lward .tb.buy{outline:1px dashed rgba(255,210,122,.55);outline-offset:-2px}
 .shop .gi .trail{display:block;width:38px;height:6px;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,.35)}
+#lstash .invtabs{display:flex;gap:6px;margin-top:10px}
+#lstash .invtabs button{font:inherit;font-size:13px;padding:6px 14px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:inherit;cursor:pointer}
+#lstash .invtabs button.on{background:#e2b23a;color:#2a1a08;border-color:#e2b23a;font-weight:700}
+#lstash .invgrid.clothes{grid-template-columns:repeat(4,1fr);min-height:296px;align-content:start}
+#lstash .invgrid.clothes .slot{aspect-ratio:auto;min-height:62px;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center}
+#lstash .invgrid.clothes .cn{font:700 13px Inter,sans-serif}
+#lstash .invgrid.clothes em{position:static;font:500 10px Inter,sans-serif;opacity:.6;text-shadow:none}

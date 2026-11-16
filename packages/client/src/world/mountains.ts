@@ -1,13 +1,14 @@
 // Boulder Peak's horizon: a ring of snow-capped mountains with pine-dark foothills in front, in place of the city.
 import * as THREE from 'three';
 
+const HAZE_COAST = new THREE.Color('#93a9ba'); // blue distance, as mountains across water look
 const HAZE = new THREE.Color('#cfd8de'); // Boulder Peak's own cool afternoon haze (world/course.ts sets the matching fog)
 function rng(seed: number) {
   let s = seed >>> 0 || 1;
   return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
 }
 /** One peak: a cone pulled about into ridges, grey rock below, snow from about two thirds up. */
-function peak(r: () => number, base: number, h: number, snow: number, rock: THREE.Color, low: THREE.Color, haze: number) {
+function peak(r: () => number, base: number, h: number, snow: number, rock: THREE.Color, low: THREE.Color, haze: number, hazeC = HAZE) {
   const g = new THREE.ConeGeometry(base, h, 11, 7, true),
     p = g.attributes.position,
     col = new Float32Array(p.count * 3),
@@ -33,7 +34,7 @@ function peak(r: () => number, base: number, h: number, snow: number, rock: THRE
     const s = y - snow + (k - 1) * 0.25 + (wob - 1) * 0.5;
     if (s > 0) c.lerp(white, Math.min(1, 0.55 + s * 4));
     // distance haze, painted in (the scene's own fog would wipe the range out altogether): thicker toward the foot
-    c.lerp(HAZE, haze * (1.15 - 0.45 * y));
+    c.lerp(hazeC, haze * (1.15 - 0.45 * y));
     col.set([c.r, c.g, c.b], i * 3);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -51,6 +52,8 @@ export function buildMountains(center: [number, number], sunAz: number, look: 'a
     low = new THREE.Color(coast ? '#3d5a54' : '#5d6650'),
     mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false, side: THREE.DoubleSide });
   root.name = 'mountains';
+  // the coastal range is drawn in its own colours whatever the evening light is doing (lit, it turned sand-coloured)
+  const coastMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
   const add = (ring: number, n: number, hMin: number, hMax: number, bMin: number, bMax: number, snow: number, y: number, haze: number) => {
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + r() * 0.2,
@@ -58,16 +61,45 @@ export function buildMountains(center: [number, number], sunAz: number, look: 'a
         // a little lower toward the setting sun, so it still shows between the peaks
         dip = 1 - 0.35 * Math.max(0, Math.cos(a - sunAz)) ** 6,
         h = (hMin + r() * (hMax - hMin)) * dip,
-        m = new THREE.Mesh(peak(r, bMin + r() * (bMax - bMin), h, snow, rock, low, haze), mat);
+        m = new THREE.Mesh(peak(r, bMin + r() * (bMax - bMin), h, snow, rock, low, haze, coast ? HAZE_COAST : HAZE), coast ? coastMat : mat);
       m.position.set(center[0] + Math.sin(a) * d, y, center[1] + Math.cos(a) * d);
       m.rotation.y = r() * 6.28;
       root.add(m);
     }
   };
   if (coast) {
-    add(560, 20, 70, 120, 190, 280, 2, -14, 0.3); // forested foothills, shoulder to shoulder
-    add(760, 20, 150, 240, 240, 340, 0.82, -20, 0.45); // the range: a dusting on the tops
-    add(1000, 14, 240, 330, 300, 400, 0.6, -30, 0.6); // the snowy ones behind
+    // a continuous forested ridge first, so no sky shows between the peaks; then three ranks of peaks in front of
+    // and behind it. Everything beyond the ridge's foot is hidden from town, which is what lets the far city go.
+    const N = 96,
+      R = 400,
+      pos: number[] = [],
+      col: number[] = [],
+      idx: number[] = [],
+      foot = low.clone().lerp(HAZE_COAST, 0.38),
+      crest = low.clone().lerp(HAZE_COAST, 0.2);
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * Math.PI * 2,
+        k = i % N,
+        h = 46 + 22 * Math.sin(k * 0.9) + 14 * Math.sin(k * 2.3 + 1) + 9 * Math.sin(k * 5.1 + 2);
+      pos.push(
+        center[0] + Math.sin(a) * R,
+        -6,
+        center[1] + Math.cos(a) * R,
+        center[0] + Math.sin(a) * (R + 60),
+        h,
+        center[1] + Math.cos(a) * (R + 60),
+      );
+      col.push(foot.r, foot.g, foot.b, crest.r, crest.g, crest.b);
+      if (i < N) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    }
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    rg.setIndex(idx);
+    root.add(new THREE.Mesh(rg, coastMat));
+    add(470, 26, 80, 130, 170, 250, 2, -12, 0.3); // forested shoulders, overlapping
+    add(640, 24, 160, 250, 220, 320, 0.84, -18, 0.46); // the range: a dusting on the tops
+    add(860, 16, 250, 340, 290, 390, 0.62, -28, 0.62); // the snowy ones behind
     return root;
   }
   add(520, 15, 50, 95, 150, 230, 2, -14, 0.42); // wooded foothills (no snow)

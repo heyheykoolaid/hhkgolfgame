@@ -206,7 +206,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
 
   // ---------------- ground: the street, its sidewalks, the turning circle and the car park
   const L = X0 - XW;
-  G.add(tile(flat(L + 6, ST.z1 - ST.z0, asphalt, (X0 + XW) / 2 + 3, (ST.z0 + ST.z1) / 2, 0.035), 1.7));
+  G.add(tile(flat(L, ST.z1 - ST.z0, asphalt, (X0 + XW) / 2, (ST.z0 + ST.z1) / 2, 0.035), 1.7));
   G.add(tile(flat(L, 2.2, pavers, (X0 + XW) / 2, ST.z0 - 1.1, 0.06), 2.4), tile(flat(L, 2.2, pavers, (X0 + XW) / 2, ST.z1 + 1.1, 0.06), 2.4));
   const circle = new THREE.Mesh(new THREE.CircleGeometry(8.5, 40).rotateX(-Math.PI / 2), asphalt);
   circle.position.set(XW, 0.034, 14);

@@ -54,10 +54,12 @@ const priceOf = (key: string) => {
   const [k, v] = key.split(':');
   return FREE.has(v) ? 0 : PRICE[k] || 0;
 };
+/** What each part is when a look doesn't say (an untouched golfer wears these): filled in from the wardrobe's own rows. */
+const DEF: Record<string, string> = {};
 /** The priced things in a look, as closet keys. */
 const itemsOf = (o: Outfit) =>
   Object.keys(PRICE)
-    .map(k => `${k}:${String((o as any)[k])}`)
+    .map(k => `${k}:${String((o as any)[k] ?? DEF[k])}`)
     .filter(k => priceOf(k) > 0);
 const unowned = (o: Outfit) => {
   const own = new Set(progress().closet);
@@ -343,7 +345,9 @@ export function createWardrobe(host: WardrobeHost) {
     ],
   });
   const tatURL = new URL('golfer/tattoos.png', document.baseURI).href;
-  let tab = '';
+  for (const t of TABS) for (const r of t.rows(host.look())) if ('styles' in r) DEF[String(r.k)] = r.def;
+  let tab = '',
+    tatPart = '';
   function renderWardrobe() {
     const look = host.look() as any,
       tabs = TABS.filter(t => t.rows(look).some(inShop));
@@ -357,8 +361,15 @@ export function createWardrobe(host: WardrobeHost) {
       },
       need = unowned(look),
       cost = need.reduce((a, k) => a + priceOf(k), 0);
+    // the tattoo parlour: pick where it goes first, then choose from the designs for that one place
+    const parts = shop === 'tattoo' ? (T.rows(look).filter(r => 'tats' in r) as { k: keyof Outfit; label: string }[]) : [];
+    if (parts.length && !parts.some(p => p.k === tatPart)) tatPart = String(parts[0].k);
+    const partBar = parts.length
+      ? `<div class="sec"><div class="lbl">Where</div><div class="tg">${parts.map(p => `<button class="t${p.k === tatPart ? ' on' : ''}" data-part="${String(p.k)}">${p.label}${look[p.k] ? ' ●' : ''}</button>`).join('')}</div></div>`
+      : '';
     const rows = T.rows(look)
       .filter(inShop)
+      .filter(r => !('tats' in r) || r.k === tatPart)
       .map(r => {
         let inner: string;
         if ('tats' in r)
@@ -384,7 +395,7 @@ export function createWardrobe(host: WardrobeHost) {
     const note = T.note?.(look);
     $('lward').innerHTML = `<div class="panel"><h2>${SHOP[shop][0]}</h2><p class="muted">${SHOP[shop][1]} Cash <b>${money(progress().cash)}</b></p>
       <div class="tabs">${tabs.length > 1 ? tabs.map(t => `<button class="tab${t.id === tab ? ' on' : ''}" data-tab="${t.id}">${t.label}</button>`).join('') : ''}</div>
-      ${note ? `<p class="muted note">${note}</p>` : ''}${rows}
+      ${note ? `<p class="muted note">${note}</p>` : ''}${partBar}${rows}
       <div class="btns"><button id="w-turn">Turn ⟳</button><button id="w-cancel">Cancel</button><button id="w-done" class="primary">${cost ? `Buy and wear · ${money(cost)}` : 'Done'}</button></div></div>`;
     const set = (patch: Partial<Outfit>) => {
       host.setLook(sanitizeLook({ ...host.look(), ...patch }));
@@ -395,6 +406,23 @@ export function createWardrobe(host: WardrobeHost) {
       b =>
         (b.onclick = () => {
           tab = b.dataset.tab!;
+          renderWardrobe();
+        }),
+    );
+    el.querySelectorAll<HTMLButtonElement>('button[data-part]').forEach(
+      b =>
+        (b.onclick = () => {
+          tatPart = b.dataset.part!;
+          // turn the golfer so the place being inked faces the camera
+          P.yaw =
+            wardCam +
+            (tatPart === 'tatBack' || tatPart === 'tatCalf'
+              ? Math.PI
+              : tatPart === 'tatArmL'
+                ? -Math.PI / 2
+                : tatPart === 'tatArmR'
+                  ? Math.PI / 2
+                  : 0);
           renderWardrobe();
         }),
     );
@@ -419,7 +447,26 @@ export function createWardrobe(host: WardrobeHost) {
     $('w-done').onclick = () => void checkout();
   }
 
+  /** Put on or take off a piece from your closet ("top:tee"), from the inventory. Taking everything off leaves you
+   *  in shorts and bare feet. Returns whether it is now on. */
+  function wear(key: string) {
+    const [k, v] = key.split(':'),
+      o = host.look() as any,
+      flag = v === 'true',
+      on = flag ? !!o[k] : String(o[k] ?? DEF[k]) === v,
+      off: Record<string, unknown> = { top: 'none', jacket: 'none', pantsStyle: 'shorts', shoeStyle: 'bare', capStyle: 'none', glasses: 'none' };
+    host.setLook(sanitizeLook({ ...o, [k]: on ? (flag ? false : off[k]) : flag ? true : v }));
+    host.saveLook();
+    return !on;
+  }
   return {
+    wear,
+    /** The closet keys of what's on right now. */
+    worn: () => new Set(itemsOf(host.look())),
+    /** What you were wearing before shops charged for anything is yours: put it in the closet, once. */
+    async seed() {
+      if (!(await loadProgress()).closetInit) await addToCloset(itemsOf(host.look()), 0, true);
+    },
     open: openWardrobe,
     close: closeWardrobe,
     /** Which way the golfer faced when it opened: the camera stands in front. */ cam: () => wardCam,

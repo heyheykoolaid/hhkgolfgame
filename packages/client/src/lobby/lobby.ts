@@ -990,6 +990,9 @@ export function createLobby(env: LobbyEnv) {
     nameOf: uid => pf?.names.get(uid) || 'Golfer',
     onClose: panelClosed,
     trophyThumb: t => trophyPic(t.seed, t.n, '', 96),
+    wearing: () => wardrobe.worn(),
+    seedCloset: () => wardrobe.seed(),
+    wear: key => void wardrobe.wear(key),
     trophyDetail: t => {
       const tp = (v: number) => (v === 0 ? 'E' : v > 0 ? '+' + v : '−' + -v);
       return `${t.n === 9 ? 'Championship' : 'Mini cup'} · ${tp(t.toPar)} (${t.strokes})${t.field > 1 ? ` · beat ${t.field - 1}` : ' · solo'} · ${new Date(t.at).toLocaleDateString()}. Put it on display in Build Mode (the Trophies tab).${

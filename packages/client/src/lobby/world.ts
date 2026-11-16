@@ -405,7 +405,7 @@ export function buildLobby(scene: THREE.Scene) {
   scene.add(gate);
 
   /* horizon: the city — brick blocks just outside town, an art-deco downtown toward the sunset, far towers all round */
-  buildCity(scene, { center: [0, 0], keepOut: BOUND, sunAz: SUN_AZ, rings: [240, 380], tall: 0.6 });
+  buildCity(scene, { center: [0, 0], keepOut: BOUND, sunAz: SUN_AZ, rings: [240, 330], tall: 0.6 }); // (the towers stand inside the mountains' ridge, which is at 400 m)
   scene.add(buildMountains([0, 0], SUN_AZ, 'coast')); // a coastal range all round, behind the skyline
   /* open ground between town and the city: oak and palm groves on dry grass, a clear lane out of the gate */
   {

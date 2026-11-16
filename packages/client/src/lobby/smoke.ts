@@ -52,6 +52,11 @@ export interface SmokeHost {
   /** A small picture of a trophy, and the write-up shown when its slot is picked. */
   trophyThumb?(t: TrophyRec): string;
   trophyDetail?(t: TrophyRec): string;
+  /** Clothes: what the golfer has on (closet keys), and put a piece on or take it off. */
+  wearing?(): Set<string>;
+  wear?(key: string): void;
+  /** Make sure what the golfer already wears is in the closet (once). */
+  seedCloset?(): Promise<void>;
   nearestPeer(x: number, z: number, maxD: number): { uid: string; d: number } | null;
   putAwayOthers(): void;
 }
@@ -692,7 +697,24 @@ export function createSmoke(host: SmokeHost) {
   ui.className = 'hidden';
   (document.getElementById('lobbyui') || document.body).appendChild(ui);
   let panelOpen = false;
-  let selKey = '';
+  let selKey = '',
+    invTab: 'items' | 'clothes' = 'items';
+  /** The clothes and accessories in the closet, as [key, what it's called]. Hair and tattoos aren't things you carry. */
+  const CLOTHES: Record<string, string> = {
+    top: 'top',
+    jacket: 'jacket',
+    pantsStyle: 'legs',
+    shoeStyle: 'shoes',
+    capStyle: 'hat',
+    glasses: 'glasses',
+    chain: 'gold chain',
+    watch: 'watch',
+    earring: 'earring',
+  };
+  const clothName = (key: string) => {
+    const [k, v] = key.split(':');
+    return v === 'true' ? CLOTHES[k][0].toUpperCase() + CLOTHES[k].slice(1) : v[0].toUpperCase() + v.slice(1).replace(/([a-z])([A-Z0-9])/g, '$1 $2');
+  };
   /** The inventory: a 4 × 8 grid of everything you're carrying. Click a slot for what you can do with it. */
   function renderStash() {
     const pr = progress(),
@@ -775,10 +797,33 @@ export function createSmoke(host: SmokeHost) {
         if (!x) return `<div class="slot${i >= INV_SLOTS ? ' over' : ''}"></div>`;
         return `<button class="slot full${x === sel ? ' sel' : ''}${x.on ? ' lit' : ''}${i >= INV_SLOTS ? ' over' : ''}" data-slot="${x.key}" ${x.tint ? `style="--tint:${x.tint}"` : ''}><span class="ic">${x.icon}</span>${x.n !== undefined ? `<em>${x.n}</em>` : ''}</button>`;
       }).join('');
-    ui.innerHTML = `<div class="card inv"><button class="x" data-close>✕</button><h2>Inventory</h2>
-      <div class="sub">${Math.min(slots.length, 999)} of ${INV_SLOTS} slots${slots.length > INV_SLOTS ? ' · <span class="warn">over the limit: nothing new fits until you clear some</span>' : ''} · Cash <b>$${Math.round(pr.cash).toLocaleString('en-US')}</b></div>
+    const tabs = `<div class="invtabs"><button class="${invTab === 'items' ? 'on' : ''}" data-it="items">Items</button><button class="${invTab === 'clothes' ? 'on' : ''}" data-it="clothes">Clothes</button></div>`;
+    if (invTab === 'clothes') {
+      const on = host.wearing?.() || new Set<string>(),
+        own = pr.closet.filter(k => CLOTHES[k.split(':')[0]]).sort();
+      ui.innerHTML = `<div class="card inv"><button class="x" data-close>✕</button><h2>Inventory</h2>
+        <div class="sub">${own.length} piece${own.length === 1 ? '' : 's'} in your closet · click one to put it on or take it off</div>${tabs}
+        <div class="invgrid clothes">${own.map(k => `<button class="slot full${on.has(k) ? ' sel' : ''}" data-wear="${k}"><span class="cn">${clothName(k)}</span><em>${CLOTHES[k.split(':')[0]]}</em></button>`).join('') || '<p class="muted" style="grid-column:1/-1">Nothing yet. Threads, on the West Side, sells clothes.</p>'}</div>
+        <div class="invsel"><p>Worn pieces are outlined in gold. With everything off you're in shorts and bare feet. Colours are changed at Threads.</p></div></div>`;
+    } else
+      ui.innerHTML = `<div class="card inv"><button class="x" data-close>✕</button><h2>Inventory</h2>
+      <div class="sub">${Math.min(slots.length, 999)} of ${INV_SLOTS} slots${slots.length > INV_SLOTS ? ' · <span class="warn">over the limit: nothing new fits until you clear some</span>' : ''} · Cash <b>$${Math.round(pr.cash).toLocaleString('en-US')}</b></div>${tabs}
       <div class="invgrid">${cells}</div>
       <div class="invsel">${sel ? `<div><b>${sel.name}</b><p>${sel.sub}</p></div><div class="acts">${sel.acts || ''}</div>` : '<p>Nothing here yet. Buds you harvest, joints, shop goods and trophies all end up in these slots.</p>'}</div></div>`;
+    ui.querySelectorAll<HTMLButtonElement>('[data-it]').forEach(
+      b =>
+        (b.onclick = () => {
+          invTab = b.dataset.it as 'items' | 'clothes';
+          renderStash();
+        }),
+    );
+    ui.querySelectorAll<HTMLButtonElement>('[data-wear]').forEach(
+      b =>
+        (b.onclick = () => {
+          host.wear?.(b.dataset.wear!);
+          renderStash();
+        }),
+    );
     ui.querySelector('[data-close]')?.addEventListener('click', () => closeStash());
     ui.querySelectorAll<HTMLButtonElement>('[data-slot]').forEach(
       b =>
@@ -814,6 +859,7 @@ export function createSmoke(host: SmokeHost) {
     if (pick === 'trophy') selKey = 't' + ([...progress().trophies].sort((a, b) => b.at - a.at).find(t => !placedCount('trophy:' + t.id))?.id || '');
     panelOpen = true;
     ui.classList.remove('hidden');
+    await host.seedCloset?.();
     await loadProgress();
     renderStash();
   }
