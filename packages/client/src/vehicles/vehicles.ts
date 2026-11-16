@@ -1102,6 +1102,53 @@ export const loadCarKit = () =>
     carKit = k;
     return k;
   });
+/** How far forward of a car's `seatX` the driver's hips go (the front seat). */
+const SEAT_FWD = 0.26;
+const bare = new Map<string, THREE.BufferGeometry>();
+/** A car body without the wheels that are modelled into it: every triangle lying wholly inside one of the four wheels'
+ *  cylinders is left out. The pack's wheels can't turn (they are part of the body's mesh), so ours replace them. The
+ *  result shares the body's vertices and is kept per car. `o` must already be turned, scaled and lifted into place. */
+function withoutWheels(o: THREE.Mesh, spec: CarSpec) {
+  const hit = bare.get(spec.id);
+  if (hit) return hit;
+  const g = o.geometry,
+    pos = g.attributes.position,
+    idx = g.index ? (g.index.array as ArrayLike<number>) : null,
+    n = idx ? idx.length : pos.count,
+    // where the model's own wheels are: this car's, or (a scaled-up body) the wheels of the car it was made from
+    base = spec.scale ? (CARS.find(c => c.obj === spec.obj && !c.scale) ?? spec) : spec,
+    k = spec.scale ?? 1,
+    yc = base.r * k + (spec.lift ?? 0),
+    rad = base.r * k * 1.1,
+    zin = base.tyre[1] * k - 0.07,
+    v = new THREE.Vector3(),
+    inWheel = new Int8Array(pos.count); // 0 not looked at, 1 outside, 2+axle inside that axle's wheel
+  o.updateMatrix();
+  const where = (i: number) => {
+    if (!inWheel[i]) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrix);
+      inWheel[i] = 1;
+      if (Math.abs(v.z) > zin) base.axles.forEach((ax, a) => Math.hypot(v.x - ax * k, v.y - yc) < rad && (inWheel[i] = 2 + a));
+    }
+    return inWheel[i];
+  };
+  const keep: number[] = [];
+  for (let t = 0; t < n; t += 3) {
+    const a = idx ? idx[t] : t,
+      b = idx ? idx[t + 1] : t + 1,
+      c = idx ? idx[t + 2] : t + 2,
+      w = where(a);
+    if (w > 1 && where(b) === w && where(c) === w) continue;
+    keep.push(a, b, c);
+  }
+  const out = new THREE.BufferGeometry();
+  for (const name in g.attributes) out.setAttribute(name, g.attributes[name]);
+  out.setIndex(keep);
+  out.boundingBox = g.boundingBox;
+  out.boundingSphere = g.boundingSphere;
+  bare.set(spec.id, out);
+  return out;
+}
 export function carModel(spec: CarSpec, paint = '', rim = '') {
   const root = new THREE.Group(),
     body = new THREE.Group(),
@@ -1110,11 +1157,12 @@ export function carModel(spec: CarSpec, paint = '', rim = '') {
   const fill = (kit: PropPack) => {
     const o = kit.make(spec.obj, 25 * k);
     if (!o) return;
+    o.rotation.y = Math.PI;
+    o.position.y = spec.lift ?? 0;
+    if (!spec.bike) o.geometry = withoutWheels(o, spec); // (our own turning wheels stand where the model's painted-on ones were)
     const m = (o.material as THREE.MeshStandardMaterial).clone();
     if (paint) m.color.set('#' + paint); // (a tint over the body's own texture)
     o.material = m;
-    o.rotation.y = Math.PI;
-    o.position.y = spec.lift ?? 0;
     body.add(o);
   };
   if (carKit) fill(carKit);
@@ -1226,7 +1274,7 @@ class Cart implements Vehicle {
       this.tune = partsTune(parts);
       this.name = spec.name;
       const top = (spec.cabH ?? spec.size[2]) * 0.96;
-      this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX - 0.12, top - 1.93, 0.36); // (low in the seat: the driver's head sits under the roof, behind the screen)
+      this.seat = spec.bike ? V(spec.seatX, 0.12, 0) : V(spec.seatX + SEAT_FWD, top - 1.93, -0.36); // (the front left seat, low: the head sits under the roof, behind the screen)
       this.ax = spec.axles;
       this.tz = spec.bike ? 0.34 : (spec.tyre[0] + spec.tyre[1]) / 2;
       this.wr = spec.r;

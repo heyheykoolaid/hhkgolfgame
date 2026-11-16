@@ -1,6 +1,6 @@
 // Golden Hills — the neighbourhood next to the course: eight lots around a plaza (tee-time board, pro shop with the
 // wardrobe, fountain, a blackjack table for later), streets, palms and power lines, in the course's golden-hour light.
-import { buildFiller } from './filler';
+import { buildFiller, FILLER_BOXES } from './filler';
 import { buildLitter } from './litter';
 import { buildMountains } from '../world/mountains';
 import * as THREE from 'three';
@@ -14,7 +14,7 @@ import { buildRV } from './rv';
 import { buildProShop, buildTeeBoard, buildBench } from './plaza';
 import { funSurface, puttFloor } from './funland';
 import { westSurface, westY } from './westside';
-import { buildStreets, streetAt, paveY, SIDEWALKS, RING } from './roads';
+import { buildStreets, streetAt, paveY, SIDEWALKS } from './roads';
 export { SIDEWALKS };
 
 export const CELL = 28,
@@ -70,21 +70,11 @@ export function shadySurface(x: number, z: number): '' | 'asphalt' | 'paved' | '
   return 'grass';
 }
 export const WEST = { x0: -150, x1: -68, z0: -9, z1: 37, gateZ: 14, gateHW: 4.4, rampHW: 5.7 };
-/** Inside the walkable world: the town square, or Fun Land (reached through the one gate in the town's east edge, at z = -gateZ). */
+/** The edge of the world: one square round the whole map, well inside the city's towers (240 m out). It is the only
+ *  invisible wall there is (walking here, and matching physics walls for cars in lobby.ts). */
+export const EDGE = 215;
 export function inWorld(x: number, z: number) {
-  if (Math.abs(x) <= BOUND && Math.abs(z) <= BOUND) return true;
-  if (z < -BOUND) {
-    // Shady Lane, through the gate in the town's north edge
-    if (z > SHADY.z1) {
-      if (Math.abs(x) < SHADY.gateHW || Math.abs(Math.abs(x) - RING) < SHADY.sideHW) return true;
-    } else if (z > SHADY.z0) return x > SHADY.x0 && x < SHADY.x1;
-  }
-  if (x < -BOUND) {
-    if (x > WEST.x1) return Math.abs(z - WEST.gateZ) < (x > -BOUND - 1.4 ? WEST.gateHW : WEST.rampHW); // the street up the rise
-    return x > WEST.x0 && z > WEST.z0 && z < WEST.z1;
-  }
-  if (x < BOUND || x > FUN.x1 || Math.abs(z) > FUN.z) return false;
-  return x > BOUND + 1.4 || Math.abs(z + FUN.gateZ) < FUN.gateHW;
+  return Math.abs(x) <= EDGE && Math.abs(z) <= EDGE;
 }
 export interface Plot {
   id: number;
@@ -422,7 +412,10 @@ export function buildLobby(scene: THREE.Scene) {
       if (x < -BOUND + 2 && x > WEST.x0 - 20 && z > WEST.z0 - 10 && z < WEST.z1 + 26) continue; // the West Side and the shopfronts behind its car park
       const grove = Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05 - 0.7);
       if (grove < 0.05 && r() < 0.75) continue; // trees bunch into groves, with open meadow between
-      trees.push({ x, y: 0, z, s: 0.8 + r() * 0.6, tint: r(), id: Math.floor(r() * 1000) });
+      const tree = { x, y: 0, z, s: 0.8 + r() * 0.6, tint: r(), id: Math.floor(r() * 1000) };
+      if (Math.abs(x) < BOUND + 3 && Math.abs(z) < BOUND + 3) continue; // (not in the town's own corners: one stood on Fairway Loop)
+      trees.push(tree);
+      if (inWorld(x, z)) addCol(x - 0.4, x + 0.4, z - 0.4, z + 0.4, 'palm'); // a trunk you can't walk or drive through
     }
     const tg = new THREE.Group();
     tg.name = 'lobbyTrees';
@@ -476,11 +469,11 @@ export function buildLobby(scene: THREE.Scene) {
   gacha.group.position.set(-85.0 + SHADY_OFF.x, SHADY_OFF.y + 0.085, 6.9 + SHADY_OFF.z); // in the Lucky Lie Lounge, by the door on the west wall
   scene.add(gacha.group);
   addCol(-85.35 + SHADY_OFF.x, -84.65 + SHADY_OFF.x, 6.55 + SHADY_OFF.z, 7.25 + SHADY_OFF.z, 'gacha');
-  // Shady Lane's filler shops (lobby/filler.ts): the whole south side behind their fronts, and the two on the north side
-  addCol(-36, -5.9, -62.4, SHADY.z1, 'shop');
-  addCol(5.9, 36, -62.4, SHADY.z1, 'shop');
-  addCol(-44, -18, SHADY.z0, SHADY.front, 'shop');
-  addCol(36.4, 48, SHADY.z0, SHADY.front, 'shop');
+  // nobody's buildings and the hedges behind Shady Lane (lobby/filler.ts): each stops you at its own walls
+  for (const [x0, z0, x1, z1] of FILLER_BOXES) addCol(x0, x1, z0, z1, 'shop');
+  // the gate's posts, and the power poles along the town's south edge
+  for (const x of [-4, 4]) addCol(x - 0.25, x + 0.25, -BOUND - 1.25, -BOUND - 0.75, 'sign');
+  for (let x = -44; x <= 44; x += 16) addCol(x - 0.2, x + 0.2, BOUND + 0.8, BOUND + 1.2, 'palm');
   return { light, colliders, plots, gacha, fountain };
 }
 

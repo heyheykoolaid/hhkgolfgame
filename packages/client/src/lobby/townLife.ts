@@ -203,6 +203,21 @@ const ROUNDS: [string, string, [number, number][], number][] = [
     ],
     0.35,
   ],
+  // the delivery van: down Palm St, out to the West Side and round at the far end, back the whole length of South St,
+  // up Fairway Loop's east side and home along North St
+  [
+    'van',
+    'f4f1ea',
+    [
+      [-B, -B],
+      [-B, B],
+      [-126, B],
+      [-126, B],
+      [R, B],
+      [R, -B],
+    ],
+    0.5,
+  ],
 ];
 interface Car {
   v: Vehicle | null;

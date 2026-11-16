@@ -355,6 +355,7 @@ export function buildFunLand(scene: THREE.Scene, colliders: Collider[]) {
         for (let i = 0; i <= n; i++)
           posts.push(new THREE.BoxGeometry(0.16, 1.5, 0.16).translate(x0 + ((x1 - x0) * i) / n, 0.75, z0 + ((z1 - z0) * i) / n));
         for (const y of [0.55, 1.2]) posts.push(new THREE.BoxGeometry(0.07, 0.14, L).rotateY(a).translate((x0 + x1) / 2, y, (z0 + z1) / 2));
+        col(Math.min(x0, x1) - 0.1, Math.max(x0, x1) + 0.1, Math.min(z0, z1) - 0.1, Math.max(z0, z1) + 0.1); // (a fence you can see is a fence you can't walk through)
       },
       w = BOUND + 0.7,
       e = FUN.x1 + 0.3,

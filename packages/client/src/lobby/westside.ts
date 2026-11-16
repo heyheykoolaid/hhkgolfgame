@@ -1,6 +1,7 @@
 // The West Side: the first piece of the bigger town (lobby-design.md), through a gate in the town's west edge.
 // One street with a row of buildings on its north side (the clubhouse, the Lucky Lie Lounge, Dealer Alley, the Grow
-// Supply store), a water tower at the far end, a car park on the south side, and a delivery van doing its rounds.
+// Supply store), a water tower at the far end and a car park on the south side. (The delivery van drives the town's
+// streets with the other cars now: lobby/townLife.ts.)
 // The buildings are built here in code, and so are the cars (world/cars.ts).
 import { buildShopRow } from './shops';
 import { buildShady } from './shady';
@@ -27,12 +28,34 @@ export const ST = { z0: 10.5, z1: 17.5 }, // the street (it carries on from the 
 const RAMP_X1 = -68, // where the street reaches the top (= WEST.x1; written out for the same reason as X0)
   OX = -24,
   OY = 2.6;
-/** How high the ground is west of town: 0 at the town's edge, climbing the street to the district's level. */
-export function westY(x: number, z: number) {
-  void z;
+/** The street's own height as it climbs from the town's edge (0) to the district's level. */
+function rampY(x: number) {
   if (x <= RAMP_X1) return OY;
   const t = Math.max(0, Math.min(1, (X0 - x) / (X0 - RAMP_X1)));
   return OY * t * t * (3 - 2 * t); // eased at both ends, so the street meets the flat without a kink
+}
+// The hill the district stands on: flat on top, falling away over BANK metres all round, and shaped to the street
+// where it climbs. One function is the ground for everything: what is drawn, what you walk on and what cars drive on.
+const HILL_W = -126 + OX - 30, // (kept short of where the city's towers begin, 240 m out)
+  HILL_N = -9 - 24,
+  HILL_S = 37 + 26,
+  BANK = 13,
+  ease = (t: number) => {
+    t = Math.max(0, Math.min(1, t));
+    return t * t * (3 - 2 * t);
+  };
+/** How high the ground is west of town (0 out on the meadow). */
+export function westY(x: number, z: number) {
+  const dx = Math.max(HILL_W - x, 0, x - RAMP_X1),
+    dz = Math.max(HILL_N - z, 0, z - HILL_S),
+    top = OY * ease(1 - Math.hypot(dx, dz) / BANK);
+  let st = 0;
+  if (x > RAMP_X1 && x < X0 + 1) {
+    const hy = rampY(Math.min(x, X0)),
+      off = Math.max(0, Math.abs(z - 14) - 5.9);
+    st = hy * ease(1 - off / (3 + hy * 3.2));
+  }
+  return Math.max(top, st);
 }
 /** What's underfoot in the West Side or on the street up to it ('' outside both). World coordinates. */
 export function westSurface(wx: number, z: number): '' | 'asphalt' | 'paved' | 'grass' {
@@ -103,7 +126,7 @@ function buildRise(scene: THREE.Scene) {
   };
   const xs: number[] = [];
   for (let x = X0; x >= RAMP_X1 - 0.01; x -= 1) xs.push(x);
-  const h = (x: number) => westY(x, 0);
+  const h = rampY;
   strip(
     xs,
     x => [
@@ -136,26 +159,10 @@ function buildRise(scene: THREE.Scene) {
   );
   // The hill itself is one continuous grass surface: flat on top under the district, falling away over BANK metres
   // all round, and shaped to the street where it climbs (the paving above sits a few centimetres clear of it).
-  const X_W = -126 + OX - 30, // (kept short of where the city's towers begin, 240 m out)
-    Z_N = -9 - 24,
-    Z_S = 37 + 26,
-    BANK = 13,
-    ease = (t: number) => {
-      t = Math.max(0, Math.min(1, t));
-      return t * t * (3 - 2 * t);
-    },
-    riseY = (x: number, z: number) => {
-      const dx = Math.max(X_W - x, 0, x - RAMP_X1),
-        dz = Math.max(Z_N - z, 0, z - Z_S),
-        top = OY * ease(1 - Math.hypot(dx, dz) / BANK);
-      let st = 0;
-      if (x > RAMP_X1 && x < X0 + 1) {
-        const hy = h(Math.min(x, X0)),
-          off = Math.max(0, Math.abs(z - 14) - 5.9);
-        st = hy * ease(1 - off / (3 + hy * 3.2));
-      }
-      return Math.max(top, st);
-    },
+  const riseY = westY,
+    X_W = HILL_W,
+    Z_N = HILL_N,
+    Z_S = HILL_S,
     STEP = 2,
     gx0 = X_W - BANK - 2,
     gz0 = Z_N - BANK - 2,
@@ -185,17 +192,25 @@ function buildRise(scene: THREE.Scene) {
   G.add(hill);
   scene.add(G);
 }
-/** The rise as triangles for the cart's and the ragdoll's physics: the street's slope and the flat top. */
+/** The hill as triangles for the cars' and the ragdolls' physics: the same ground as westY, on a 2 m grid. */
 export function westRiseMesh() {
-  const v: number[] = [],
-    idx: number[] = [],
-    quad = (a: number[], b: number[], c: number[], d: number[]) => {
-      const o = v.length / 3;
-      v.push(...a, ...b, ...c, ...d);
-      idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
-    };
-  for (let x = X0; x > RAMP_X1; x -= 1) quad([x, westY(x, 0), 6], [x, westY(x, 0), 22], [x - 1, westY(x - 1, 0), 6], [x - 1, westY(x - 1, 0), 22]);
-  quad([RAMP_X1, OY, -40], [RAMP_X1, OY, 70], [-182, OY, -40], [-182, OY, 70]);
+  const STEP = 2,
+    x0 = HILL_W - BANK - 2,
+    z0 = HILL_N - BANK - 2,
+    nx = Math.ceil((X0 - x0) / STEP),
+    nz = Math.ceil((HILL_S + BANK + 2 - z0) / STEP),
+    v: number[] = [],
+    idx: number[] = [];
+  for (let k = 0; k <= nz; k++)
+    for (let i = 0; i <= nx; i++) {
+      const x = Math.min(x0 + i * STEP, X0),
+        z = z0 + k * STEP;
+      v.push(x, westY(x, z), z);
+      if (i < nx && k < nz) {
+        const o = k * (nx + 1) + i;
+        idx.push(o, o + nx + 1, o + 1, o + 1, o + nx + 1, o + nx + 2);
+      }
+    }
   return { verts: new Float32Array(v), indices: new Uint32Array(idx) };
 }
 
@@ -511,48 +526,19 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     G.add(c);
     parked.push(c);
   });
-  const vanCar = buildCar('van', '#d9d4c8'),
-    van = vanCar.root,
-    wheels = vanCar.wheels;
-  van.userData.noBatch = true;
-  G.add(van);
   // The code-built cars are stand-ins: once the vehicle pack is in ("54 Vehicle Pack", PorscheAaron, CC BY 4.0; see
   // docs/credits.md) each is swapped for a textured model. The pack is toy-sized with its nose along -x.
   void loadProps('vehicles', n => n).then(kit => {
-    const swap = (root: THREE.Object3D, n: number, moving = false) => {
+    const swap = (root: THREE.Object3D, n: number) => {
       const o = kit.make('Object_' + n, 25);
       if (!o) return;
       o.rotation.y = Math.PI / 2;
-      if (moving) o.userData.noBatch = true;
       for (const ch of root.children) ch.visible = false;
       root.add(o);
     };
     [49, 25, 19, 36, 20, 21, 26, 2].forEach((n, i) => parked[i] && swap(parked[i], n));
-    swap(van, 14, true);
   });
 
-  // the van's round: east along one lane, a U-turn short of the gate, west along the other, a U-turn short of the
-  // turning circle, and round again
-  const LANE = 1.8,
-    E0 = X0 - 9,
-    W0 = XW + 13,
-    seg = [E0 - W0, Math.PI * LANE],
-    total = (seg[0] + seg[1]) * 2;
-  function vanAt(s: number): [number, number, number] {
-    s = ((s % total) + total) % total;
-    if (s < seg[0]) return [W0 + s, 14 + LANE, Math.PI / 2]; // heading east (+x)
-    s -= seg[0];
-    if (s < seg[1]) {
-      const a = s / LANE;
-      return [E0 + Math.sin(a) * LANE, 14 + Math.cos(a) * LANE, Math.PI / 2 + a];
-    }
-    s -= seg[1];
-    if (s < seg[0]) return [E0 - s, 14 - LANE, -Math.PI / 2]; // heading west
-    const a = (s - seg[0]) / LANE;
-    return [W0 - Math.sin(a) * LANE, 14 - Math.cos(a) * LANE, -Math.PI / 2 - a];
-  }
-  let vs = 20,
-    vv = 0;
   return {
     /** Things to press E at. */
     spots: [
@@ -570,28 +556,9 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       const o = sp.id === 'growshop' || sp.id === 'pawn' || sp.id.startsWith('vlt:') ? SHADY_OFF : { x: WEST_OFF.x, z: 0 };
       return { ...sp, x: sp.x + o.x, z: sp.z + o.z };
     }) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
-    /** Per frame. The van slows for anyone in its way (people: x, z). */
-    update(dt: number, people: { x: number; z: number }[]) {
-      const [x, z, yaw] = vanAt(vs),
-        fx = Math.sin(yaw),
-        fz = Math.cos(yaw);
-      // someone within a few metres ahead: brake; otherwise amble along at about 20 km/h
-      let want = 5.5;
-      for (const p of people) {
-        const dx = p.x - WEST_OFF.x - x,
-          dz = p.z - z,
-          ahead = dx * fx + dz * fz,
-          side = Math.abs(dx * fz - dz * fx);
-        if (ahead > -1 && ahead < 9 && side < 2) want = Math.min(want, Math.max(0, (ahead - 4) * 1.2));
-      }
-      vv += Math.max(-9 * dt, Math.min(2.5 * dt, want - vv));
-      vs += vv * dt;
+    /** Per frame. */
+    update() {
       shopRow.update(performance.now() / 1000);
-      van.position.set(x, 0.03, z);
-      van.rotation.y = yaw;
-      for (const w of wheels) w.rotation.x += (vv * dt) / 0.32;
     },
-    /** Where the van is, for bumping into (x, z, heading, speed). */
-    van: () => ({ x: van.position.x + WEST_OFF.x, z: van.position.z, yaw: van.rotation.y, v: vv }),
   };
 }

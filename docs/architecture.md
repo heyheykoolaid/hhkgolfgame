@@ -114,7 +114,7 @@ All sounds are synthesized (noise through filters, oscillators, and a few buffer
 
 **Hills:** `lobby/hills.ts`. `hillY(x, z)` is the ground south of town (levelled across the road, blended back into the slope); `world.groundY` returns it there. `buildHills` returns the drawn triangles (ground plus road), which `lobby.ts` gives to Rapier as the carts' ground. Like `funland.ts`, it must not read `world.ts` while loading.
 
-**The edge of the world:** `inWorld(x, z)` in `lobby/world.ts` (the town square, or Fun Land through its two gates). Walking uses it directly; carts have matching physics walls in `lobby.ts`. To grow the map again, change both.
+**The edge of the world (Nov 16):** `inWorld(x, z)` in `lobby/world.ts` is one square (`EDGE`, 215 m), and `lobby.ts` gives cars four matching walls. It is the only invisible wall. Anything else that stops a player must be a collider on something visible (`addCol` / `col`, with a height in `H` in `lobby.ts` so cars hit it too). Ground height outside the town comes from `westY` (the West Side's hill, everywhere west) and `puttFloor` (east).
 
 **Level of detail (golfers):** `setLod` in `characters/golfer.ts`. A golfer's first mesh reads the camera's distance in `onBeforeRender` and swaps every part to a geometry that shares its vertices but has a shorter triangle list (`lowGeometry`, cached per part). `ui/perf.ts` is the F3 readout; `lodCount` there shows how many golfers are at each level.
 

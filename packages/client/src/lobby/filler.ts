@@ -25,16 +25,47 @@ const PLACES: [string, number, number, Face, string[]?][] = [
   ['Condo005', 22, 76, 'N'],
   ['Condo003', 62, 68, 'N'],
 ];
+/** Each building's footprint in metres (width along its front, depth), as measured from the pack: known ahead of the
+ *  models loading, so their walls are solid from the first frame. */
+const SIZE: Record<string, [number, number]> = {
+  burguer: [12, 19],
+  Plane017: [10.8, 14.3],
+  Pizzeria: [11.4, 11.3],
+  restaurant: [6, 7.5],
+  farmacia: [10.2, 10.1],
+  Plane014: [5.8, 6.3],
+  Plane019: [8.2, 8],
+  polleria: [14, 17.2],
+  Condo001: [16, 35.6],
+  Condo005: [24, 35.6],
+  Condo003: [16, 35.6],
+};
+/** The hedges behind Shady Lane's south side: [x0, x1] at z = -49.3. */
+const HEDGES: [number, number][] = [
+  [-36, -6.5],
+  [6.5, 36],
+];
+/** What stops you: every building's footprint and the hedges, as [x0, z0, x1, z1]. */
+export const FILLER_BOXES: [number, number, number, number][] = [
+  ...PLACES.map(([name, fx, fz, face]): [number, number, number, number] => {
+    const [w, d] = SIZE[name] ?? [8, 8];
+    return face === 'N'
+      ? [fx - w / 2, fz, fx + w / 2, fz + d]
+      : face === 'S'
+        ? [fx - w / 2, fz - d, fx + w / 2, fz]
+        : face === 'E'
+          ? [fx - d, fz - w / 2, fx, fz + w / 2]
+          : [fx, fz - w / 2, fx + d, fz + w / 2];
+  }),
+  ...HEDGES.map(([x0, x1]): [number, number, number, number] => [x0, -49.95, x1, -48.65]),
+];
 export function buildFiller(scene: THREE.Scene) {
   const G = new THREE.Group();
   G.name = 'filler';
   scene.add(G);
   // a tall clipped hedge along the back of Shady Lane's south side, so the town looks at green and not at the shops' backs
   const hedge = new THREE.MeshStandardMaterial({ color: '#3f5e34', roughness: 0.95 });
-  for (const [x0, x1] of [
-    [-36, -6.5],
-    [6.5, 36],
-  ]) {
+  for (const [x0, x1] of HEDGES) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4.6, 1.3), hedge);
     h.position.set((x0 + x1) / 2, 2.3, -49.3);
     h.castShadow = h.receiveShadow = true;

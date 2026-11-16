@@ -37,11 +37,12 @@ import {
   SHADY_OFF,
   SHADY,
   inWorld,
+  EDGE,
   type Plot,
   type Collider,
 } from './world';
 import { buildFunLand, funSurface } from './funland';
-import { STREETS, PAVES, RING, streetAt } from './roads';
+import { STREETS, PAVES, streetAt } from './roads';
 import { createPutt } from './putt';
 import { ambience } from '../audio/ambience';
 import { controls, type ControlRow } from '../ui/controls';
@@ -356,48 +357,13 @@ export function createLobby(env: LobbyEnv) {
             H[c.tag] / 2,
             Math.max(0.05, (c.z1 - c.z0) / 2),
           );
+      // the one invisible wall there is: a square round the whole map, so nobody drives off to the horizon. Everything
+      // inside it that stops you is something you can see.
       for (const [x, z, hx, hz] of [
-        [0, BOUND + 0.5, BOUND + 1, 0.5],
-        // the north edge has three ways out to Shady Lane (the gate road up the middle, and Fairway Loop's west and east
-        // sides carried on north): short walled roads, then the district with walls all round
-        ...[-1, 1].flatMap(e => {
-          const g0 = SHADY.gateHW,
-            s0 = RING - SHADY.sideHW,
-            s1 = RING + SHADY.sideHW,
-            zm = (-BOUND + SHADY.z1) / 2,
-            zh = (-SHADY.z1 - BOUND) / 2,
-            run = (x0: number, x1: number, z: number) => [(e * (x0 + x1)) / 2, z, (x1 - x0) / 2, 0.5],
-            wall = (x: number) => [e * x, zm, 0.5, zh];
-          return [
-            run(g0, s0, -BOUND - 0.5),
-            run(s1, BOUND, -BOUND - 0.5),
-            wall(g0 + 0.5),
-            wall(s0 - 0.5),
-            wall(s1 + 0.5),
-            run(g0, s0, SHADY.z1 + 0.5),
-            run(s1, e < 0 ? -SHADY.x0 : SHADY.x1, SHADY.z1 + 0.5),
-          ];
-        }),
-        [(SHADY.x0 + SHADY.x1) / 2, SHADY.z0 - 0.5, (SHADY.x1 - SHADY.x0) / 2 + 1, 0.5],
-        [SHADY.x0 - 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
-        [SHADY.x1 + 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
-        // the west edge has one gate into the West Side (south-west, at z = gateZ); the district has its own outer walls
-        [-BOUND - 0.5, (WEST.gateZ - WEST.gateHW - BOUND) / 2, 0.5, (WEST.gateZ - WEST.gateHW + BOUND) / 2],
-        [-BOUND - 0.5, (WEST.gateZ + WEST.gateHW + BOUND) / 2, 0.5, (BOUND - WEST.gateZ - WEST.gateHW) / 2],
-        // the street up the rise is walled either side; the district on top has walls all round, open only at the street
-        [(WEST.x1 - BOUND) / 2, WEST.gateZ - WEST.rampHW - 0.5, (-BOUND - WEST.x1) / 2, 0.5],
-        [(WEST.x1 - BOUND) / 2, WEST.gateZ + WEST.rampHW + 0.5, (-BOUND - WEST.x1) / 2, 0.5],
-        [WEST.x1 + 0.5, (WEST.z0 + WEST.gateZ - WEST.rampHW) / 2, 0.5, (WEST.gateZ - WEST.rampHW - WEST.z0) / 2],
-        [WEST.x1 + 0.5, (WEST.z1 + WEST.gateZ + WEST.rampHW) / 2, 0.5, (WEST.z1 - WEST.gateZ - WEST.rampHW) / 2],
-        [(WEST.x0 + WEST.x1) / 2, WEST.z0 - 0.5, (WEST.x1 - WEST.x0) / 2 + 1, 0.5],
-        [(WEST.x0 + WEST.x1) / 2, WEST.z1 + 0.5, (WEST.x1 - WEST.x0) / 2 + 1, 0.5],
-        [WEST.x0 - 0.5, (WEST.z0 + WEST.z1) / 2, 0.5, (WEST.z1 - WEST.z0) / 2 + 1],
-        // the east edge has one gate into Fun Land (north-east, at z = -gateZ); the park has its own outer walls
-        [BOUND + 0.5, (FUN.z - FUN.gateZ + FUN.gateHW) / 2, 0.5, (FUN.z + FUN.gateZ - FUN.gateHW) / 2],
-        [BOUND + 0.5, -(FUN.z + FUN.gateZ + FUN.gateHW) / 2, 0.5, (FUN.z - FUN.gateZ - FUN.gateHW) / 2],
-        [(BOUND + FUN.x1) / 2, FUN.z + 0.5, (FUN.x1 - BOUND) / 2 + 1, 0.5],
-        [(BOUND + FUN.x1) / 2, -FUN.z - 0.5, (FUN.x1 - BOUND) / 2 + 1, 0.5],
-        [FUN.x1 + 0.5, 0, 0.5, FUN.z + 1],
+        [0, EDGE + 0.5, EDGE + 1, 0.5],
+        [0, -EDGE - 0.5, EDGE + 1, 0.5],
+        [EDGE + 0.5, 0, 0.5, EDGE + 1],
+        [-EDGE - 0.5, 0, 0.5, EDGE + 1],
       ])
         w.box(x, 9, z, hx, 9, hz); // the edge of the world (carts)
       {
@@ -498,7 +464,7 @@ export function createLobby(env: LobbyEnv) {
       x += Math.cos(a) * r * 0.5;
       z += Math.sin(a) * r * 0.5;
     }
-    return inWorld(x, z) ? [x, z] : [clamp(x, -BOUND + 1, BOUND - 1), clamp(z, -BOUND + 1, BOUND - 1)];
+    return inWorld(x, z) ? [x, z] : [clamp(x, -EDGE + 1, EDGE - 1), clamp(z, -EDGE + 1, EDGE - 1)];
   }
 
   // ---------------- input ----------------
@@ -2242,8 +2208,8 @@ export function createLobby(env: LobbyEnv) {
           r = remoteFor(pe.peer, pe.by || pe.peer, sanitizeLook(pr.o));
         r.by = pe.by || r.by;
         r.pres = pr;
-        r.tx = clamp(+pr.x || 0, -BOUND, FUN.x1);
-        r.tz = clamp(+pr.z || 0, -FUN.z, 152);
+        r.tx = clamp(+pr.x || 0, -EDGE, EDGE);
+        r.tz = clamp(+pr.z || 0, -EDGE, EDGE);
         r.tyaw = +pr.yaw || 0;
         r.spd = clamp(+pr.spd || 0, 0, 7);
         r.ty = clamp(+(pr.y || 0), 0, 3);
@@ -2860,15 +2826,10 @@ export function createLobby(env: LobbyEnv) {
     {
       // everyone the town's walkers and drivers should give way to: me (or my car), the other players, the van
       const mine =
-          P.mode === 'drive' && cart.car
-            ? { x: cart.car.root.position.x, z: cart.car.root.position.z, spd: Math.abs(cart.car.speed()) }
-            : { x: P.x, z: P.z, spd: P.spd },
-        vn = west.van();
-      life.update(dt, clock, camera, [
-        mine,
-        ...[...remotes.values()].map(r => ({ x: r.x, z: r.z, spd: r.cart ? Math.abs(r.cart.speed()) : 0 })),
-        { x: vn.x, z: vn.z, spd: vn.v },
-      ]);
+        P.mode === 'drive' && cart.car
+          ? { x: cart.car.root.position.x, z: cart.car.root.position.z, spd: Math.abs(cart.car.speed()) }
+          : { x: P.x, z: P.z, spd: P.spd };
+      life.update(dt, clock, camera, [mine, ...[...remotes.values()].map(r => ({ x: r.x, z: r.z, spd: r.cart ? Math.abs(r.cart.speed()) : 0 }))]);
       // a town car that catches you on foot at speed knocks you down, the same as a player's would
       if (!flop && P.mode === 'walk')
         for (const c of life.cars())
@@ -2911,7 +2872,7 @@ export function createLobby(env: LobbyEnv) {
     // 12 m across stops being drawn once it's farther than 55 m plus three times its size
     // (a bench goes at about 58 m, a whole lot at about 85 m).
     radioFrame(dt);
-    west.update(dt, [P, ...remotes.values(), ...life.movers()]);
+    west.update();
     tickWater(clock);
     batcher.update(dt);
     if ((cullT -= dt) <= 0) {
