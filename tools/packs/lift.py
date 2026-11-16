@@ -4,7 +4,9 @@ rectangle of the scene (x0,z0,x1,z1 in the scene's own metres), each with its pl
 Nodes whose own or parents' names match skipRegex are left out. Textures are scaled to at most N pixels, and old
 specular-glossiness materials are turned into standard ones (three.js no longer reads them).
 
-  python3 -I tools/packs/lift.py scene.glb out.glb x0,z0,x1,z1 [N=512] [skipRegex]
+  python3 -I tools/packs/lift.py scene.glb out.glb x0,z0,x1,z1 [N=512] [skipRegex] [alsoRegex]
+
+alsoRegex: nodes taken whatever their place (the floor and ceiling of a room that is being cut down).
 """
 import sys, json, struct, io, re
 import numpy as np
@@ -13,7 +15,8 @@ Image.MAX_IMAGE_PIXELS = None
 src, dst = sys.argv[1:3]
 box = [float(v) for v in sys.argv[3].split(',')]
 N = int(sys.argv[4]) if len(sys.argv) > 4 else 512
-skip = re.compile(sys.argv[5]) if len(sys.argv) > 5 else None
+skip = re.compile(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else None
+also = re.compile(sys.argv[6]) if len(sys.argv) > 6 else None  # always taken, wherever they lie (a room's floor and ceiling)
 f = open(src, 'rb'); f.read(12)
 clen, _ = struct.unpack('<II', f.read(8)); j = json.loads(f.read(clen))
 blen, _ = struct.unpack('<II', f.read(8)); bin_ = f.read(blen)
@@ -38,7 +41,7 @@ def walk(i, M, bad):
                         p = (W @ np.array([cx, cy, cz, 1]))[:3]; lo = np.minimum(lo, p); hi = np.maximum(hi, p)
         c = (lo + hi) / 2
         fits = lo[0] > box[0] - 4 and hi[0] < box[2] + 4 and lo[2] > box[1] - 4 and hi[2] < box[3] + 4  # (not the ground slabs and cables that run across the whole park)
-        if fits and box[0] <= c[0] <= box[2] and box[1] <= c[2] <= box[3]: chosen.append((i, W))
+        if (fits and box[0] <= c[0] <= box[2] and box[1] <= c[2] <= box[3]) or (also and also.search(n.get('name', ''))): chosen.append((i, W))
     for ch in n.get('children', []): walk(ch, W, bad)
 for r in j['scenes'][j.get('scene', 0)]['nodes']: walk(r, np.eye(4), False)
 

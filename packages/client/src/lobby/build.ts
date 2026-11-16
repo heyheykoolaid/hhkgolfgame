@@ -6,13 +6,13 @@
 // - Prices are shown but nothing is charged until the cash wallet exists.
 import * as THREE from 'three';
 import { HALF, toWorld, type Plot, type Collider } from './world';
-import { ITEMS, ITEM, trophyItem, type ItemDef, type Cat } from './catalog';
+import { ITEMS, ITEM, trophyItem, packReady, loadItemModels, type ItemDef, type Cat } from './catalog';
 import { objectImage, trophyImage } from '../world/trophy';
-import { loadProp, propReady } from '../world/props';
+import { propReady } from '../world/props';
 import { progress, addCash, onProgress, type TrophyRec } from '../avatar/progress';
 
 /** Grow gear is bought at Grow Supply and carried: Build Mode places what you own instead of selling it. */
-const owned = (def: ItemDef) => (def.cat === 'grow' ? progress().gear[def.id] || 0 : Infinity);
+const owned = (def: ItemDef) => (def.cat === 'trophies' ? Infinity : progress().gear[def.id] || 0);
 
 /** One placed item, in lot coordinates (x right, z toward the plaza, metres; r = yaw in radians). */
 export interface Placed {
@@ -103,7 +103,10 @@ export function whyNot(items: Placed[], def: ItemDef, x: number, z: number, r: n
   if (!roof) for (const k of KEEP_OUT) if (overlap(f, k)) return k.why;
   const count = items.filter((p, i) => i !== skip && p.k === def.id).length;
   if (def.max && count >= def.max) return def.cat === 'trophies' ? 'Already on display' : `Only ${def.max} per lot`;
-  if (count >= owned(def)) return count ? `You only own ${count}: Grow Supply sells more` : 'Buy one at Grow Supply first';
+  if (count >= owned(def)) {
+    const shop = def.cat === 'grow' ? 'Grow Supply' : 'Homestead Furniture';
+    return count ? `All ${count} you own are out: ${shop} sells more` : `${shop} sells these`;
+  }
   if (items.length - (skip >= 0 ? 1 : 0) >= MAX_ITEMS) return `Lot is full (${MAX_ITEMS} items)`;
   for (let i = 0; i < items.length; i++) {
     if (i === skip) continue;
@@ -267,9 +270,10 @@ const CATS: { id: Cat; label: string }[] = [
   { id: 'garage', label: 'Garage' },
 ];
 const thumbs = new Map<string, string>();
-function thumb(def: ItemDef, color: string, t?: Placed['t']) {
-  if (def.model && !propReady(def.model)) return 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; // still loading
-  const k = def.id + (def.model ? '' : color);
+export function thumb(def: ItemDef, color: string, t?: Placed['t']) {
+  if ((def.model && !propReady(def.model)) || (def.pack && !packReady(def.pack)))
+    return 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; // still loading
+  const k = def.id + (def.model || def.pack ? '' : color);
   let u = thumbs.get(k);
   if (!u) {
     u = t ? trophyImage(t.seed, t.n, '', 112) : objectImage(def.make(color), 112);
@@ -329,7 +333,7 @@ export function createBuild(h: BuildHost) {
   const ui = document.createElement('div');
   ui.id = 'lbuild';
   ui.className = 'hidden';
-  ui.innerHTML = `<div class="bm-top"><button id="bm-exit">✕ Done</button><div class="bm-title"><b id="bm-lot">RV Lot</b> · Build Mode</div><div class="bm-cash">Cash: <b id="bm-cashv">—</b><span>removing an item refunds it</span></div></div>
+  ui.innerHTML = `<div class="bm-top"><button id="bm-exit">✕ Done</button><div class="bm-title"><b id="bm-lot">RV Lot</b> · Build Mode</div><div class="bm-cash">Cash: <b id="bm-cashv">—</b><span>removing an item puts it back in storage</span></div></div>
     <div class="bm-left"><div class="bm-tabs"></div><input id="bm-search" placeholder="Search…" autocomplete="off" spellcheck="false"><div class="bm-items"></div></div>
     <div class="bm-bottom"><div class="bm-sel" id="bm-sel"></div><div class="bm-btns"><button id="bm-rot">⟳ Rotate <kbd>Q</kbd><kbd>E</kbd></button><button id="bm-grid"></button><button id="bm-del">🗑 Remove <kbd>X</kbd></button><button id="bm-undo">↶ Undo <kbd>Ctrl Z</kbd></button></div></div>
     <div class="bm-tip" id="bm-tip"></div><div class="bm-help">Click an item, then click your lot to place it · click a placed item to move it · right-drag to turn the camera, scroll to zoom, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to pan · <kbd>Esc</kbd> done</div>`;
@@ -359,7 +363,11 @@ export function createBuild(h: BuildHost) {
           def = trophyItem({ id: t.id, ...td });
         return { def, t: td, placed: items.some(p => p.k === def.id) };
       });
-    return ITEMS.filter(i => i.cat === cat).map(def => ({ def, placed: !!def.max && items.filter(p => p.k === def.id).length >= def.max }));
+    // your lot's storage: what you own, on the lot or not (shops on the West Side sell more)
+    return ITEMS.filter(i => i.cat === cat && owned(i) > 0).map(def => ({
+      def,
+      placed: !!def.max && items.filter(p => p.k === def.id).length >= def.max,
+    }));
   }
   function renderCatalog() {
     ui.querySelector('.bm-tabs')!.innerHTML = CATS.map(
@@ -378,10 +386,10 @@ export function createBuild(h: BuildHost) {
       ? list
           .map(
             ({ def, placed }, i) =>
-              `<button class="it${hand?.def.id === def.id && !hand.moving ? ' on' : ''}${placed ? ' placed' : ''}" data-i="${i}"><img src="${thumb(def, color, list[i].t)}" alt=""><span class="nm">${esc(def.name)}</span><span class="pr">${def.cat === 'trophies' ? (placed ? 'on display' : 'won') : placed ? 'placed' : def.cat === 'grow' ? `own ${owned(def)}` : money(def.price)}</span></button>`,
+              `<button class="it${hand?.def.id === def.id && !hand.moving ? ' on' : ''}${placed ? ' placed' : ''}" data-i="${i}"><img src="${thumb(def, color, list[i].t)}" alt=""><span class="nm">${esc(def.name)}</span><span class="pr">${def.cat === 'trophies' ? (placed ? 'on display' : 'won') : placed ? 'placed' : `${Math.max(0, owned(def) - items.filter(p => p.k === def.id).length)} of ${owned(def)} in storage`}</span></button>`,
           )
           .join('')
-      : `<p class="muted">${cat === 'trophies' ? 'No trophies yet. Win a Mini cup or Championship from the tee times board.' : 'Nothing matches.'}</p>`;
+      : `<p class="muted">${cat === 'trophies' ? 'No trophies yet. Win a Mini cup or Championship from the tee times board.' : cat === 'grow' ? 'Nothing in storage. Grow Supply on the West Side sells pots, beds and sprinklers.' : 'Nothing in storage. Homestead Furniture on the West Side sells things for your lot.'}</p>`;
     ui.querySelectorAll<HTMLButtonElement>('.bm-items .it').forEach(
       b =>
         (b.onclick = () => {
@@ -397,7 +405,7 @@ export function createBuild(h: BuildHost) {
   function renderBottom() {
     const sel = hand ? hand.def : hover >= 0 ? defOf(items[hover]) : null;
     $('bm-sel').innerHTML = sel
-      ? `<b>${esc(sel.name)}</b> <span>${sel.cat === 'trophies' ? 'trophy' : money(sel.price)}</span>${hand?.moving ? ' <em>moving</em>' : hand ? '' : ' <em>click to move</em>'}`
+      ? `<b>${esc(sel.name)}</b> <span>${sel.cat === 'trophies' ? 'trophy' : 'yours'}</span>${hand?.moving ? ' <em>moving</em>' : hand ? '' : ' <em>click to move</em>'}`
       : `<span class="muted">${items.length} / ${MAX_ITEMS} items placed</span>`;
     $('bm-grid').innerHTML = `▦ Grid: ${snap ? 'on' : 'off'} <kbd>G</kbd>`;
     ($('bm-undo') as HTMLButtonElement).disabled = !undo.length;
@@ -411,7 +419,7 @@ export function createBuild(h: BuildHost) {
   // Cash: every change settles the difference in what's on the lot (so placing, removing and undo all balance out).
   // Whatever was already on the lot when you opened Build Mode counts as paid for.
   let paid = 0;
-  const lotValue = (list: Placed[]) => list.reduce((a, p) => a + (defOf(p)?.cat === 'grow' ? 0 : defOf(p)?.price || 0), 0);
+  const lotValue = (list: Placed[]) => list.reduce((a, p) => a + 0 * (defOf(p)?.price || 0), 0);
   const showCash = () => {
     const el = document.getElementById('bm-cashv');
     if (el) el.textContent = money(progress().cash);
@@ -669,7 +677,7 @@ export function createBuild(h: BuildHost) {
     renderBottom();
     trophies = await h.trophies().catch(() => []);
     if (on) renderCatalog();
-    await Promise.all(ITEMS.filter(i => i.model).map(i => loadProp(i.model!)));
+    await loadItemModels();
     if (on) renderCatalog(); // detailed models: thumbnails once loaded
     return true;
   }

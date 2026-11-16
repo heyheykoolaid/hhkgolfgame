@@ -3,7 +3,7 @@
 // Supply store), a water tower at the far end, a car park on the south side, and a delivery van doing its rounds.
 // The buildings are built here in code, and so are the cars (world/cars.ts).
 import { buildShopRow } from './shops';
-import { loadProps } from '../world/propPacks';
+import { loadPiece, loadProps } from '../world/propPacks';
 import { buildMachines, type VltSpot } from './vlt';
 import * as THREE from 'three';
 import { buildCar, CAR_PAINT, type CarKind } from '../world/cars';
@@ -126,7 +126,7 @@ function buildRise(scene: THREE.Scene) {
   );
   // The hill itself is one continuous grass surface: flat on top under the district, falling away over BANK metres
   // all round, and shaped to the street where it climbs (the paving above sits a few centimetres clear of it).
-  const X_W = -126 + OX - 52,
+  const X_W = -126 + OX - 30, // (kept short of where the city's towers begin, 240 m out)
     Z_N = -9 - 24,
     Z_S = 37 + 26,
     BANK = 13,
@@ -185,7 +185,7 @@ export function westRiseMesh() {
       idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
     };
   for (let x = X0; x > RAMP_X1; x -= 1) quad([x, westY(x, 0), 6], [x, westY(x, 0), 22], [x - 1, westY(x - 1, 0), 6], [x - 1, westY(x - 1, 0), 22]);
-  quad([RAMP_X1, OY, -40], [RAMP_X1, OY, 70], [-215, OY, -40], [-215, OY, 70]);
+  quad([RAMP_X1, OY, -40], [RAMP_X1, OY, 70], [-182, OY, -40], [-182, OY, 70]);
   return { verts: new Float32Array(v), indices: new Uint32Array(idx) };
 }
 
@@ -412,7 +412,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     ] as [string, string[]][])
       x += stand(n, x, -14, ex, true) + 2.5;
     for (const [n, px, pz, yaw] of [
-      ['Condo002', -156, 14, Math.PI / 2],
+      ['Condo002', -142, 14, Math.PI / 2],
       ['Condo004', -136, -22, 0],
     ] as [string, number, number, number][]) {
       const o = kit.make(n);
@@ -423,15 +423,18 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       G.add(o);
     }
   });
-  G.add(tile(flat(46, 3.4, pavers, -96, 36.5, 0.05), 2)); // the walk along the shopfronts
+  G.add(tile(flat(58, 3.4, pavers, -90, 36.5, 0.05), 2)); // the walk along the shopfronts
   const shopRow = buildShopRow(G, 38.2, (a, b, c, d) => col(a, b, c, d)); // Threads, the barber, Ink Spot and the Pro Shop (lobby/shops.ts)
   let vltSpots: VltSpot[] = [];
-  // 2 · the Lucky Lie Lounge: dark brick, open to the street, with the blackjack table inside under warm lamps
+  // 2 · the Lucky Lie Lounge: a brick shell, open to the street, and inside it the front two-thirds of a real bar room
+  // ("Barranco Bar | PS1 Environment", McPato, CC BY 4.0; see docs/credits.md): the long counter and its back bar on the
+  // east side, leather booths in alcoves down the west wall, parquet, beams and lamps. Blackjack is played in the open
+  // front of the room; the machines stand along the back wall at the end of the aisle.
   {
     const z1 = ST.z0 - 2.4,
       x0 = -86,
       x1 = -72,
-      z0 = -6,
+      z0 = z1 - 16,
       h = 4.6,
       brick = M('#5a3a30', 0.85),
       trim = M('#1d1d1f', 0.8),
@@ -446,14 +449,32 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       box(x1 - x0, 1.1, 0.3, brick, cx, h - 0.55, z1 - 0.15), // the beam over the open front
       box(0.5, h, 0.5, trim, x0 + 3.6, h / 2, z1 - 0.25),
       box(0.5, h, 0.5, trim, x1 - 3.6, h / 2, z1 - 0.25),
-      box(x1 - x0 - 0.6, 0.05, d - 0.3, M('#4a1f2c', 0.95), cx, 0.06, cz + 0.1), // carpet
-      box(x1 - x0 - 0.7, 0.9, 0.06, M('#2a1a16', 0.7), cx, 0.5, z0 + 0.33), // wainscot
+      box(x1 - x0 - 0.6, 0.05, d - 0.3, M('#2b2420', 0.9), cx, 0.06, cz + 0.1), // the stone threshold (the parquet lies on it)
+      box(x1 - x0 - 0.6, 0.04, 0.5, M('#b08a3e', 0.4, 0.6), cx, 0.09, z1 - 2.5), // a brass strip where the parquet begins
+      box(x1 - x0 - 0.6, 0.12, 2.5, M('#1a1614', 0.9), cx, 4.15, z1 - 1.4), // the ceiling over the threshold
     );
-    // a bar along the west wall and bottles behind it, for the look of the place
-    G.add(box(0.7, 1.05, 5, M('#3a2418', 0.6), x0 + 1.5, 0.53, cz - 1.5), box(0.9, 0.06, 5.2, M('#1d1d1f', 0.3, 0.3), x0 + 1.5, 1.08, cz - 1.5));
-    for (let i = 0; i < 7; i++)
-      G.add(cyl(0.05, 0.06, 0.3, 6, M(['#6a8a4a', '#8a5a2a', '#b5651d', '#4a6a8a'][i % 4], 0.3), x0 + 0.45, 1.7, cz - 3.6 + i * 0.7));
-    G.add(box(0.25, 0.05, 5, M('#3a2418', 0.6), x0 + 0.45, 1.52, cz - 1.5));
+    // the room: scene (x, z) stands at (x + BAR.x, z + BAR.z) here; it is cut off at the back and east walls
+    const BAR = { x: -77.1, y: 0.1, z: z1 - 2.5 + 12 };
+    void loadPiece('lounge').then(p => {
+      if (!p) return;
+      const o = p.make(),
+        cut = [new THREE.Plane(new THREE.Vector3(0, 0, 1), -(z0 + 0.31)), new THREE.Plane(new THREE.Vector3(-1, 0, 0), x1 - 0.31 + WEST_OFF.x)];
+      o.position.set(p.origin.x + BAR.x, p.origin.y + BAR.y, p.origin.z + BAR.z);
+      o.traverse(c => {
+        const mesh = c as THREE.Mesh,
+          m = mesh.material as THREE.MeshStandardMaterial;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = mesh.receiveShadow = false;
+        m.clippingPlanes = cut;
+        if (m.map && !m.emissiveMap) {
+          // lit from inside: the room keeps its own warm light whatever the sun is doing
+          m.emissiveMap = m.map;
+          m.emissive = new THREE.Color('#ffffff');
+          m.emissiveIntensity = /EMIT/i.test(m.name) ? 1.2 : 0.42;
+        }
+      });
+      G.add(o);
+    });
     // lamps over the table (they glow; one real light keeps the room readable under its roof)
     for (const dx of [-1.2, 0, 1.2]) {
       const shade = new THREE.Mesh(
@@ -488,7 +509,9 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     col(x0, x1, z0, z0 + 0.3);
     col(x0 + 3.35, x0 + 3.85, z1 - 0.5, z1, 'sign');
     col(x1 - 3.85, x1 - 3.35, z1 - 0.5, z1, 'sign');
-    col(x0 + 1.1, x0 + 1.95, cz - 4.1, cz + 1.1, 'bench');
+    col(-78.25, x1, z0, 2.15, 'bench'); // the counter and everything behind it
+    col(x0, -82.55, z0, z1 - 2.5, 'bench'); // the booths
+    col(-74.3, x1, 2.15, 4.7, 'bench'); // crates by the bar's end
     // pictures on the walls ("Paintings and Posters Collection", Melon Polygons, CC BY 4.0; see docs/credits.md).
     // The pack is one welded mesh: the loader cuts it into separate frames (Art00, Art01… biggest first).
     void loadProps('paintings', n => n, 'Art').then(kit => {
@@ -498,13 +521,9 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       if (!arts.length) return;
       // [x, bottom y, z, the way it faces (yaw), widest it may be]
       const WALLS: [number, number, number, number, number][] = [
-        [-83.6, 2.55, z0 + 0.33, 0, 1.5],
-        [-79, 2.6, z0 + 0.33, 0, 1.9],
-        [-74.4, 2.55, z0 + 0.33, 0, 1.5],
-        [x1 - 0.33, 1.5, 1.2, -Math.PI / 2, 1.3],
-        [x1 - 0.33, 1.45, 4.4, -Math.PI / 2, 1.6],
-        [x0 + 0.33, 1.9, 4.2, Math.PI / 2, 1.4],
-        [x0 + 0.33, 1.95, 6.4, Math.PI / 2, 1.1],
+        [-80.6, 2.7, z0 + 0.33, 0, 1.9],
+        [x1 - 0.33, 1.6, z1 - 1.2, -Math.PI / 2, 1.3],
+        [x0 + 0.33, 2.3, z1 - 1.2, Math.PI / 2, 1.3],
       ];
       WALLS.forEach(([wx, wy, wz, face, maxW], i) => {
         const a = arts[(i * 5 + 2) % arts.length],
@@ -519,7 +538,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       });
     });
     // slot machines and video poker along the back wall (lobby/vlt.ts)
-    const xs = [-81.3, -80.3, -77.7, -76.7];
+    const xs = [-82.0, -81.05, -80.1, -79.15];
     vltSpots = buildMachines(G, xs, z0 + 0.72, WEST_OFF);
     for (const mx of xs) col(mx - 0.4, mx + 0.4, z0 + 0.3, z0 + 1.15, 'bench');
   }
@@ -715,6 +734,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       { id: 'store:barber', x: -100.2, z: 36.2, r: 2.2, label: 'The Clip Joint · barber' },
       { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
       { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
+      { id: 'store:home', x: -67.3, z: 36.2, r: 2.6, label: 'Homestead · furniture for your lot' },
       ...vltSpots,
     ].map(sp => ({ ...sp, x: sp.x + WEST_OFF.x })) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
     /** Per frame. The van slows for anyone in its way (people: x, z). */

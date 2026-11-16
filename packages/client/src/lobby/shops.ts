@@ -129,12 +129,12 @@ function storefront(f: Front) {
   if (f.awning) {
     const am = new THREE.MeshStandardMaterial({ map: stripeTex(f.awning[0], f.awning[1], Math.round(f.w)), roughness: 0.85, side: THREE.DoubleSide }),
       aw = new THREE.Mesh(new THREE.PlaneGeometry(f.w - 0.2, 1.5), am);
-    aw.rotation.x = Math.PI / 2 + 0.42;
+    aw.rotation.x = Math.PI / 2 - 0.42;
     aw.position.set(0, sillY + winH + 0.55, -0.72);
     const val = new THREE.Mesh(new THREE.PlaneGeometry(f.w - 0.2, 0.28), am);
     val.position.set(0, sillY + winH + 0.1, -1.4);
     g.add(aw, val);
-    for (const s of [-1, 1]) g.add(cyl(0.02, 0.02, 1.5, 5, dark, (s * (f.w - 0.3)) / 2, sillY + winH + 0.55, -0.72).rotateX(Math.PI / 2 + 0.42));
+    for (const s of [-1, 1]) g.add(cyl(0.02, 0.02, 1.5, 5, dark, (s * (f.w - 0.3)) / 2, sillY + winH + 0.55, -0.72).rotateX(Math.PI / 2 - 0.42));
   }
   // a lamp either side of the door
   for (const s of [-1, 1])
@@ -361,6 +361,43 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
     s.g.add(box(2.0, 0.05, 0.12, M('#8a6a45', 0.8), s.wx, s.sillY + 1.25, 0.8));
     G.add(s.g);
     col(-79.2 - w / 2, -79.2 + w / 2, front, front + 9);
+  }
+  // ---- Homestead Furniture: cream plaster with big windows, a sofa and a floor lamp on show
+  {
+    const w = 10,
+      s = storefront({
+        x: -67.3,
+        z: front,
+        w,
+        h: 4.6,
+        d: 9,
+        wall: wallM('plaster', '#e6dcc6', '#d2c7ae', w, 4.6),
+        trim: '#5a3a26',
+        sign: ['HOMESTEAD', '#5a3a26', '#ffe9a8'],
+        awning: ['#8a2f28', '#f1e6d0'],
+      });
+    const cloth = M('#2f6a8a', 0.8),
+      wood = M('#8a5f38', 0.8),
+      sx = -s.wx;
+    s.g.add(
+      box(1.5, 0.3, 0.55, cloth, sx, s.sillY + 0.3, 0.5),
+      box(1.5, 0.5, 0.14, cloth, sx, s.sillY + 0.62, 0.72),
+      box(0.16, 0.42, 0.55, cloth, sx - 0.75, s.sillY + 0.45, 0.5),
+      box(0.16, 0.42, 0.55, cloth, sx + 0.75, s.sillY + 0.45, 0.5),
+    );
+    s.g.add(
+      cyl(0.16, 0.18, 0.03, 10, wood, s.wx - 0.5, s.sillY + 0.03, 0.5),
+      cyl(0.02, 0.02, 1.3, 6, wood, s.wx - 0.5, s.sillY + 0.68, 0.5),
+      cyl(0.14, 0.24, 0.3, 10, glow('#ffe2a0', 1.4), s.wx - 0.5, s.sillY + 1.4, 0.5),
+    );
+    s.g.add(
+      box(0.7, 0.05, 0.5, wood, s.wx + 0.5, s.sillY + 0.5, 0.5),
+      box(0.06, 0.5, 0.06, wood, s.wx + 0.2, s.sillY + 0.25, 0.5),
+      box(0.06, 0.5, 0.06, wood, s.wx + 0.8, s.sillY + 0.25, 0.5),
+      cyl(0.1, 0.07, 0.2, 8, M('#c8452f', 0.6), s.wx + 0.5, s.sillY + 0.63, 0.5),
+    );
+    G.add(s.g);
+    col(-67.3 - w / 2, -67.3 + w / 2, front, front + 9);
   }
   return {
     update(t: number) {

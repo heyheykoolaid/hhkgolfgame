@@ -21,7 +21,7 @@ import { createTeeBoard } from './teeBoard';
 import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
 import { colorFor } from '../avatar/colors';
-import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed } from './build';
+import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed, thumb } from './build';
 import { VEHICLES, type Vehicle, type VehState } from '../vehicles/vehicles';
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
@@ -64,7 +64,7 @@ import { buildWestSide, westRiseMesh } from './westside';
 import { buyItem, setPlaced, ownAtLeast, setTrail } from '../avatar/progress';
 import { TRAILS } from '../avatar/trails';
 import type { Shop } from './wardrobe';
-import { ITEMS } from './catalog';
+import { ITEMS, loadItemModels } from './catalog';
 import { invIcon } from './invIcons';
 import { PAPERS_PRICE, GRINDER_PRICE } from './dealer';
 import { tickWater } from '../world/water';
@@ -667,7 +667,7 @@ export function createLobby(env: LobbyEnv) {
   const SPOTS = [
     { id: 'tee', x: 0, z: -6.3, r: 2.6, label: 'View tee times' },
     { id: 'shop', x: -5.8, z: 0, r: 2.4, label: 'Pro shop (moved to the West Side)' },
-    { id: 'gacha', x: -74.2 + WEST_OFF.x, z: -2.6, r: 1.5, label: 'Birdie Ball machine' },
+    { id: 'gacha', x: -83.8 + WEST_OFF.x, z: 6.9, r: 1.5, label: 'Birdie Ball machine' },
     { id: 'dealer', x: DEALER_POS.x - 0.3, z: DEALER_POS.z + 0.9, r: 2.1, label: 'Sell to the Street Dealer' },
     ...fun.spots,
     ...west.spots,
@@ -745,6 +745,7 @@ export function createLobby(env: LobbyEnv) {
     if (n.id === 'tee') tee.open();
     else if (n.id === 'shop') toast('The pro shop has moved to the West Side: clothes, a barber, tattoos and golf gear are all up the hill.', 4200);
     else if (n.id === 'store:pro') void openProShop();
+    else if (n.id === 'store:home') void openFurniture();
     else if (n.id.startsWith('store:')) void openWardrobe(n.id.slice(6) as Shop);
     else if (n.id === 'gacha') openGacha();
     else if (n.id === 'rv') openCollection();
@@ -1496,7 +1497,7 @@ export function createLobby(env: LobbyEnv) {
     const ks = layoutOf(MY?.owner || null).map(i => i.k),
       n: Record<string, number> = {};
     setPlaced(ks);
-    for (const k of ks) if (k === 'growpot' || k === 'growbed' || k === 'sprinkler') n[k] = (n[k] || 0) + 1;
+    for (const k of ks) if (!k.startsWith('trophy:')) n[k] = (n[k] || 0) + 1; // whatever stands on the lot is owned
     if (Object.keys(n).length) void ownAtLeast(n);
   }, 1500);
   // ---------------- the menu (Tab): everything that isn't worth a line of its own in the controls panel ----------------
@@ -1751,6 +1752,29 @@ export function createLobby(env: LobbyEnv) {
           }),
       );
   }
+  /** Homestead Furniture (West Side): everything for your lot. Bought pieces go to the lot's storage (Build Mode). */
+  const openFurniture = async () => {
+    await loadItemModels().catch(() => 0); // (the pictures are drawn from the models)
+    return openShop(
+      'Homestead Furniture',
+      '"Take your time. It all goes home with you: we deliver to your lot\'s storage."',
+      pr =>
+        ITEMS.filter(i => i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage').map(def => {
+          const own = pr.gear[def.id] || 0;
+          return {
+            id: def.id,
+            icon: `<img src="${thumb(def, '#c8452f')}" alt="">`,
+            name: def.name,
+            desc: def.cat === 'garage' ? 'Keeps your cart at home. One per lot.' : def.cat === 'furniture' ? 'Furniture' : 'Decoration',
+            price: def.price,
+            have: own ? `You own ${own}` : '',
+            sold: !!def.max && own >= def.max,
+            group: def.cat === 'furniture' ? 'Furniture' : def.cat === 'decor' ? 'Decoration' : 'For the cart',
+          };
+        }),
+      "Bought pieces wait in your lot's storage. Press <kbd>B</kbd> on your own lot to place them; taking one off the lot puts it back in storage.",
+    );
+  };
   const openGrowShop = () =>
     openShop(
       'Grow Supply',

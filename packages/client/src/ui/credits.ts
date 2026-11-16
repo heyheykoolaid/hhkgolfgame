@@ -6,6 +6,9 @@ const ROWS: [string, [string, string, string][]][] = [
     'Models',
     [
       ['Shopfronts and apartment blocks', 'McPato', '"Buildings | PS1 Asset Pack" · CC BY 4.0'],
+      ["The Lucky Lie Lounge's bar room, the diner booth and bar stool", 'McPato', '"Barranco Bar | PS1 Environment" · CC BY 4.0'],
+      ['Home furniture at Homestead', 'McPato', '"House Interior | PS1 Asset Pack" · CC BY 4.0'],
+      ['Storage shelves and boxes', 'teacherap123', '"PSX Storage Shelves & Cardboard Boxs" · CC BY 4.0'],
       ['Cars and the delivery van', 'PorscheAaron', '"54 Vehicle Pack" · CC BY 4.0'],
       ['Alley props', 'Tomitos', '"PSX Industrial Pack" · CC BY 4.0'],
       ['Pictures in the lounge', 'Melon Polygons', '"Paintings and Posters Collection" · CC BY 4.0'],

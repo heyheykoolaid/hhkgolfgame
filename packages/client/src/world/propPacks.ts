@@ -155,6 +155,8 @@ export interface Piece {
   /** A fresh copy standing on the ground at its own origin (the middle of its footprint): a few meshes, one per material. */
   make(scale?: number): THREE.Group;
   size: THREE.Vector3;
+  /** Where that origin was in the scene the piece was lifted from (to stand a room's furniture where the room has it). */
+  origin: THREE.Vector3;
 }
 const pieces = new Map<string, Promise<Piece | null>>();
 /** Load a set piece lifted out of a larger scene: everything in the file, welded into one mesh per material. */
@@ -210,6 +212,7 @@ export function loadPiece(pack: string): Promise<Piece | null> {
         }
         return {
           size: box.getSize(new THREE.Vector3()),
+          origin: off.clone().negate(),
           make(scale = 1) {
             const G = new THREE.Group();
             for (const [g, m] of merged) {

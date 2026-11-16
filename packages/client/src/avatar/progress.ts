@@ -146,8 +146,8 @@ const clean = (p: any): Progress => ({
   trail: typeof p?.trail === 'string' && /^[a-z]{0,12}$/.test(p.trail) ? p.trail : '',
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
-      .filter(([k, v]) => /^[a-z]{3,12}$/.test(k) && +(v as any) > 0)
-      .slice(0, 12)
+      .filter(([k, v]) => /^[a-z0-9_]{2,24}$/.test(k) && +(v as any) > 0)
+      .slice(0, 80)
       .map(([k, v]) => [k, Math.min(99, Math.floor(+(v as any)))]),
   ),
   joints: Array.isArray(p?.joints)
@@ -366,6 +366,8 @@ export async function deleteMail(id: string) {
 /** Supplies for rolling (sold by the Street Dealer until there's a Grow Supply store). */
 // ------------------------------------------------------------------ the inventory: 32 slots
 export const INV_SLOTS = 32;
+/** Grow gear is small enough to carry, so spare pieces take an inventory slot; furniture waits in your lot's own storage. */
+const CARRIED = ['growpot', 'growbed', 'sprinkler'];
 /** What's standing on your own lot (catalog ids, one per placed item): gear and trophies out there take no slot. */
 let placedKeys: string[] = [];
 export function setPlaced(keys: string[]) {
@@ -382,7 +384,7 @@ export function slotsUsed(p: Progress = cur) {
     (p.papers > 0 ? 1 : 0) +
     (p.grinder ? 1 : 0) +
     (p.fert > 0 ? 1 : 0) +
-    Object.keys(p.gear).filter(id => spareGear(p, id) > 0).length +
+    CARRIED.filter(id => spareGear(p, id) > 0).length +
     p.trophies.filter(t => !placedKeys.includes('trophy:' + t.id)).length
   );
 }
@@ -403,7 +405,8 @@ export async function buyItem(kind: string, price: number): Promise<BuyResult> {
   await loadProgress();
   if (kind === 'grinder' && cur.grinder) return 'have';
   if (cur.cash < price) return 'cash';
-  const newSlot = kind === 'papers' ? !cur.papers : kind === 'grinder' ? true : kind === 'fert' ? !cur.fert : !spareGear(cur, kind);
+  const newSlot =
+    kind === 'papers' ? !cur.papers : kind === 'grinder' ? true : kind === 'fert' ? !cur.fert : CARRIED.includes(kind) && !spareGear(cur, kind);
   if (newSlot && slotsUsed() >= INV_SLOTS) return 'full';
   cur.cash -= price;
   if (kind === 'papers') cur.papers += 20;

@@ -1,5 +1,7 @@
 // Golden Hills — the neighbourhood next to the course: eight lots around a plaza (tee-time board, pro shop with the
 // wardrobe, fountain, a blackjack table for later), streets, palms and power lines, in the course's golden-hour light.
+import { buildFiller } from './filler';
+import { buildLitter } from './litter';
 import { buildMountains } from '../world/mountains';
 import * as THREE from 'three';
 import { buildFountain } from './fountain';
@@ -51,7 +53,7 @@ export const SIDEWALKS = (() => {
 export const FUN = { x1: 172, z: 48, gateZ: 14, gateHW: 4.4 };
 /** The West Side (lobby/westside.ts): through a gate in the town's west edge at z = gateZ; x from x0 to the edge. */
 /** Where the blackjack table stands: in the middle of the Lucky Lie Lounge. */
-export const BJ_AT: [number, number] = [-79, 2.2];
+export const BJ_AT: [number, number] = [-79, 5.2];
 /** The West Side stands on a rise west of town: everything in lobby/westside.ts is laid out in its own frame and then
  *  moved this far (x) and lifted this high (y). The street climbs to it over the 24 m between the town's edge and x1. */
 export const WEST_OFF = { x: -24, y: 2.6 };
@@ -405,7 +407,9 @@ export function buildLobby(scene: THREE.Scene) {
   scene.add(gate);
 
   /* horizon: the city — brick blocks just outside town, an art-deco downtown toward the sunset, far towers all round */
-  buildCity(scene, { center: [0, 0], keepOut: BOUND, sunAz: SUN_AZ, rings: [240, 330], tall: 0.6 }); // (the towers stand inside the mountains' ridge, which is at 400 m)
+  buildCity(scene, { center: [0, 0], keepOut: BOUND, sunAz: SUN_AZ, rings: [240, 300], tall: 0.6 }); // (every tower stands well inside the mountains' ridge, whose foot is at 400 m)
+  buildFiller(scene); // shops along the road to the course, apartment blocks south of town
+  buildLitter(scene); // cans and cups along the kerbs, bags in the alley (lobby/litter.ts)
   scene.add(buildMountains([0, 0], SUN_AZ, 'coast')); // a coastal range all round, behind the skyline
   /* open ground between town and the city: oak and palm groves on dry grass, a clear lane out of the gate */
   {
@@ -467,10 +471,9 @@ export function buildLobby(scene: THREE.Scene) {
   // the Birdie Ball machine (spin it with Birdie Dollars; see gachaMachine.ts)
   const gacha = createGachaMachine();
   gacha.group.add(contactShadow(0.9, 0.9, 0, 0, 0.005, 0.55));
-  gacha.group.position.set(-73.0 + WEST_OFF.x, WEST_OFF.y + 0.085, -2.6); // in the Lucky Lie Lounge, against the east wall
-  gacha.group.rotation.y = Math.PI;
+  gacha.group.position.set(-85.0 + WEST_OFF.x, WEST_OFF.y + 0.085, 6.9); // in the Lucky Lie Lounge, by the door on the west wall
   scene.add(gacha.group);
-  addCol(-73.35 + WEST_OFF.x, -72.65 + WEST_OFF.x, -2.95, -2.25, 'gacha');
+  addCol(-85.35 + WEST_OFF.x, -84.65 + WEST_OFF.x, 6.55, 7.25, 'gacha');
   return { light, colliders, plots, gacha, fountain };
 }
 

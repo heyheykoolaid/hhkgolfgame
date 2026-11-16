@@ -11,6 +11,7 @@ import { showWelcome } from './ui/welcome';
 
 const canvas = document.getElementById('gl') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.localClippingEnabled = true; // (the lounge's borrowed bar room is cut off at the lounge's own walls)
 // sharpness comes from the options menu: soft 0.75×, normal up to 1.5× (retina at 2× costs ~78% more pixels), sharp up to 2×
 onOptions(() => {
   renderer.setPixelRatio(Math.min(devicePixelRatio, [0.75, 1.5, 2][opts.sharp] ?? 1.5));

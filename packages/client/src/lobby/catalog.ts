@@ -7,7 +7,8 @@ import { windSway } from '../world/wind';
 import { M, box, cyl } from './world';
 import { buildTrophy } from '../world/trophy';
 import { cartModel } from '../vehicles/vehicles';
-import { propInstance } from '../world/props';
+import { propInstance, loadProp } from '../world/props';
+import { loadProps, type PropPack } from '../world/propPacks';
 
 export type Cat = 'furniture' | 'decor' | 'grow' | 'trophies' | 'garage';
 export interface ItemDef {
@@ -23,6 +24,7 @@ export interface ItemDef {
   posts?: [number, number][]; // only these local spots are solid (string lights: walk and build under the span)
   max?: number; // most you can place (e.g. one garage)
   model?: string; // a detailed Poly Haven model (world/props.ts) instead of a built one
+  pack?: string; // or pieces of a prop pack (world/propPacks.ts; credits in docs/credits.md)
   slots?: [number, number, number][]; // grow gear: where plants sit (local x, soil height, z)
   make(color: string): THREE.Object3D;
 }
@@ -94,6 +96,69 @@ const ph = (id: string, model: string, name: string, cat: Cat, price: number, ex
   make: () => propInstance(model),
   ...extra,
 });
+
+// ---- furniture taken from prop packs: a list of the pack's pieces, or everything standing in a rectangle of its scene
+const kits = new Map<string, PropPack>();
+export const packReady = (pack: string) => kits.has(pack);
+export const loadPack = (pack: string) =>
+  loadProps(pack, n => n).then(k => {
+    kits.set(pack, k);
+    return k;
+  });
+/** names, or [x0, z0, x1, z1, highest base] in the pack's scene */
+type Pick = string[] | [number, number, number, number, number];
+function packGroup(pack: string, pick: Pick, yaw: number) {
+  const G = g(),
+    fill = (kit: PropPack) => {
+      const r = pick as number[],
+        names =
+          typeof pick[0] === 'string'
+            ? (pick as string[])
+            : kit.names.filter(n => {
+                const a = kit.at(n)!,
+                  z = kit.size(n)!;
+                return a.x >= r[0] && a.x <= r[2] && a.z >= r[1] && a.z <= r[3] && a.y <= r[4] && Math.max(z.x, z.z) < 5;
+              }),
+        inner = g();
+      for (const n of names) {
+        const o = kit.make(n);
+        if (!o) continue;
+        o.position.copy(kit.at(n)!);
+        inner.add(o);
+      }
+      const b = new THREE.Box3().setFromObject(inner);
+      if (b.isEmpty()) return;
+      inner.position.set(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+      const turn = g(inner);
+      turn.rotation.y = yaw;
+      G.add(turn);
+    };
+  const k = kits.get(pack);
+  if (k) fill(k);
+  else void loadPack(pack).then(fill);
+  return G;
+}
+const Q = Math.PI / 2;
+const pk = (
+  id: string,
+  pack: string,
+  pick: Pick,
+  yaw: number,
+  name: string,
+  cat: Cat,
+  price: number,
+  w: number,
+  d: number,
+  extra: Partial<ItemDef> = {},
+): ItemDef => ({ id, name, cat, price, w, d, pack, make: () => packGroup(pack, pick, yaw), ...extra });
+const H = (...n: string[]) => n.map(x => (/_0$/.test(x) ? x : x + '_atlas_living_0'));
+const B = (...n: string[]) => n.map(x => x + '_atlas_mueblesDormitorio1_0');
+/** Everything a shop or Build Mode needs loaded before it can draw the catalog's pictures. */
+export const loadItemModels = () =>
+  Promise.all([
+    ...ITEMS.filter(i => i.model).map(i => loadProp(i.model!)),
+    ...[...new Set(ITEMS.map(i => i.pack).filter(Boolean))].map(p => loadPack(p!)),
+  ]);
 
 const SOIL = () => M('#3b2a1c', 0.95);
 export const ITEMS: ItemDef[] = [
@@ -738,6 +803,81 @@ export const ITEMS: ItemDef[] = [
       return o;
     },
   },
+  // ---------------- from the prop packs (docs/credits.md): "House Interior | PS1 Asset Pack" and "Barranco Bar" by
+  // McPato, "PSX Storage Shelves" by teacherap123, all CC BY 4.0
+  pk('h_sofa', 'home', ['couch_fabricsofa_0', 'couch_atlas_living_0', 'couch_wood3_0'], -Q, 'Grey three-seater sofa', 'furniture', 950, 1.9, 1.0),
+  pk('h_armchair', 'home', ['couch001_fabricsofa_0', 'couch001_atlas_living_0', 'couch001_wood3_0'], Q, 'Grey armchair', 'furniture', 420, 1.1, 1.0),
+  pk(
+    'h_dining',
+    'home',
+    ['table_wood2_0', ...[1, 2, 3, 4].flatMap(i => [`chair00${i}_wood2_0`, `chair00${i}_fabric_0`])],
+    0,
+    'Dining table and four chairs',
+    'furniture',
+    1400,
+    3.5,
+    2.4,
+  ),
+  pk('h_coffee', 'home', H('lilTableXD_wood2_0', 'Circle002', 'Circle005'), Q, 'Dark wood coffee table', 'furniture', 380, 2.1, 1.3),
+  pk('h_books', 'home', H('libr'), -Q, 'Bookcase, full', 'furniture', 520, 1.4, 0.8),
+  pk('h_fishtank', 'home', H('pecera_wood2_0', 'Cube013_glasss_0', 'Cube013'), Q, 'Fish tank on a cabinet', 'furniture', 1600, 1.4, 0.9),
+  pk('h_tv', 'home', H('Cube004'), -Q, 'Television wall unit', 'furniture', 2200, 3.3, 0.8),
+  pk('h_bed', 'home', [...B('Bed', 'Cube001', 'Cube002', 'Cube003'), 'Cube_wood_0'], Math.PI, 'Double bed', 'furniture', 1100, 2.1, 2.5),
+  pk('h_wardrobe', 'home', B('closet'), 0, 'Wardrobe', 'furniture', 780, 2.1, 0.8),
+  pk(
+    'h_desk',
+    'home',
+    [
+      ...B('desk', 'Cube010', 'Cube011', 'Cube012'),
+      ...['monitor', 'mouse', 'case_pc', 'parlant', 'parlant001', 'keyboard'].map(n => n + '_atlas_dormitorioelectro_0'),
+      'chair_fabric_0',
+    ],
+    0,
+    'Computer desk and chair',
+    'furniture',
+    1500,
+    2.3,
+    2.0,
+  ),
+  pk(
+    'h_fridge',
+    'home',
+    ['fridge', 'Cube042', 'Cube043'].map(n => n + '_atlas_kitchen_0'),
+    0,
+    'Fridge',
+    'furniture',
+    800,
+    0.9,
+    0.9,
+  ),
+  pk(
+    'h_stove',
+    'home',
+    ['oven', 'Cube035'].map(n => n + '_atlas_kitchen_0'),
+    0,
+    'Stove',
+    'furniture',
+    650,
+    0.8,
+    0.8,
+  ),
+  pk('h_washer', 'home', ['washingmach_atlas_bath_0'], 0, 'Washing machine', 'furniture', 600, 0.9, 0.9),
+  pk('h_toilet', 'home', ['Circle010_atlas_bath_0'], 0, 'Kitchen pedal bin', 'decor', 40, 0.7, 0.7),
+  pk('h_shoes', 'home', B('shoerack'), 0, 'White cupboard', 'furniture', 120, 0.9, 0.5),
+  pk('h_coats', 'home', B('hanger'), 0, 'Coat stand', 'furniture', 90, 0.7, 0.6),
+  pk('h_lamp', 'home', H('Cube009'), 0, 'Floor lamp', 'furniture', 160, 0.6, 0.6),
+  pk('h_lamp2', 'home', H('Circle004'), 0, 'Standing fan', 'furniture', 140, 0.6, 0.7),
+  pk('h_rug', 'home', H('Plane'), 0, 'Big grey rug', 'decor', 450, 4.9, 4.9, { floor: true }),
+  pk('h_guitar', 'home', B('guitar'), -Q, 'Guitar on a stand', 'decor', 350, 0.9, 0.5),
+  pk('h_plant', 'home', H('Circle001'), 0, 'Tall house plant', 'decor', 160, 0.8, 0.8),
+  pk('h_plant2', 'home', H('Circle'), 0, 'House plant', 'decor', 120, 0.7, 0.7),
+  pk('h_basket', 'home', B('laundry'), 0, 'Laundry basket', 'decor', 60, 0.9, 0.9),
+  pk('b_booth', 'lounge', [-8.05, -24.25, -5.9, -21.35, 2], -Q, 'Leather diner booth', 'furniture', 1800, 3.0, 2.1),
+  pk('b_stool', 'lounge', ['Cube019_bar_atlas_0'], 0, 'Bar stool', 'furniture', 140, 0.5, 0.5),
+  pk('b_fern', 'lounge', [-5.7, -18.95, -4.5, -17.85, 1], 0, 'Fern in a woven pot', 'decor', 180, 1.0, 1.0),
+  pk('s_shelf', 'shelves', ['Object_8'], 0, 'Storage shelves, stocked', 'furniture', 260, 2.2, 0.7),
+  pk('s_shelf2', 'shelves', ['Object_14'], 0, 'Storage shelves, half empty', 'furniture', 220, 2.2, 0.7),
+  pk('s_box', 'shelves', ['Object_23'], 0, 'Cardboard box', 'decor', 15, 0.6, 0.6, { top: [0.56, 0.5, 0.5] }),
 ];
 export const ITEM = new Map(ITEMS.map(i => [i.id, i]));
 

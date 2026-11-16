@@ -97,9 +97,10 @@ export function buildMountains(center: [number, number], sunAz: number, look: 'a
     rg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     rg.setIndex(idx);
     root.add(new THREE.Mesh(rg, coastMat));
-    add(470, 26, 80, 130, 170, 250, 2, -12, 0.3); // forested shoulders, overlapping
-    add(640, 24, 160, 250, 220, 320, 0.84, -18, 0.46); // the range: a dusting on the tops
-    add(860, 16, 250, 340, 290, 390, 0.62, -28, 0.62); // the snowy ones behind
+    // (every peak's foot stays outside the ridge at 400 m: nothing built may stand in or beyond the mountains)
+    add(600, 30, 80, 130, 150, 190, 2, -12, 0.3); // forested shoulders, overlapping
+    add(760, 26, 170, 250, 220, 300, 0.84, -18, 0.46); // the range: a dusting on the tops
+    add(980, 18, 260, 350, 290, 380, 0.62, -28, 0.62); // the snowy ones behind
     return root;
   }
   add(520, 15, 50, 95, 150, 230, 2, -14, 0.42); // wooded foothills (no snow)
