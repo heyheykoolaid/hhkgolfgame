@@ -2,6 +2,7 @@
 // One street with a row of buildings on its north side (the clubhouse, the Lucky Lie Lounge, Dealer Alley, the Grow
 // Supply store), a water tower at the far end, a car park on the south side, and a delivery van doing its rounds.
 // The buildings are built here in code, and so are the cars (world/cars.ts).
+import { buildShopRow } from './shops';
 import { loadProps } from '../world/propPacks';
 import { buildMachines, type VltSpot } from './vlt';
 import * as THREE from 'three';
@@ -380,13 +381,13 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
   ).then(kit => {
     const streetZ = kit.at('street')?.z ?? 0;
     /** Stand a building with its street front facing north (-z) along the line z = front; returns its width. */
-    const stand = (name: string, x0: number, front: number, extra: string[] = []) => {
+    const stand = (name: string, x0: number, front: number, extra: string[] = [], south = false) => {
       const o = kit.make(name),
         sz = kit.size(name),
         c = kit.at(name);
       if (!o || !sz || !c) return 0;
-      const yaw = streetZ > c.z ? Math.PI : 0; // the pack's shops face its street
-      o.position.set(x0 + sz.x / 2, 0, front + sz.z / 2);
+      const yaw = (streetZ > c.z ? Math.PI : 0) + (south ? Math.PI : 0); // the pack's shops face its street; turned round if they should face south
+      o.position.set(x0 + sz.x / 2, 0, south ? front - sz.z / 2 : front + sz.z / 2);
       o.rotation.y = yaw;
       G.add(o);
       for (const e of extra) {
@@ -401,14 +402,15 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       }
       return sz.x;
     };
-    let x = -118;
+    // nobody's shops: a back street of them north of the main row, there to make the place feel bigger than it is
+    let x = -122;
     for (const [n, ex] of [
       ['polleria', []],
       ['restaurant', []],
       ['Pizzeria', []],
       ['farmacia', ['farmacia_glass']],
     ] as [string, string[]][])
-      x += stand(n, x, 38.2, ex) + 0.7;
+      x += stand(n, x, -14, ex, true) + 2.5;
     for (const [n, px, pz, yaw] of [
       ['Condo002', -156, 14, Math.PI / 2],
       ['Condo004', -136, -22, 0],
@@ -422,24 +424,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     }
   });
   G.add(tile(flat(46, 3.4, pavers, -96, 36.5, 0.05), 2)); // the walk along the shopfronts
-  // our own signs over the four doors (the pack's painted names stay on the walls behind them)
-  for (const [t, x, c] of [
-    ['THREADS  ·  CLOTHING', -110.9, '#27405e'],
-    ['BARBER', -100.2, '#8a2f28'],
-    ['INK SPOT  ·  TATTOO', -90.7, '#3a2a4a'],
-    ['PRO SHOP', -79.2, '#2b4a3a'],
-  ] as [string, number, string][]) {
-    const w = Math.min(5.6, 1.4 + t.length * 0.21),
-      sg = sign([{ t, s: 96, c: '#ffe9a8', b: true, y: 160 }], w, 0.8, c, 0.5, 1024, 256);
-    sg.position.set(x, 3.25, 37.75);
-    sg.rotation.y = Math.PI;
-    G.add(
-      sg,
-      box(w + 0.2, 0.95, 0.12, dark, x, 3.25, 37.85),
-      box(0.08, 3.3, 0.08, dark, x - w / 2, 1.65, 37.85),
-      box(0.08, 3.3, 0.08, dark, x + w / 2, 1.65, 37.85),
-    );
-  }
+  const shopRow = buildShopRow(G, 38.2, (a, b, c, d) => col(a, b, c, d)); // Threads, the barber, Ink Spot and the Pro Shop (lobby/shops.ts)
   let vltSpots: VltSpot[] = [];
   // 2 · the Lucky Lie Lounge: dark brick, open to the street, with the blackjack table inside under warm lamps
   {
@@ -748,6 +733,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       }
       vv += Math.max(-9 * dt, Math.min(2.5 * dt, want - vv));
       vs += vv * dt;
+      shopRow.update(performance.now() / 1000);
       van.position.set(x, 0.03, z);
       van.rotation.y = yaw;
       for (const w of wheels) w.rotation.x += (vv * dt) / 0.32;
