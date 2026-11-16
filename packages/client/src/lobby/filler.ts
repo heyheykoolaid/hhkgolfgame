@@ -8,16 +8,18 @@ type Face = 'N' | 'S' | 'E' | 'W';
 const YAW: Record<Face, number> = { S: 0, E: Math.PI / 2, N: Math.PI, W: -Math.PI / 2 };
 /** [building, the middle of its street front (x, z), the way the front faces] */
 const PLACES: [string, number, number, Face, string[]?][] = [
-  // Shady Lane's south side, either side of the road up from the gate, facing the lane
-  ['burguer', -12, -62.5, 'N'],
-  ['Plane017', -25, -62.5, 'N'],
-  ['Pizzeria', 12, -62.5, 'N'],
-  ['restaurant', 23, -62.5, 'N'],
-  ['farmacia', 34, -62.5, 'N', ['farmacia_glass']],
-  ['Plane014', 43.5, -62.5, 'N'],
-  // and one at each end of its north side, beside the pawn shop and the lounge
+  // Shady Lane's south side, in the two blocks between the gate road and Fairway Loop's sides, facing the lane
+  ['Plane017', -29.5, -62.5, 'N'],
+  ['Plane014', -20.6, -62.5, 'N'],
+  ['Pizzeria', -11.9, -62.5, 'N'],
+  ['farmacia', 11.1, -62.5, 'N', ['farmacia_glass']],
+  ['restaurant', 19.2, -62.5, 'N'],
+  ['Plane014', 25.1, -62.5, 'N'],
+  ['Plane019', 31.9, -62.5, 'N'],
+  // and at each end of its north side, beside the pawn shop and the lounge
+  ['burguer', -37.5, -74.4, 'S'],
   ['Plane019', -25, -74.4, 'S'],
-  ['polleria', 43, -74.4, 'S'],
+  ['polleria', 43.4, -74.4, 'S'],
   // where the hills were, south of town: apartment blocks looking back at it
   ['Condo001', -24, 70, 'N'],
   ['Condo005', 22, 76, 'N'],
@@ -30,8 +32,8 @@ export function buildFiller(scene: THREE.Scene) {
   // a tall clipped hedge along the back of Shady Lane's south side, so the town looks at green and not at the shops' backs
   const hedge = new THREE.MeshStandardMaterial({ color: '#3f5e34', roughness: 0.95 });
   for (const [x0, x1] of [
-    [-34, -6.5],
-    [6.5, 48],
+    [-36, -6.5],
+    [6.5, 36],
   ]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4.6, 1.3), hedge);
     h.position.set((x0 + x1) / 2, 2.3, -49.3);

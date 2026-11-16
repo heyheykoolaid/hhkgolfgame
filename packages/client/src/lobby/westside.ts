@@ -454,21 +454,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     const G = GS,
       WEST_OFF = SHADY_OFF;
 
-    // ---- Shady Lane's own ground (in the buildings' frame): the lane and its pavements, the road up from the gate, the
-    // road on to the course between the pawn shop and Grow Supply, and a street sign at the junction
-    G.add(
-      tile(flat(82, 7, asphalt, -103, 14, 0.035), 1.7),
-      tile(flat(82, 2.4, pavers, -103, 9.3, 0.06), 2.4),
-      tile(flat(82, 2.4, pavers, -103, 18.7, 0.06), 2.4),
-      tile(flat(7, 20.5, asphalt, -110, 27.75, 0.034), 1.7), // up from the gate
-      tile(flat(2.4, 18, pavers, -114.7, 28.9, 0.06), 2.4),
-      tile(flat(2.4, 18, pavers, -105.3, 28.9, 0.06), 2.4),
-      tile(flat(7, 40, asphalt, -110, -11.9, 0.034), 1.7), // on to the first tee
-      tile(flat(2.4, 17, pavers, -114.7, -0.4, 0.06), 2.4),
-      tile(flat(2.4, 17, pavers, -105.3, -0.4, 0.06), 2.4),
-    );
-    for (let x = -142; x < -64; x += 5) if (Math.abs(x + 110) > 5) G.add(box(2.2, 0.01, 0.16, white, x, 0.05, 14));
-    for (let z = 19; z < 37; z += 5) G.add(box(0.16, 0.01, 2.2, white, -110, 0.05, z + 1));
+    // (Shady Lane's roads and pavements are part of the town's street plan: lobby/roads.ts.) A street sign at the junction:
     {
       const post = cyl(0.05, 0.05, 3.1, 8, M('#3a3835', 0.6, 0.5), -105.4, 1.55, 19.6),
         plate = sign([{ t: 'SHADY LANE', s: 120, c: '#f4f1ea', b: true, y: 150 }], 1.9, 0.42, '#1f5a3a', 0.25);

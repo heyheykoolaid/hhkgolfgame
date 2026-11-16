@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import { Golfer, stepLength } from '../characters/golfer';
 import { sanitizeLook } from '../avatar/outfit';
 import { loadBody } from '../characters/mhGolfer';
-import { SIDEWALKS, BOUND, groundY } from './world';
+import { BOUND, groundY } from './world';
+import { SIDEWALKS, RING, LANE_Z } from './roads';
 import { vehicleKind, loadCarKit, type Vehicle } from '../vehicles/vehicles';
 import type { PhysWorld } from '../physics/ragdoll';
 
@@ -20,10 +21,6 @@ const WALKS: Seg[] = [
   [false, 9.3, -146, -BOUND - 4], // the West Side's street, both sides
   [false, 18.7, -146, -BOUND - 4],
   [false, -10.2, BOUND + 4, 100], // the lane into Fun Land
-  [true, -4.7, -63.5, -BOUND - 2], // up from the gate to Shady Lane, and both sides of the lane
-  [true, 4.7, -63.5, -BOUND - 2],
-  [false, -63.8, -30, 46],
-  [false, -73.2, -30, 46],
 ];
 const end = (s: Seg, far: boolean): [number, number] => (s[0] ? [s[1], far ? s[3] : s[2]] : [far ? s[3] : s[2], s[1]]);
 /** For each end of each stretch: the ends of other stretches you can step across to. */
@@ -159,10 +156,11 @@ function lap(corners: [number, number][], lane = 1.5, R = 4): Lap {
   }
   return out;
 }
-const B = 14; // the town's streets run at x = ±14 and z = ±14
-/** [the car, its paint, the lap it drives, where on the lap it starts (0–1)] */
+const B = 14, // the streets round the plaza run at x = ±14 and z = ±14
+  R = RING; // Fairway Loop, round the edge of town
+/** [the car, its paint, the lap it drives (the corners of a route along street centres), where on the lap it starts (0–1)] */
 const ROUNDS: [string, string, [number, number][], number][] = [
-  // round the middle block, one each way
+  // round the plaza
   [
     'town',
     '',
@@ -174,18 +172,20 @@ const ROUNDS: [string, string, [number, number][], number][] = [
     ],
     0.1,
   ],
+  // the big loop the other way: Fairway Loop's south side, up its east side to Shady Lane, along the lane and back down
   [
     'classic',
     '',
     [
-      [-B, B],
-      [B, B],
-      [B, -B],
-      [-B, -B],
+      [-R, R],
+      [R, R],
+      [R, LANE_Z],
+      [-R, LANE_Z],
     ],
     0.6,
   ],
-  // the long way: out along the south street, up the rise to the West Side, round at the far end and back through town
+  // the long way: up the rise to the West Side and round at the far end, back to the loop, out by the gate road to
+  // Shady Lane, and home down the east side and the north street
   [
     'sedan',
     '',
@@ -193,8 +193,12 @@ const ROUNDS: [string, string, [number, number][], number][] = [
       [B, B],
       [-126, B],
       [-126, B],
-      [-B, B],
-      [-B, -B],
+      [-R, B],
+      [-R, -R],
+      [0, -R],
+      [0, LANE_Z],
+      [R, LANE_Z],
+      [R, -B],
       [B, -B],
     ],
     0.35,
@@ -479,6 +483,11 @@ export function createTownLife(scene: THREE.Scene, pw: () => PhysWorld | null) {
     update,
     /** The cars, for bumping into and being run over by. */
     cars: () => cars.filter(c => c.v).map(c => c.v!),
+    /** (for tests) every car's lap as points, and the walkers' stretches with how many ways lead on from each end */
+    plan: () => ({
+      laps: cars.map(c => Array.from(c.lap.x, (x, i) => [x, c.lap.z[i]])),
+      walks: WALKS.map((w, i) => [...w, LINKS[i * 2].length, LINKS[i * 2 + 1].length]),
+    }),
     /** Everyone and everything out and about, for the van, the birds and each other. */
     movers: (): Mover[] => [...walkers.map(w => ({ x: w.x, z: w.z, spd: w.v })), ...cars.map(c => ({ x: c.x, z: c.z, spd: c.spd }))],
   };

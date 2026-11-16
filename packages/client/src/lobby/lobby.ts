@@ -39,7 +39,6 @@ import {
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
   buildLobby,
-  SIDEWALKS,
   LOTS,
   setPlotOwner,
   toWorld,
@@ -58,6 +57,7 @@ import {
   type Collider,
 } from './world';
 import { buildFunLand, funSurface } from './funland';
+import { STREETS, PAVES, RING, streetAt } from './roads';
 import { createPutt } from './putt';
 import { ambience } from '../audio/ambience';
 import { controls, type ControlRow } from '../ui/controls';
@@ -321,8 +321,7 @@ export function createLobby(env: LobbyEnv) {
       const f = funSurface(x, z);
       if (f) return f === 'grass' ? 'rough' : null;
       if (groundY(x, z) !== 0 || Math.abs(x) > BOUND + 30 || Math.abs(z) > BOUND + 30) return null;
-      if (shadySurface(x, z) === 'asphalt') return null; // Shady Lane's roads
-      for (const c of [-14, 14]) if (Math.abs(x - c) < 3.0 || Math.abs(z - c) < 3.0) return null; // streets
+      if (streetAt(x, z)) return null; // streets and their pavements
       return Math.abs(x) > BOUND - 2 || Math.abs(z) > BOUND - 2 ? 'heavy' : 'rough';
     },
   });
@@ -349,10 +348,9 @@ export function createLobby(env: LobbyEnv) {
       w.box(0, -0.5, 0, 300, 0.5, 300);
       w.box(0, 0.05, 0, 9.5, 0.05, 9.5);
       // kerbs and lot pads are solid too, so a cart's wheels climb them instead of sinking through
-      for (const [v, off, from, to] of SIDEWALKS) {
-        const mid = (from + to) / 2,
-          half = (to - from) / 2;
-        w.box(v ? off : mid, 0.06, v ? mid : off, v ? 0.6 : half, 0.06, v ? half : 0.6);
+      for (const [x0, z0, x1, z1] of PAVES) {
+        const h = z0 < -BOUND ? 0.03 : 0.06;
+        w.box((x0 + x1) / 2, h, (z0 + z1) / 2, (x1 - x0) / 2, h, (z1 - z0) / 2);
       }
       for (const l of LOTS) w.box(l.cx, 0.03, l.cz, HALF, 0.03, HALF, l.yaw);
       // fountain: a real basin you can tumble into (rim wall, shallow floor under the water, the column and its bowl)
@@ -376,13 +374,26 @@ export function createLobby(env: LobbyEnv) {
           );
       for (const [x, z, hx, hz] of [
         [0, BOUND + 0.5, BOUND + 1, 0.5],
-        // the north edge has the gate to Shady Lane: a short walled road, then the district with walls all round
-        [-(BOUND + SHADY.gateHW) / 2 - 0.5, -BOUND - 0.5, (BOUND - SHADY.gateHW) / 2 + 0.5, 0.5],
-        [(BOUND + SHADY.gateHW) / 2 + 0.5, -BOUND - 0.5, (BOUND - SHADY.gateHW) / 2 + 0.5, 0.5],
-        [-SHADY.gateHW - 0.5, (-BOUND + SHADY.z1) / 2, 0.5, (-SHADY.z1 - BOUND) / 2],
-        [SHADY.gateHW + 0.5, (-BOUND + SHADY.z1) / 2, 0.5, (-SHADY.z1 - BOUND) / 2],
-        [(SHADY.x0 - SHADY.gateHW) / 2, SHADY.z1 + 0.5, (-SHADY.gateHW - SHADY.x0) / 2, 0.5],
-        [(SHADY.x1 + SHADY.gateHW) / 2, SHADY.z1 + 0.5, (SHADY.x1 - SHADY.gateHW) / 2, 0.5],
+        // the north edge has three ways out to Shady Lane (the gate road up the middle, and Fairway Loop's west and east
+        // sides carried on north): short walled roads, then the district with walls all round
+        ...[-1, 1].flatMap(e => {
+          const g0 = SHADY.gateHW,
+            s0 = RING - SHADY.sideHW,
+            s1 = RING + SHADY.sideHW,
+            zm = (-BOUND + SHADY.z1) / 2,
+            zh = (-SHADY.z1 - BOUND) / 2,
+            run = (x0: number, x1: number, z: number) => [(e * (x0 + x1)) / 2, z, (x1 - x0) / 2, 0.5],
+            wall = (x: number) => [e * x, zm, 0.5, zh];
+          return [
+            run(g0, s0, -BOUND - 0.5),
+            run(s1, BOUND, -BOUND - 0.5),
+            wall(g0 + 0.5),
+            wall(s0 - 0.5),
+            wall(s1 + 0.5),
+            run(g0, s0, SHADY.z1 + 0.5),
+            run(s1, e < 0 ? -SHADY.x0 : SHADY.x1, SHADY.z1 + 0.5),
+          ];
+        }),
         [(SHADY.x0 + SHADY.x1) / 2, SHADY.z0 - 0.5, (SHADY.x1 - SHADY.x0) / 2 + 1, 0.5],
         [SHADY.x0 - 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
         [SHADY.x1 + 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
@@ -1601,10 +1612,6 @@ export function createLobby(env: LobbyEnv) {
     rect(WEST.x0, WEST.z0, WEST.x1, WEST.z1, '#86905a'); // the West Side, up its rise
     rect(WEST.x1, 8, -BOUND, 20, '#86905a');
     // streets
-    for (const s of [-14, 14]) {
-      rect(-BOUND, s - 3, BOUND, s + 3, '#55524c');
-      rect(s - 3, -BOUND, s + 3, BOUND, '#55524c');
-    }
     rect(BOUND, -17, 104, -10.5, '#55524c');
     rect(-140, 10.5, -BOUND, 17.5, '#55524c');
     rect(-124, 20, -78, 35, '#4c4a45');
@@ -1624,8 +1631,11 @@ export function createLobby(env: LobbyEnv) {
     rect(-92, -5, -76, 8, '#ece6d8');
     // Shady Lane: its ground, the lane, the road through it, and the pawn shop, Grow Supply and the lounge
     rect(SHADY.x0, SHADY.z0, SHADY.x1, SHADY.z1, '#86905a');
-    rect(SHADY.x0, SHADY.lane[0], SHADY.x1, SHADY.lane[1], '#55524c');
-    rect(-3.5, SHADY.z0, 3.5, -BOUND, '#55524c');
+    for (const t of STREETS) {
+      const a = Math.max(t.a, t.v ? Z0 : X0);
+      if (t.v) rect(t.c - t.hw, a, t.c + t.hw, t.b, '#55524c');
+      else rect(a, t.c - t.hw, t.b, t.c + t.hw, '#55524c');
+    }
     rect(-15.6, -86.5, -6, -74.4, '#6d5a3c');
     rect(6, -86.5, 20, -74.4, '#4f7a4a');
     rect(24, -90.4, 36.2, -74.4, '#5a3a30');
@@ -1635,7 +1645,8 @@ export function createLobby(env: LobbyEnv) {
     x.fill();
     label('PLAZA', 0, 1.5, 16);
     label('tee times · pro shop', 0, 7, 11, '#f1e6c8');
-    label('▲ TO THE COURSE', 0, -BOUND - 5, 14, '#cfe8b0');
+    label('▲ TO THE COURSE', 0, -92, 13, '#cfe8b0');
+    label('Fairway Loop', -27, 40.8, 10, '#d8d2c4');
     label('FUN LAND', 110, 6, 20, '#ffd27a');
     label('Birdie Burger', 59, -6.5, 12);
     label('Mini putt', 89, -31, 13);
@@ -3005,6 +3016,10 @@ export function createLobby(env: LobbyEnv) {
     sendPres(true);
     renderStatus();
     (window as any).__lobby = {
+      colliders,
+      streetAt,
+      inWorld,
+      openMap,
       camera,
       renderer,
       scene,

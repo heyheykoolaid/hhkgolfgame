@@ -121,8 +121,8 @@ export function buildLitter(scene: THREE.Scene) {
   patch(-86 + SX, 8.3 + SZ, -72 + SX, 9.6 + SZ, 5);
   patch(-89.8 + SX, -5 + SZ, -88.9 + SX, 7 + SZ, 9, 0.75);
   patch(-87.2 + SX, -5 + SZ, -86.3 + SX, 5 + SZ, 6, 0.6);
-  patch(-30, -72.6, 46, -72, 14);
-  patch(-30, -65, 46, -64.4, 14);
+  patch(-40, -72.6, 40, -72, 14);
+  patch(-40, -65, 40, -64.4, 14);
   patch(-100 + W, 20.5, -54 + W, 34.5, 26, 0.08);
   patch(-118 + W, 35.2, -62 + W, 37.6, 9);
   patch(-125 + W, -12.5, -80 + W, -10.5, 8, 0.3); // the back street

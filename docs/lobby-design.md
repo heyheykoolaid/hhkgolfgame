@@ -25,6 +25,8 @@ The lobby is an open-world social hub: big enough to feel alive, small enough th
 
 The town now has open meadow and tree groves all round it, out to the city on the horizon, so there's room for Fun Land beside the road to the course.
 
+**Streets (Nov 16, `lobby/roads.ts`):** the town is a set of loops, with no street ending at a wall. Four streets box the plaza (Palm St and Gold St north–south, North St and South St east–west). All four run into **Fairway Loop**, a ring road just inside the town's edge behind the lots. Fairway Loop's west and east sides carry on north and turn into the two ends of **Shady Lane**; the **gate road** joins the loop to the middle of the lane under the Golden Hills Golf arch, and the road to the first tee leaves the lane opposite it. South St runs on west up the rise to the West Side (which ends in a turning circle) and North St east into Fun Land. New streets should be added to `STREETS` in that file so they join the plan, rather than drawn by hand.
+
 ## Key zones
 
 ### 1. Central Plaza (social heart)

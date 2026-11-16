@@ -14,6 +14,8 @@ import { buildRV } from './rv';
 import { buildProShop, buildTeeBoard, buildBench } from './plaza';
 import { funSurface, puttFloor } from './funland';
 import { westSurface, westY } from './westside';
+import { buildStreets, streetAt, paveY, SIDEWALKS, RING } from './roads';
+export { SIDEWALKS };
 
 export const CELL = 28,
   PLOT = 14,
@@ -37,18 +39,6 @@ export const LOTS = (() => {
     }
   return out;
 })();
-/** Sidewalk runs along each road, broken where they would cross the other road. [axisIsX(=vertical road), offset, from, to] */
-export const SIDEWALKS = (() => {
-  const L = BOUND + 4,
-    out: [boolean, number, number, number][] = [];
-  for (const c of [-CELL / 2, CELL / 2])
-    for (const e of [-1, 1])
-      for (const v of [true, false]) {
-        const cuts = [-L, -CELL / 2 - ROAD_HW, -CELL / 2 + ROAD_HW, CELL / 2 - ROAD_HW, CELL / 2 + ROAD_HW, L];
-        for (let k = 0; k < cuts.length; k += 2) out.push([v, c + e * SW, cuts[k], cuts[k + 1]]);
-      }
-  return out;
-})();
 /** Fun Land, the little theme park through the east gates (lobby/funland.ts): x from the town's edge to x1, |z| < z. */
 export const FUN = { x1: 172, z: 48, gateZ: 14, gateHW: 4.4 };
 /** The West Side (lobby/westside.ts): through a gate in the town's west edge at z = gateZ; x from x0 to the edge. */
@@ -61,20 +51,17 @@ export const WEST_OFF = { x: -24, y: 2.6 };
  *  Grow Supply and Lucky Pawn stand along its north side, facing the gate. They are still built in the West Side's
  *  frame (lobby/westside.ts) and moved here whole: world = that frame + SHADY_OFF. */
 export const SHADY_OFF = { x: 110, y: 0, z: -82.5 };
-/** The district you can walk in: a short road up from the gate (|x| < gateHW), then this rectangle. The lane itself
- *  is z = -72 … -65; the buildings' fronts are at z = -74.4. */
-export const SHADY = { x0: -34, x1: 48, z0: -92, z1: -49.5, gateHW: 4.6, lane: [-72, -65] as [number, number], front: -74.4 };
+/** The district you can walk in: this rectangle, reached by three roads through the town's north edge: the gate road
+ *  up the middle (|x| < gateHW) and Fairway Loop's west and east sides carried on north (|x ∓ RING| < sideHW). The lane
+ *  itself is z = -72 … -65; the buildings' fronts are at z = -74.4. */
+export const SHADY = { x0: -46, x1: 48, z0: -92, z1: -49.5, gateHW: 5.9, sideHW: 4, lane: [-72, -65] as [number, number], front: -74.4 };
 /** What is underfoot in Shady Lane (world coordinates); '' outside it. */
 export function shadySurface(x: number, z: number): '' | 'asphalt' | 'paved' | 'grass' {
   if (z > -BOUND) return '';
-  const ax = Math.abs(x);
-  if (z > SHADY.z1) return ax < 3.5 ? 'asphalt' : ax < 5.9 ? 'paved' : '';
-  if (x < SHADY.x0 || x > SHADY.x1 || z < SHADY.z0) return '';
-  if (z > SHADY.lane[0] && z < SHADY.lane[1]) return 'asphalt';
-  if ((z >= SHADY.front && z <= SHADY.lane[0]) || (z >= SHADY.lane[1] && z < SHADY.lane[1] + 2.4)) return 'paved';
-  if (z > SHADY.lane[1]) return ax < 3.5 ? 'asphalt' : ax < 5.9 ? 'paved' : 'grass'; // the road up from the gate
-  if (ax < 3.5) return 'asphalt'; // the road on to the course, between the pawn shop and Grow Supply
-  if (ax < 5.9) return 'paved';
+  const st = streetAt(x, z);
+  if (st) return st;
+  if (z > SHADY.z1 || x < SHADY.x0 || x > SHADY.x1 || z < SHADY.z0) return '';
+  if (z >= SHADY.front) return 'grass';
   // indoors (the buildings' own frame): the lounge, the alley and Grow Supply; the pawn shop
   const lx = x - SHADY_OFF.x,
     lz = z - SHADY_OFF.z;
@@ -89,7 +76,7 @@ export function inWorld(x: number, z: number) {
   if (z < -BOUND) {
     // Shady Lane, through the gate in the town's north edge
     if (z > SHADY.z1) {
-      if (Math.abs(x) < SHADY.gateHW) return true;
+      if (Math.abs(x) < SHADY.gateHW || Math.abs(Math.abs(x) - RING) < SHADY.sideHW) return true;
     } else if (z > SHADY.z0) return x > SHADY.x0 && x < SHADY.x1;
   }
   if (x < -BOUND) {
@@ -232,31 +219,7 @@ export function buildLobby(scene: THREE.Scene) {
   const asphalt = photoM('asphalt', '#55524c'),
     walk = photoM('pavers', '#b9ad98'),
     paint = new THREE.MeshBasicMaterial({ color: '#e8d9a8' });
-  for (const k of [-1, 1])
-    for (const vertical of [true, false]) {
-      const c = (k * CELL) / 2,
-        L = BOUND * 2 + 8;
-      const road = new THREE.Mesh(new THREE.PlaneGeometry(vertical ? 5.6 : L, vertical ? L : 5.6).rotateX(-Math.PI / 2), asphalt);
-      road.position.set(vertical ? c : 0, 0.02, vertical ? 0 : c);
-      tile(road, 1.7);
-      road.receiveShadow = true;
-      scene.add(road);
-      for (let s = -L / 2; s < L / 2; s += 4) {
-        if (Math.abs(Math.abs(s) - CELL / 2) < ROAD_HW + 0.8) continue;
-        const d = new THREE.Mesh(new THREE.PlaneGeometry(vertical ? 0.14 : 1.6, vertical ? 1.6 : 0.14).rotateX(-Math.PI / 2), paint);
-        d.position.set(vertical ? c : s, 0.03, vertical ? s : c);
-        scene.add(d);
-      }
-    }
-  for (const [v, off, a, b] of SIDEWALKS) {
-    const len = b - a,
-      mid = (a + b) / 2,
-      sw = new THREE.Mesh(new THREE.BoxGeometry(v ? 1.2 : len, 0.12, v ? len : 1.2), walk);
-    sw.position.set(v ? off : mid, 0.06, v ? mid : off);
-    tile(sw, 2.4);
-    sw.receiveShadow = true;
-    scene.add(sw);
-  }
+  scene.add(buildStreets(asphalt, walk)); // every street, its pavements and its paint (lobby/roads.ts)
   {
     // zebra crossings on every arm of the four intersections
     const zebra = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.45, 3.2).rotateX(-Math.PI / 2), paint, 4 * 4 * 7),
@@ -395,7 +358,7 @@ export function buildLobby(scene: THREE.Scene) {
     palm(x, z, 8 + (Math.abs(x + z) % 2));
   const clearOfX = (u: number) => Math.abs(Math.abs(u) - CELL / 2) > ROAD_HW + SW + 1.2; // not in a crossing street or its sidewalks
   for (const s of [-1, 1])
-    for (let v = -40; v <= 40; v += 13) {
+    for (let v = -27; v <= 27; v += 13) {
       if (clearOfX(v + 3)) palm(s * (CELL / 2 + 4.6), v + 3, 9 + (Math.abs(v) % 3));
       if (clearOfX(v - 3)) palm(v - 3, s * (CELL / 2 + 4.6), 8.5 + (Math.abs(v) % 2));
     }
@@ -454,7 +417,7 @@ export function buildLobby(scene: THREE.Scene) {
         x = Math.sin(a) * d,
         z = Math.cos(a) * d;
       if (z < 0 && Math.abs(x) < 9) continue; // the lane out of the gate
-      if (z < -BOUND && z > SHADY.z0 - 8 && x > SHADY.x0 - 6 && x < SHADY.x1 + 6) continue; // Shady Lane
+      if (z < -BOUND + 2 && z > SHADY.z0 - 8 && x > SHADY.x0 - 6 && x < SHADY.x1 + 6) continue; // Shady Lane and the roads up to it
       if (x > BOUND - 2 && x < FUN.x1 + 60 && Math.abs(z) < FUN.z + 6) continue; // Fun Land and its driving range
       if (x < -BOUND + 2 && x > WEST.x0 - 20 && z > WEST.z0 - 10 && z < WEST.z1 + 26) continue; // the West Side and the shopfronts behind its car park
       const grove = Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05 - 0.7);
@@ -508,10 +471,10 @@ export function buildLobby(scene: THREE.Scene) {
   scene.add(gacha.group);
   addCol(-85.35 + SHADY_OFF.x, -84.65 + SHADY_OFF.x, 6.55 + SHADY_OFF.z, 7.25 + SHADY_OFF.z, 'gacha');
   // Shady Lane's filler shops (lobby/filler.ts): the whole south side behind their fronts, and the two on the north side
-  addCol(-34, -5.9, -62.4, SHADY.z1, 'shop');
-  addCol(5.9, 48, -62.4, SHADY.z1, 'shop');
-  addCol(-34, -18, SHADY.z0, SHADY.front, 'shop');
-  addCol(38.5, 48, SHADY.z0, SHADY.front, 'shop');
+  addCol(-36, -5.9, -62.4, SHADY.z1, 'shop');
+  addCol(5.9, 36, -62.4, SHADY.z1, 'shop');
+  addCol(-44, -18, SHADY.z0, SHADY.front, 'shop');
+  addCol(36.4, 48, SHADY.z0, SHADY.front, 'shop');
   return { light, colliders, plots, gacha, fountain };
 }
 
@@ -520,12 +483,10 @@ export function groundY(x: number, z: number) {
   if (x > BOUND) return puttFloor(x, z);
   if (x < -BOUND) return westY(x, z) + (westSurface(x, z) === 'paved' ? 0.06 : 0);
   if (z < -BOUND) return shadySurface(x, z) === 'paved' ? 0.06 : 0;
+  if (streetAt(x, z) === 'asphalt') return 0;
   if (Math.abs(x) < 9.5 && Math.abs(z) < 9.5) return 0.1;
-  for (const [v, off, a, b] of SIDEWALKS) {
-    const u = v ? x : z,
-      w = v ? z : x;
-    if (Math.abs(u - off) < 0.6 && w > a && w < b) return 0.12;
-  }
+  const pv = paveY(x, z);
+  if (pv) return pv;
   for (const l of LOTS) if (Math.abs(x - l.cx) < HALF && Math.abs(z - l.cz) < HALF) return 0.06;
   return 0;
 }
@@ -538,8 +499,7 @@ export function surfaceOf(x: number, z: number): 'concrete' | 'asphalt' | 'grave
   const y = groundY(x, z);
   if (y >= 0.1) return 'concrete'; // the plaza and the sidewalks
   if (y > 0) return 'gravel'; // a lot's pad
-  const onRoad = (u: number, w: number) => Math.abs(Math.abs(u) - CELL / 2) < ROAD_HW && Math.abs(w) < BOUND + 4;
-  return onRoad(x, z) || onRoad(z, x) ? 'asphalt' : 'grass';
+  return streetAt(x, z) === 'asphalt' ? 'asphalt' : 'grass';
 }
 /** Lot-local spots for plant care v2: the spigot (fill the can) and the fertilizer bin. */
 export const SPIGOT: [number, number] = [3.4, -5.9],
