@@ -523,18 +523,34 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     [-82.4, 32.5, 0, 'sedan'],
     [-64.4, 32.5, Math.PI, 'pickup'],
   ];
+  const parked: THREE.Group[] = [];
   for (const [x, z] of BAYS) col(x - 0.95, x + 0.95, z - 2.1, z + 2.1, 'fence');
   BAYS.forEach(([x, z, r, kind], i) => {
     const c = buildCar(kind, CAR_PAINT[(i * 4 + 1) % CAR_PAINT.length]).root;
     c.position.set(x, 0.03, z);
     c.rotation.y = r;
     G.add(c);
+    parked.push(c);
   });
   const vanCar = buildCar('van', '#d9d4c8'),
     van = vanCar.root,
     wheels = vanCar.wheels;
   van.userData.noBatch = true;
   G.add(van);
+  // The code-built cars are stand-ins: once the vehicle pack is in ("54 Vehicle Pack", PorscheAaron, CC BY 4.0; see
+  // docs/credits.md) each is swapped for a textured model. The pack is toy-sized with its nose along -x.
+  void loadProps('vehicles', n => n).then(kit => {
+    const swap = (root: THREE.Object3D, n: number, moving = false) => {
+      const o = kit.make('Object_' + n, 25);
+      if (!o) return;
+      o.rotation.y = Math.PI / 2;
+      if (moving) o.userData.noBatch = true;
+      for (const ch of root.children) ch.visible = false;
+      root.add(o);
+    };
+    [49, 25, 19, 36, 20, 21, 26, 2].forEach((n, i) => parked[i] && swap(parked[i], n));
+    swap(van, 14, true);
+  });
 
   // the van's round: east along one lane, a U-turn short of the gate, west along the other, a U-turn short of the
   // turning circle, and round again
