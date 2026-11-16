@@ -413,7 +413,7 @@ export function buildLobby(scene: THREE.Scene) {
         z = Math.cos(a) * d;
       if (z < 0 && Math.abs(x) < 9) continue; // the lane out of the gate
       if (x > BOUND - 2 && x < FUN.x1 + 60 && Math.abs(z) < FUN.z + 6) continue; // Fun Land and its driving range
-      if (x < -BOUND + 2 && x > WEST.x0 - 6 && z > WEST.z0 - 6 && z < WEST.z1 + 6) continue; // the West Side
+      if (x < -BOUND + 2 && x > WEST.x0 - 44 && z > WEST.z0 - 6 && z < WEST.z1 + 24) continue; // the West Side and the shopfronts behind its car park
       if (z > BOUND - 2 && z < HILLS.z1 + 4 && Math.abs(x) < HILLS.x + 4) continue; // the hills south of town (bare golden slopes)
       const grove = Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05 - 0.7);
       if (grove < 0.05 && r() < 0.75) continue; // trees bunch into groves, with open meadow between

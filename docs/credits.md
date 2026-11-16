@@ -6,12 +6,15 @@ Third-party work in Golden Hills, and what the game's credits screen must list. 
 | Used for | Work | Author | License | Source |
 |---|---|---|---|---|
 | Alley props on the West Side (dumpster, barrels, crates, pallets, tyres, bins) | PSX Industrial Pack | Tomitos | CC BY 4.0 | https://sketchfab.com/3d-models/psx-industrial-pack-12cb749961974f94a4063e67dafb2d76 |
+| Shopfronts behind the West Side car park, two apartment blocks beyond the district | Buildings \| PS1 Asset Pack | McPato | CC BY 4.0 | https://sketchfab.com/3d-models/buildings-ps1-asset-pack-ce7ff457a9d649d886feec1ba955dd48 |
+| Pictures on the lounge walls | Paintings and Posters Collection - Game Ready | Melon Polygons | CC BY 4.0 | https://sketchfab.com/3d-models/paintings-and-posters-collection-game-ready-2bc72a05095c485ab7bc09a6b7b78d93 |
 
 ## Supplied by the user, not in the game yet
+Decision (Nov 16): use the CC BY packs; leave out the two Sketchfab Standard packs and the two tracks.
+
 | Work | Author | License as stated in the file | Note |
 |---|---|---|---|
 | Food Collection - Game Ready | Melon Polygons | CC BY 4.0 | shop shelves |
-| Paintings and Posters Collection - Game Ready | Melon Polygons | CC BY 4.0 | walls of the clubhouse and lounge |
 | office is old abandoned FREE | dasy444 | CC BY 4.0 | interior pieces |
 | 1970s Mafia Hideout Props | Bársh | Sketchfab Standard | usable in the game; the Standard license does not allow passing the model file on, so it may not belong in a public repository |
 | street city (7) for games FREE | dasy444 | Sketchfab Standard | same caution |

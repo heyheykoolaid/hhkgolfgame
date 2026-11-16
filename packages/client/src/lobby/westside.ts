@@ -240,6 +240,59 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     s.position.set(-60, 3.75, c.z1 + 2.42);
     G.add(s, box(1.8, 0.45, 0.5, wood, -63.5, 0.3, c.z1 + 1.4), box(1.8, 0.45, 0.5, wood, -56.5, 0.3, c.z1 + 1.4));
   }
+  // A strip of shopfronts behind the car park, and two apartment blocks beyond the district for depth
+  // ("Buildings | PS1 Asset Pack", McPato, CC BY 4.0; see docs/credits.md). Shells for now: the shops to come move in.
+  void loadProps('buildings', n =>
+    n.includes('street')
+      ? 'street'
+      : n.includes('glasss')
+        ? n.replace(/_glasss.*/, '_glass')
+        : n.replace(/_(atlas|atals|concrete|grass|emit).*$/, ''),
+  ).then(kit => {
+    const streetZ = kit.at('street')?.z ?? 0;
+    /** Stand a building with its street front facing north (-z) along the line z = front; returns its width. */
+    const stand = (name: string, x0: number, front: number, extra: string[] = []) => {
+      const o = kit.make(name),
+        sz = kit.size(name),
+        c = kit.at(name);
+      if (!o || !sz || !c) return 0;
+      const yaw = streetZ > c.z ? Math.PI : 0; // the pack's shops face its street
+      o.position.set(x0 + sz.x / 2, 0, front + sz.z / 2);
+      o.rotation.y = yaw;
+      G.add(o);
+      for (const e of extra) {
+        const g = kit.make(e),
+          ec = kit.at(e);
+        if (!g || !ec) continue;
+        const d = ec.sub(c).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        g.position.copy(o.position).add(d);
+        g.rotation.y = yaw;
+        g.castShadow = false;
+        G.add(g);
+      }
+      return sz.x;
+    };
+    let x = -118;
+    for (const [n, ex] of [
+      ['polleria', []],
+      ['restaurant', []],
+      ['Pizzeria', []],
+      ['farmacia', ['farmacia_glass']],
+    ] as [string, string[]][])
+      x += stand(n, x, 38.2, ex) + 0.7;
+    for (const [n, px, pz, yaw] of [
+      ['Condo002', -156, 14, Math.PI / 2],
+      ['Condo004', -136, -22, 0],
+    ] as [string, number, number, number][]) {
+      const o = kit.make(n);
+      if (!o) continue;
+      o.position.set(px, 0, pz);
+      o.rotation.y = yaw;
+      o.castShadow = false;
+      G.add(o);
+    }
+  });
+  G.add(tile(flat(46, 3.4, pavers, -96, 36.5, 0.05), 2)); // the walk along the shopfronts
   let vltSpots: VltSpot[] = [];
   // 2 · the Lucky Lie Lounge: dark brick, open to the street, with the blackjack table inside under warm lamps
   {
@@ -304,6 +357,35 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     col(x0 + 3.35, x0 + 3.85, z1 - 0.5, z1, 'sign');
     col(x1 - 3.85, x1 - 3.35, z1 - 0.5, z1, 'sign');
     col(x0 + 1.1, x0 + 1.95, cz - 4.1, cz + 1.1, 'bench');
+    // pictures on the walls ("Paintings and Posters Collection", Melon Polygons, CC BY 4.0; see docs/credits.md).
+    // The pack is one welded mesh: the loader cuts it into separate frames (Art00, Art01… biggest first).
+    void loadProps('paintings', n => n, 'Art').then(kit => {
+      const arts = kit.names
+        .map(n => ({ n, s: kit.size(n)! }))
+        .filter(a => Math.min(a.s.x, a.s.z) < 0.25 && a.s.y > 0.4 && Math.max(a.s.x, a.s.z) > 0.4 && Math.max(a.s.x, a.s.z) < 3);
+      if (!arts.length) return;
+      // [x, bottom y, z, the way it faces (yaw), widest it may be]
+      const WALLS: [number, number, number, number, number][] = [
+        [-83.6, 2.55, z0 + 0.33, 0, 1.5],
+        [-79, 2.6, z0 + 0.33, 0, 1.9],
+        [-74.4, 2.55, z0 + 0.33, 0, 1.5],
+        [x1 - 0.33, 1.5, 1.2, -Math.PI / 2, 1.3],
+        [x1 - 0.33, 1.45, 4.4, -Math.PI / 2, 1.6],
+        [x0 + 0.33, 1.9, 4.2, Math.PI / 2, 1.4],
+        [x0 + 0.33, 1.95, 6.4, Math.PI / 2, 1.1],
+      ];
+      WALLS.forEach(([wx, wy, wz, face, maxW], i) => {
+        const a = arts[(i * 5 + 2) % arts.length],
+          thinX = a.s.x < a.s.z,
+          w = thinX ? a.s.z : a.s.x,
+          k = Math.min(maxW / w, 1.25 / a.s.y, 1),
+          o = kit.make(a.n, k)!;
+        o.position.set(wx, wy, wz);
+        o.rotation.y = face - (thinX ? Math.PI / 2 : 0);
+        o.castShadow = false;
+        G.add(o);
+      });
+    });
     // slot machines and video poker along the back wall (lobby/vlt.ts)
     const xs = [-81.3, -80.3, -77.7, -76.7];
     vltSpots = buildMachines(G, xs, z0 + 0.72);
