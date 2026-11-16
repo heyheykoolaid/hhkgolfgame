@@ -68,6 +68,7 @@ import { createBlackjack, type BJPres } from './blackjack';
 import { createGarden, type PlanterRef, type HeldPres } from './garden';
 import { createDealer, DEALER_POS } from './dealer';
 import { createAttendants } from './attendants';
+import { createTownLife } from './townLife';
 import { createStaticBatcher } from '../world/staticBatch';
 import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
@@ -463,6 +464,7 @@ export function createLobby(env: LobbyEnv) {
   function cartAt(x: number, z: number, r: number) {
     if (cart.car && P.mode !== 'drive' && inCartBox(cart.car, x, z, r)) return true;
     for (const q of remotes.values()) if (q.cart && inCartBox(q.cart, x, z, r)) return true;
+    for (const c of life.cars()) if (inCartBox(c, x, z, r)) return true; // the town's own traffic
     return false;
   }
 
@@ -2117,6 +2119,8 @@ export function createLobby(env: LobbyEnv) {
   // ---------------- remote players ----------------
   const remotes = new Map<string, Remote>();
   // ---------------- ground life (world-feel.md): two strollers, birds that scatter, a stray cat ----------------
+  const life = createTownLife(scene, () => pw); // walkers on every pavement, a few cars on the streets (lobby/townLife.ts)
+  (window as any).__life = life;
   const strollers = createStrollers(scene, groundY, surfaceOf),
     scarers: Scarer[] = [];
   const catAt = (lot: number, lx: number, lz: number): [number, number, number] => {
@@ -2831,6 +2835,26 @@ export function createLobby(env: LobbyEnv) {
     staff.update(clock, P.x, P.z);
     strollers.update(clock, camera);
     {
+      // everyone the town's walkers and drivers should give way to: me (or my car), the other players, the van
+      const mine =
+          P.mode === 'drive' && cart.car
+            ? { x: cart.car.root.position.x, z: cart.car.root.position.z, spd: Math.abs(cart.car.speed()) }
+            : { x: P.x, z: P.z, spd: P.spd },
+        vn = west.van();
+      life.update(dt, clock, camera, [
+        mine,
+        ...[...remotes.values()].map(r => ({ x: r.x, z: r.z, spd: r.cart ? Math.abs(r.cart.speed()) : 0 })),
+        { x: vn.x, z: vn.z, spd: vn.v },
+      ]);
+      // a town car that catches you on foot at speed knocks you down, the same as a player's would
+      if (!flop && P.mode === 'walk')
+        for (const c of life.cars())
+          if (Math.abs(c.speed()) > 3.5 && inCartBox(c, P.x, P.z, 0.2)) {
+            knockMe(_hp.set(1, 0, 0).applyQuaternion(c.root.quaternion).multiplyScalar(c.speed()).clone());
+            break;
+          }
+    }
+    {
       const car = P.mode === 'drive' && cart.car?.kind === 'kart' ? cart.car : null;
       fun.update(
         dt,
@@ -2864,7 +2888,7 @@ export function createLobby(env: LobbyEnv) {
     // 12 m across stops being drawn once it's farther than 55 m plus three times its size
     // (a bench goes at about 58 m, a whole lot at about 85 m).
     radioFrame(dt);
-    west.update(dt, [P, ...remotes.values()]);
+    west.update(dt, [P, ...remotes.values(), ...life.movers()]);
     tickWater(clock);
     batcher.update(dt);
     if ((cullT -= dt) <= 0) {

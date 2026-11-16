@@ -1,5 +1,6 @@
 // Golf mode: the hole, the 3-tap swing, shot playback for everyone in the match, scorecard → back to the lobby.
 // The app creates it once and calls start()/stop()/tick(); it shares the renderer with the lobby.
+import { courseAt } from './homeCourse';
 import { trailColor } from '../avatar/trails';
 import { cartRadio } from '../audio/cartRadio';
 import * as THREE from 'three';
@@ -2126,7 +2127,7 @@ export function createGolf(env: GolfEnv) {
     const mid = turns.casual ? o.matchId.slice(1) : o.matchId; // 'c…' = casual (everyone at once)
     const tour = parseTournament(mid);
     if (tour) {
-      const holes = tournamentHoles(tour.seed, tour.n);
+      const holes = tournamentHoles(tour.seed, tour.n, tour.card); // (a real course's card sets the pars and where the hard holes fall)
       T = {
         teeOrder: turns.listOrder.slice(),
         n: tour.n,
@@ -2135,7 +2136,10 @@ export function createGolf(env: GolfEnv) {
         holes,
         pars: holes.map(x => holeIdea(x).par),
         h: 0,
-        cup: cupFor(tour.seed, tour.n),
+        cup: {
+          ...cupFor(tour.seed, tour.n),
+          ...(tour.course != null ? { title: tour.n === 9 ? 'The Home Course Championship' : 'The Home Course Cup' } : {}),
+        },
         cards: new Map(),
         who: new Map(),
         allDoneAt: 0,
@@ -2143,6 +2147,13 @@ export function createGolf(env: GolfEnv) {
         view: null,
         canvas: null,
       };
+      if (tour.course != null) {
+        // the real course's name arrives with the course list (fetched once); the cup takes its name
+        const mine = T;
+        void courseAt(tour.course).then(c => {
+          if (c && T === mine) mine.cup.title = `The ${c.name.replace(/^The /i, '')} ${tour.n === 9 ? 'Championship' : 'Cup'}`;
+        });
+      }
       loadTourHole(0);
     } else loadHole(seedFromMatch(mid));
     Object.assign(S, { phase: 'aim', club: 0, aimYaw: 0, puttRange: 1, t: 0, power: 0, p0: 0, m: 0, u: 0, followT: 0, watchShot: null, autoFor: '' });

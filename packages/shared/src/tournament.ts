@@ -17,10 +17,61 @@ export function tournamentIdFor(n: TourSize, seed: number, rand: string) {
   return 't' + n + holeCode(seed).toLowerCase() + tail;
 }
 /** The tournament inside a match id, or null for a single-hole match. */
-export function parseTournament(id: string): { n: TourSize; seed: number; code: string } | null {
+export function parseTournament(id: string): { n: TourSize; seed: number; code: string; card?: Card; course?: number } | null {
+  const k = /^k([39])[0-9a-z]([0-9a-z]{5})([0-9a-z]{3})/.exec(String(id || ''));
+  if (k) {
+    // a real course's card: the holes come from its pars and its hardest holes; the seed is made from the card and the course
+    const card = cardFromCode(k[2], +k[1] as TourSize),
+      course = parseInt(k[3], 36);
+    return {
+      n: +k[1] as TourSize,
+      seed: (((parseInt(k[2], 36) * 31 + course) % SEED_MAX) + 1) >>> 0,
+      code: (k[2] + k[3]).toUpperCase(),
+      card,
+      course,
+    };
+  }
   const m = /^t([39])([0-9a-z]{5})/.exec(String(id || ''));
   if (!m) return null;
   return { n: +m[1] as TourSize, seed: codeSeed(m[2]) || 1, code: m[2].toUpperCase() };
+}
+/** A real course's card for a round: each hole's par, and whether it is one of the course's hardest. */
+export interface Card {
+  pars: number[];
+  hard: boolean[];
+}
+/** A card from its nine digits, one per hole: (par − 3) × 2 + (1 if hard). */
+export function cardFromDigits(digits: string, n: TourSize): Card {
+  const d = [...String(digits)].slice(0, n).map(c => Math.max(0, Math.min(5, +c || 0)));
+  while (d.length < n) d.push(2);
+  return { pars: d.map(v => 3 + (v >> 1)), hard: d.map(v => (v & 1) === 1) };
+}
+const cardCode = (c: Card) =>
+  c.pars
+    .reduce((t, p, i) => t + ((p - 3) * 2 + (c.hard[i] ? 1 : 0)) * 6 ** i, 0)
+    .toString(36)
+    .padStart(5, '0');
+function cardFromCode(code: string, n: TourSize): Card {
+  let v = parseInt(code, 36) || 0,
+    digits = '';
+  for (let i = 0; i < n; i++) {
+    digits += v % 6;
+    v = Math.floor(v / 6);
+  }
+  return cardFromDigits(digits, n);
+}
+/** Match id for a round on a real course's card: "k" + size + a slot for our own course's letter + the card (5 chars)
+ *  + the real course's number in the shipped list (3 chars). 11 characters, so a casual "c" still fits in front. */
+export function courseIdFor(n: TourSize, digits: string, course: number) {
+  return (
+    'k' +
+    n +
+    '0' +
+    cardCode(cardFromDigits(digits, n)) +
+    Math.max(0, Math.min(36 ** 3 - 1, course))
+      .toString(36)
+      .padStart(3, '0')
+  );
 }
 export function randomTourSeed() {
   return 1 + Math.floor(Math.random() * SEED_MAX);
@@ -50,9 +101,9 @@ const KINDS: Record<number, string[]> = {
   5: ['reachable', 'double'],
 };
 /** The hole seeds of a tournament, in playing order. */
-export function tournamentHoles(seed: number, n: TourSize): number[] {
+export function tournamentHoles(seed: number, n: TourSize, card?: Card): number[] {
   const r = mulberry32((seed * 40503 + n * 7) >>> 0),
-    pars = PARS[n][Math.floor(r() * PARS[n].length)];
+    pars = card ? card.pars.slice(0, n) : PARS[n][Math.floor(r() * PARS[n].length)];
   // 1. plan the ideas: shuffle each par's archetypes and deal them out until the opener is easy and the finisher hard
   let plan: string[] = [];
   for (let t = 0; t < 400; t++) {
@@ -66,6 +117,16 @@ export function tournamentHoles(seed: number, n: TourSize): number[] {
       decks[p] = d;
     }
     const pos: Record<number, number> = { 3: 0, 4: 0, 5: 0 };
+    if (card) {
+      // a real card decides: its hardest holes get the ideas that ask the hard questions, the rest the gentler ones
+      plan = pars.map((p, i) => {
+        const want = card.hard[i] ? HARD : EASY,
+          fit = decks[p].filter(k => want.has(k)),
+          from = fit.length ? fit : decks[p];
+        return from[pos[p]++ % from.length];
+      });
+      break;
+    }
     plan = pars.map(p => decks[p][pos[p]++ % decks[p].length]);
     if (EASY.has(plan[0]) && HARD.has(plan[plan.length - 1])) break;
   }

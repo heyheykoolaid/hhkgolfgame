@@ -26,3 +26,25 @@ describe('tournaments', () => {
     console.log([1, 2, 3, 4, 5, 6, 7, 8].map(s => cupFor(s, s % 2 ? 3 : 9).title).join(' | '));
   });
 });
+
+describe('a real course card', () => {
+  it('travels inside the match id and comes back the same, with a casual c in front too', async () => {
+    const { courseIdFor, parseTournament, cardFromDigits, tournamentHoles } = await import('./tournament');
+    const { holeIdea } = await import('./holegen');
+    const digits = '342003225', // Pebble Beach's front nine as packed: par 4,5,4,3,3,4,4,4,5 with its hard holes marked
+      id = courseIdFor(9, digits, 4321);
+    expect(id.length).toBe(11);
+    for (const mid of [id, id.slice(0, 2) + '1' + id.slice(3)]) {
+      const t = parseTournament(mid)!;
+      expect(t.n).toBe(9);
+      expect(t.course).toBe(4321);
+      expect(t.card).toEqual(cardFromDigits(digits, 9));
+      const holes = tournamentHoles(t.seed, t.n, t.card);
+      expect(holes.map(s => holeIdea(s).par)).toEqual(t.card!.pars);
+      expect(tournamentHoles(t.seed, t.n, t.card)).toEqual(holes); // everyone in the group gets the same holes
+    }
+    const three = parseTournament(courseIdFor(3, digits, 7))!;
+    expect(three.card!.pars).toEqual([4, 5, 4]);
+    expect(parseTournament('t9abcde0xxxxx')!.card).toBeUndefined();
+  });
+});

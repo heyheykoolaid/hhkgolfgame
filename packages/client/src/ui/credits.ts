@@ -12,6 +12,7 @@ const ROWS: [string, [string, string, string][]][] = [
       ['Cars and the delivery van', 'PorscheAaron', '"54 Vehicle Pack" · CC BY 4.0'],
       ['Alley props', 'Tomitos', '"PSX Industrial Pack" · CC BY 4.0'],
       ['Car handling, gearbox and engine-sound model (adapted)', 'OpenUG2 contributors', 'OpenUG2 · MIT License'],
+      ['Real course names and scorecards (Home course rounds)', 'OpenGolfAPI', 'source=OpenGolf · Open Database License 1.0'],
       ['Pictures in the lounge', 'Melon Polygons', '"Paintings and Posters Collection" · CC BY 4.0'],
       ['Golfers, clothes and hair', 'MakeHuman community', 'CC0'],
       ['Lot furniture, textures, sky', 'Poly Haven', 'CC0'],

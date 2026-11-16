@@ -12,7 +12,8 @@ export const localeName = (id: LocaleId = locale.id) => LOCALES.find(l => l.id =
 
 /** Which character of a match id holds the locale: the first one after the hole or tournament code. */
 function slot(id: string) {
-  const c = /^c[rt]/.test(id) ? 1 : 0; // 'c' in front = a casual round
+  const c = /^c[rtk]/.test(id) ? 1 : 0; // 'c' in front = a casual round
+  if (id[c] === 'k') return c + 2; // a real course's card (shared tournament.ts courseIdFor)
   if (id[c] === 'r') return c + 6;
   if (id[c] === 't') return c + 7;
   return -1;

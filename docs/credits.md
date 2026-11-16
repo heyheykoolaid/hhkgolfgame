@@ -18,6 +18,13 @@ Third-party work in Golden Hills, and what the game's credits screen must list. 
 |---|---|---|---|---|
 | How cars drive (per-car profile from measurements, tapering pull, speed-sensitive steering, off-road cost, body lean), the six-speed gearbox and the synthesized engine sound. Re-written in TypeScript for this game's physics; no game data, models or sounds were taken. | OpenUG2 (`src/physics.c`, `src/audio.c`) | OpenUG2 contributors | MIT (text in `docs/third-party/OpenUG2-LICENSE.txt`) | https://github.com/whoismept/OpenUG2 |
 
+## Data
+| Used for | Dataset | Publisher | License | Source |
+|---|---|---|---|---|
+| "Home course" rounds: 10,286 US courses' names, towns, total yardage, and for the first nine holes on each card the par and whether the hole is one of the course's six hardest (`public/data/courses.json`, packed by `tools/courses/pack.py`). Attribution as the license asks: **source=OpenGolf**. Facts only; nothing was edited. | OpenGolfAPI open dataset (`opengolfapi-us.ndjson`) | OpenGolfAPI | Open Database License (ODbL) 1.0 | https://github.com/opengolfapi/data |
+
+Looked at and not used: **OpenGTA** (its license forbids commercial use and it needs the original game's files). Town life borrows only the general idea of steering behaviours (follow a path, keep apart, give way), which is Craig Reynolds' published work, not anyone's code.
+
 ## Supplied by the user, not in the game yet
 Decision (Nov 16): use the CC BY packs; leave out the two Sketchfab Standard packs and the two tracks.
 
