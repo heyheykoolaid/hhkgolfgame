@@ -2,6 +2,7 @@
 // play it in first person: the game runs on the cabinet's own screen (a canvas texture), your hands rest on the button
 // deck and reach for the spin button or the lever, and V pulls the camera back. Rules and odds: shared/src/vlt.ts.
 // The cabinets are built in code. Single player against the house; other players see you sitting at the machine.
+import { marqueeArt, bellyArt, sideArt, bodyArt, deckArt, seatArt } from './vltArt';
 import * as THREE from 'three';
 import {
   SLOT_THREE,
@@ -138,7 +139,8 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x
   const mat = (color: string, rough = 0.6, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }),
     dark = mat('#17161a', 0.5, 0.2),
     chrome = mat('#b9b4a8', 0.25, 0.8),
-    seat = mat('#6a1f2a', 0.7),
+    seat = new THREE.MeshStandardMaterial({ map: seatArt(), roughness: 0.55 }),
+    seatSide = mat('#4e141d', 0.6),
     add = (parent: THREE.Object3D, g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, zz: number, rx = 0) => {
       const o = new THREE.Mesh(g, m);
       o.position.set(x, y, zz);
@@ -148,12 +150,27 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x
     };
   return MACHINES.map((def, i) => {
     const x = xs[i],
-      body = mat(def.color, 0.45, 0.1);
+      body = new THREE.MeshStandardMaterial({ map: bodyArt(def), roughness: 0.35, metalness: 0.1 }),
+      printed = (t: THREE.Texture, glow = 0) =>
+        new THREE.MeshStandardMaterial({
+          map: t,
+          roughness: 0.4,
+          emissiveMap: glow ? t : null,
+          emissive: new THREE.Color(glow ? '#ffffff' : '#000000'),
+          emissiveIntensity: glow,
+        });
     add(G, new THREE.BoxGeometry(0.78, 0.12, 0.7), dark, x, 0.12, z); // plinth
     add(G, new THREE.BoxGeometry(0.72, 0.8, 0.62), body, x, 0.58, z); // belly
     add(G, new THREE.BoxGeometry(0.76, 0.07, 0.78), dark, x, 1.0, z + 0.08); // button deck
     add(G, new THREE.BoxGeometry(0.72, 0.78, 0.5), body, x, 1.42, z - 0.06); // head
     add(G, new THREE.BoxGeometry(0.8, 0.3, 0.56), dark, x, 1.95, z - 0.04); // marquee box
+    // printed panels (lobby/vltArt.ts): the front below the deck, both sides, the deck's top
+    add(G, new THREE.PlaneGeometry(0.72, 0.8), printed(bellyArt(def), 0.55), x, 0.58, z + 0.312);
+    const side = printed(sideArt(def));
+    add(G, new THREE.PlaneGeometry(0.5, 1.63), side, x - 0.362, 0.995, z - 0.06).rotation.y = -Math.PI / 2;
+    add(G, new THREE.PlaneGeometry(0.5, 1.63), side, x + 0.362, 0.995, z - 0.06).rotation.y = Math.PI / 2;
+    add(G, new THREE.PlaneGeometry(0.76, 0.78), printed(deckArt(def)), x, 1.037, z + 0.08, -Math.PI / 2);
+    for (const s of [-1, 1]) add(G, new THREE.BoxGeometry(0.02, 1.66, 0.02), chrome, x + s * 0.362, 1.0, z + 0.2); // chrome edge trim
     // a dark bezel round the screen, so it reads as a monitor set into the cabinet
     add(G, new THREE.BoxGeometry(0.68, 0.7, 0.03), dark, x, SCREEN_Y, z + 0.185, -0.12);
     const cv = document.createElement('canvas');
@@ -171,8 +188,8 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x
       -0.12,
     );
     scr.userData.noBatch = true;
-    const marqueeCol = new THREE.Color(i % 2 ? '#ffd27a' : '#ff8a6a'),
-      marquee = new THREE.MeshBasicMaterial({ color: marqueeCol.clone(), toneMapped: false }),
+    const marqueeCol = new THREE.Color('#ffffff'),
+      marquee = new THREE.MeshBasicMaterial({ map: marqueeArt(def), color: marqueeCol.clone(), toneMapped: false }),
       glow = add(G, new THREE.PlaneGeometry(0.72, 0.22), marquee, x, 1.95, z + 0.245);
     glow.userData.noBatch = true;
     // the deck: bet −, bet +, max, and the big spin / deal button on the right
@@ -197,7 +214,9 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x
       add(G, new THREE.BoxGeometry(0.08, 0.16, 0.14), dark, x + 0.4, 1.12, z + 0.05);
     }
     // a stool
-    add(G, new THREE.CylinderGeometry(0.19, 0.19, 0.08, 14), seat, x, 0.7, z + STOOL_Z);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.08, 18), [seatSide, seat, seatSide]);
+    pad.position.set(x, 0.7, z + STOOL_Z);
+    G.add(pad);
     add(G, new THREE.CylinderGeometry(0.03, 0.03, 0.62, 8), chrome, x, 0.36, z + STOOL_Z);
     add(G, new THREE.CylinderGeometry(0.2, 0.22, 0.04, 14), chrome, x, 0.08, z + STOOL_Z);
     const m: Machine = { def, x: x + off.x, y0: off.y, z, cv, g: cv.getContext('2d')!, tex, marquee, marqueeCol, lever, spinBtn, flashTo: 0 };
@@ -656,7 +675,8 @@ export function createVlt(host: VltHost) {
       }
     }
     // the sign over the machine flashes on a win
-    if (clock < m.flashTo) m.marquee.color.set(Math.sin(clock * 20) > 0 ? '#ffffff' : m.def.color);
+    if (clock < m.flashTo)
+      m.marquee.color.set(Math.sin(clock * 20) > 0 ? '#ffffff' : '#6a6a6a'); // (the sign blinks)
     else m.marquee.color.copy(m.marqueeCol);
     if (m.def.kind === 'slots') drawSlots(clock);
     else drawPoker(clock);

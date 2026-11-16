@@ -433,7 +433,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
   {
     const z1 = ST.z0 - 2.4,
       x0 = -86,
-      x1 = -72,
+      x1 = -73.78, // (the shell's east wall stands right behind the bar's own back wall: no dead space between them)
       z0 = z1 - 16,
       h = 4.6,
       brick = M('#5a3a30', 0.85),
