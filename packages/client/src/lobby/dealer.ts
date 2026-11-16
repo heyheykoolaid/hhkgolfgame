@@ -15,7 +15,7 @@ const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 /** In the alley on the West Side, between the Lucky Lie Lounge and Grow Supply (lobby/westside.ts). He buys; the
  *  store next door sells. */
-export const DEALER_POS = new THREE.Vector3(-88.5 - 24, 0, 6.2), // in the alley beside Grow Supply (the West Side sits 24 m west of its own frame)
+export const DEALER_POS = new THREE.Vector3(-88.5 + 110, 0, 6.2 - 82.5), // in the alley beside Grow Supply on Shady Lane (the buildings' frame + SHADY_OFF)
   DEALER_YAW = 0.25;
 
 export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?: number): void; onClose(): void; sfx?: (n: string) => void }) {

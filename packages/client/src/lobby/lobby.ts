@@ -50,6 +50,9 @@ import {
   FUN,
   WEST,
   WEST_OFF,
+  SHADY_OFF,
+  SHADY,
+  shadySurface,
   inWorld,
   type Plot,
   type Collider,
@@ -318,6 +321,7 @@ export function createLobby(env: LobbyEnv) {
       const f = funSurface(x, z);
       if (f) return f === 'grass' ? 'rough' : null;
       if (groundY(x, z) !== 0 || Math.abs(x) > BOUND + 30 || Math.abs(z) > BOUND + 30) return null;
+      if (shadySurface(x, z) === 'asphalt') return null; // Shady Lane's roads
       for (const c of [-14, 14]) if (Math.abs(x - c) < 3.0 || Math.abs(z - c) < 3.0) return null; // streets
       return Math.abs(x) > BOUND - 2 || Math.abs(z) > BOUND - 2 ? 'heavy' : 'rough';
     },
@@ -372,7 +376,16 @@ export function createLobby(env: LobbyEnv) {
           );
       for (const [x, z, hx, hz] of [
         [0, BOUND + 0.5, BOUND + 1, 0.5],
-        [0, -BOUND - 0.5, BOUND + 1, 0.5],
+        // the north edge has the gate to Shady Lane: a short walled road, then the district with walls all round
+        [-(BOUND + SHADY.gateHW) / 2 - 0.5, -BOUND - 0.5, (BOUND - SHADY.gateHW) / 2 + 0.5, 0.5],
+        [(BOUND + SHADY.gateHW) / 2 + 0.5, -BOUND - 0.5, (BOUND - SHADY.gateHW) / 2 + 0.5, 0.5],
+        [-SHADY.gateHW - 0.5, (-BOUND + SHADY.z1) / 2, 0.5, (-SHADY.z1 - BOUND) / 2],
+        [SHADY.gateHW + 0.5, (-BOUND + SHADY.z1) / 2, 0.5, (-SHADY.z1 - BOUND) / 2],
+        [(SHADY.x0 - SHADY.gateHW) / 2, SHADY.z1 + 0.5, (-SHADY.gateHW - SHADY.x0) / 2, 0.5],
+        [(SHADY.x1 + SHADY.gateHW) / 2, SHADY.z1 + 0.5, (SHADY.x1 - SHADY.gateHW) / 2, 0.5],
+        [(SHADY.x0 + SHADY.x1) / 2, SHADY.z0 - 0.5, (SHADY.x1 - SHADY.x0) / 2 + 1, 0.5],
+        [SHADY.x0 - 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
+        [SHADY.x1 + 0.5, (SHADY.z0 + SHADY.z1) / 2, 0.5, (SHADY.z1 - SHADY.z0) / 2 + 1],
         // the west edge has one gate into the West Side (south-west, at z = gateZ); the district has its own outer walls
         [-BOUND - 0.5, (WEST.gateZ - WEST.gateHW - BOUND) / 2, 0.5, (WEST.gateZ - WEST.gateHW + BOUND) / 2],
         [-BOUND - 0.5, (WEST.gateZ + WEST.gateHW + BOUND) / 2, 0.5, (BOUND - WEST.gateZ - WEST.gateHW) / 2],
@@ -681,7 +694,7 @@ export function createLobby(env: LobbyEnv) {
   const SPOTS = [
     { id: 'tee', x: 0, z: -6.3, r: 2.6, label: 'View tee times' },
     { id: 'shop', x: -5.8, z: 0, r: 2.4, label: 'Pro shop (moved to the West Side)' },
-    { id: 'gacha', x: -83.8 + WEST_OFF.x, z: 6.9, r: 1.5, label: 'Birdie Ball machine' },
+    { id: 'gacha', x: -83.8 + SHADY_OFF.x, z: 6.9 + SHADY_OFF.z, r: 1.5, label: 'Birdie Ball machine' },
     { id: 'dealer', x: DEALER_POS.x - 0.3, z: DEALER_POS.z + 0.9, r: 2.1, label: 'Sell to the Street Dealer' },
     ...fun.spots,
     ...west.spots,
@@ -971,8 +984,8 @@ export function createLobby(env: LobbyEnv) {
     ...fun.attendants,
     // the pawnbroker behind his counter (lobby/westside.ts, Lucky Pawn)
     {
-      x: -120.8 + WEST_OFF.x,
-      z: -2.2,
+      x: -120.8 + SHADY_OFF.x,
+      z: -2.2 + SHADY_OFF.z,
       yaw: 0,
       look: { shirt: '#3d3226', top: 'button', pants: '#2a2a2e', hairStyle: 'bald', stubble: true, glasses: 'round', chain: true, watch: true },
     },
@@ -1560,9 +1573,9 @@ export function createLobby(env: LobbyEnv) {
     const c = document.createElement('canvas'),
       S = 3.1, // pixels per metre
       X0 = -156,
-      Z0 = -62,
+      Z0 = -96,
       W = 336,
-      Hh = 124;
+      Hh = 158;
     c.width = Math.round(W * S);
     c.height = Math.round(Hh * S);
     const x = c.getContext('2d')!,
@@ -1609,8 +1622,13 @@ export function createLobby(env: LobbyEnv) {
     x.roundRect(px(109), pz(-43), (166 - 109) * S, 35 * S, 20);
     x.stroke();
     rect(-92, -5, -76, 8, '#ece6d8');
-    rect(-110, -6, -96, 8, '#5a3a30');
-    rect(-128, -4, -114, 8, '#4f7a4a');
+    // Shady Lane: its ground, the lane, the road through it, and the pawn shop, Grow Supply and the lounge
+    rect(SHADY.x0, SHADY.z0, SHADY.x1, SHADY.z1, '#86905a');
+    rect(SHADY.x0, SHADY.lane[0], SHADY.x1, SHADY.lane[1], '#55524c');
+    rect(-3.5, SHADY.z0, 3.5, -BOUND, '#55524c');
+    rect(-15.6, -86.5, -6, -74.4, '#6d5a3c');
+    rect(6, -86.5, 20, -74.4, '#4f7a4a');
+    rect(24, -90.4, 36.2, -74.4, '#5a3a30');
     x.fillStyle = '#d8d2c4';
     x.beginPath();
     x.arc(px(-136), pz(-1), 2.8 * S, 0, 7);
@@ -1625,9 +1643,11 @@ export function createLobby(env: LobbyEnv) {
     label('Driving range', 122, 30, 13);
     label('WEST SIDE', -101, 29.5, 20, '#ffd27a');
     label('Clubhouse', -79, -7, 13);
-    label('Lounge', -103, -11.5, 13);
-    label('Grow Supply', -128, -7, 13);
-    label('Dealer', -112, 9.6, 11, '#f1e6c8');
+    label('SHADY LANE', 8, -55.5, 17, '#ffd27a');
+    label('Pawn', -11, -89, 12);
+    label('Grow Supply', 13, -89, 12);
+    label('Lounge', 31, -93, 12);
+    label('Dealer', 22, -78, 10, '#f1e6c8');
     if (MY) label('YOUR LOT', MY.cx, MY.cz + HALF + 4.5, 12, '#ffe9a8');
     // you
     x.fillStyle = '#ff5a4a';

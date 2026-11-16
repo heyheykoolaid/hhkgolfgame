@@ -20,6 +20,10 @@ const WALKS: Seg[] = [
   [false, 9.3, -146, -BOUND - 4], // the West Side's street, both sides
   [false, 18.7, -146, -BOUND - 4],
   [false, -10.2, BOUND + 4, 100], // the lane into Fun Land
+  [true, -4.7, -63.5, -BOUND - 2], // up from the gate to Shady Lane, and both sides of the lane
+  [true, 4.7, -63.5, -BOUND - 2],
+  [false, -63.8, -30, 46],
+  [false, -73.2, -30, 46],
 ];
 const end = (s: Seg, far: boolean): [number, number] => (s[0] ? [s[1], far ? s[3] : s[2]] : [far ? s[3] : s[2], s[1]]);
 /** For each end of each stretch: the ends of other stretches you can step across to. */

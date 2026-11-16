@@ -135,7 +135,7 @@ function card(x: CanvasRenderingContext2D, c: number, px: number, py: number, w:
 }
 
 /** Build the four cabinets with their stools. They stand at `xs` along the wall at z, facing +z. */
-export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x: 0, y: 0 }): VltSpot[] {
+export function buildMachines(G: THREE.Group, xs: number[], z: number, off: { x: number; y: number; z?: number } = { x: 0, y: 0 }): VltSpot[] {
   const mat = (color: string, rough = 0.6, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }),
     dark = mat('#17161a', 0.5, 0.2),
     chrome = mat('#b9b4a8', 0.25, 0.8),
@@ -219,7 +219,20 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off = { x
     G.add(pad);
     add(G, new THREE.CylinderGeometry(0.03, 0.03, 0.62, 8), chrome, x, 0.36, z + STOOL_Z);
     add(G, new THREE.CylinderGeometry(0.2, 0.22, 0.04, 14), chrome, x, 0.08, z + STOOL_Z);
-    const m: Machine = { def, x: x + off.x, y0: off.y, z, cv, g: cv.getContext('2d')!, tex, marquee, marqueeCol, lever, spinBtn, flashTo: 0 };
+    const m: Machine = {
+      def,
+      x: x + off.x,
+      y0: off.y,
+      z: z + (off.z || 0),
+      cv,
+      g: cv.getContext('2d')!,
+      tex,
+      marquee,
+      marqueeCol,
+      lever,
+      spinBtn,
+      flashTo: 0,
+    };
     machines.push(m);
     drawAttract(m);
     return { id: def.id, x, z: z + STOOL_Z + 0.35, r: 0.95, label: `Sit · ${def.name}` };

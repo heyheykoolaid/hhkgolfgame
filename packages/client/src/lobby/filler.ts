@@ -8,14 +8,16 @@ type Face = 'N' | 'S' | 'E' | 'W';
 const YAW: Record<Face, number> = { S: 0, E: Math.PI / 2, N: Math.PI, W: -Math.PI / 2 };
 /** [building, the middle of its street front (x, z), the way the front faces] */
 const PLACES: [string, number, number, Face, string[]?][] = [
-  // the road out to the course, north of the gate: a few businesses either side
-  ['burguer', -9, -58, 'E'],
-  ['Plane017', -9, -73, 'E'],
-  ['Plane019', -9, -85, 'E'],
-  ['Pizzeria', 9, -56, 'W'],
-  ['restaurant', 9, -66.5, 'W'],
-  ['farmacia', 9, -76.5, 'W', ['farmacia_glass']],
-  ['Plane014', 9, -86, 'W'],
+  // Shady Lane's south side, either side of the road up from the gate, facing the lane
+  ['burguer', -12, -62.5, 'N'],
+  ['Plane017', -25, -62.5, 'N'],
+  ['Pizzeria', 12, -62.5, 'N'],
+  ['restaurant', 23, -62.5, 'N'],
+  ['farmacia', 34, -62.5, 'N', ['farmacia_glass']],
+  ['Plane014', 43.5, -62.5, 'N'],
+  // and one at each end of its north side, beside the pawn shop and the lounge
+  ['Plane019', -25, -74.4, 'S'],
+  ['polleria', 43, -74.4, 'S'],
   // where the hills were, south of town: apartment blocks looking back at it
   ['Condo001', -24, 70, 'N'],
   ['Condo005', 22, 76, 'N'],

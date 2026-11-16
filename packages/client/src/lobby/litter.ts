@@ -3,7 +3,7 @@
 // vertex), scattered from a fixed seed so every player sees the same mess. Nothing here blocks walking.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { SIDEWALKS, WEST_OFF, groundY } from './world';
+import { SIDEWALKS, WEST_OFF, SHADY_OFF, groundY } from './world';
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -115,18 +115,23 @@ export function buildLitter(scene: THREE.Scene) {
   // the West Side: both kerbs of the street, the lounge's doorstep, the alley (where the bags pile up), the car park
   patch(-150 + W, 9.7, -50 + W, 10.7, 30);
   patch(-150 + W, 17.3, -50 + W, 18.3, 30);
-  patch(-86 + W, 8.3, -72 + W, 9.6, 5);
-  patch(-89.8 + W, -5, -88.9 + W, 7, 9, 0.75);
-  patch(-87.2 + W, -5, -86.3 + W, 5, 6, 0.6);
+  // Shady Lane: the lounge's doorstep, the alley (where the bags pile up), both kerbs of the lane
+  const SX = SHADY_OFF.x,
+    SZ = SHADY_OFF.z;
+  patch(-86 + SX, 8.3 + SZ, -72 + SX, 9.6 + SZ, 5);
+  patch(-89.8 + SX, -5 + SZ, -88.9 + SX, 7 + SZ, 9, 0.75);
+  patch(-87.2 + SX, -5 + SZ, -86.3 + SX, 5 + SZ, 6, 0.6);
+  patch(-30, -72.6, 46, -72, 14);
+  patch(-30, -65, 46, -64.4, 14);
   patch(-100 + W, 20.5, -54 + W, 34.5, 26, 0.08);
   patch(-118 + W, 35.2, -62 + W, 37.6, 9);
   patch(-125 + W, -12.5, -80 + W, -10.5, 8, 0.3); // the back street
   // Fun Land: cups and paper wherever people queue
   patch(84, -6, 128, 12, 45);
   patch(150, -2, 168, 12, 8);
-  // out by the shops on the course road
-  patch(-7.5, -90, -6, -52, 7, 0.25);
-  patch(6, -90, 7.5, -52, 7, 0.25);
+  // up the road from the gate
+  patch(-5.8, -64, -3.8, -46, 4);
+  patch(3.8, -64, 5.8, -46, 4);
   const g = mergeGeometries(all, false);
   if (!g) return;
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }));

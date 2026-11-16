@@ -57,10 +57,41 @@ export const BJ_AT: [number, number] = [-79, 5.2];
 /** The West Side stands on a rise west of town: everything in lobby/westside.ts is laid out in its own frame and then
  *  moved this far (x) and lifted this high (y). The street climbs to it over the 24 m between the town's edge and x1. */
 export const WEST_OFF = { x: -24, y: 2.6 };
+/** Shady Lane: the street just north of the gate to the course, running east–west. The Lucky Lie Lounge, the alley,
+ *  Grow Supply and Lucky Pawn stand along its north side, facing the gate. They are still built in the West Side's
+ *  frame (lobby/westside.ts) and moved here whole: world = that frame + SHADY_OFF. */
+export const SHADY_OFF = { x: 110, y: 0, z: -82.5 };
+/** The district you can walk in: a short road up from the gate (|x| < gateHW), then this rectangle. The lane itself
+ *  is z = -72 … -65; the buildings' fronts are at z = -74.4. */
+export const SHADY = { x0: -34, x1: 48, z0: -92, z1: -49.5, gateHW: 4.6, lane: [-72, -65] as [number, number], front: -74.4 };
+/** What is underfoot in Shady Lane (world coordinates); '' outside it. */
+export function shadySurface(x: number, z: number): '' | 'asphalt' | 'paved' | 'grass' {
+  if (z > -BOUND) return '';
+  const ax = Math.abs(x);
+  if (z > SHADY.z1) return ax < 3.5 ? 'asphalt' : ax < 5.9 ? 'paved' : '';
+  if (x < SHADY.x0 || x > SHADY.x1 || z < SHADY.z0) return '';
+  if (z > SHADY.lane[0] && z < SHADY.lane[1]) return 'asphalt';
+  if ((z >= SHADY.front && z <= SHADY.lane[0]) || (z >= SHADY.lane[1] && z < SHADY.lane[1] + 2.4)) return 'paved';
+  if (z > SHADY.lane[1]) return ax < 3.5 ? 'asphalt' : ax < 5.9 ? 'paved' : 'grass'; // the road up from the gate
+  if (ax < 3.5) return 'asphalt'; // the road on to the course, between the pawn shop and Grow Supply
+  if (ax < 5.9) return 'paved';
+  // indoors (the buildings' own frame): the lounge, the alley and Grow Supply; the pawn shop
+  const lx = x - SHADY_OFF.x,
+    lz = z - SHADY_OFF.z;
+  if (lx > -104 && lx < -73.5 && lz > -8.2 && lz < 8.2) return 'paved';
+  if (lx > -125.6 && lx < -116 && lz > -4 && lz < 8.2) return 'paved';
+  return 'grass';
+}
 export const WEST = { x0: -150, x1: -68, z0: -9, z1: 37, gateZ: 14, gateHW: 4.4, rampHW: 5.7 };
 /** Inside the walkable world: the town square, or Fun Land (reached through the one gate in the town's east edge, at z = -gateZ). */
 export function inWorld(x: number, z: number) {
   if (Math.abs(x) <= BOUND && Math.abs(z) <= BOUND) return true;
+  if (z < -BOUND) {
+    // Shady Lane, through the gate in the town's north edge
+    if (z > SHADY.z1) {
+      if (Math.abs(x) < SHADY.gateHW) return true;
+    } else if (z > SHADY.z0) return x > SHADY.x0 && x < SHADY.x1;
+  }
   if (x < -BOUND) {
     if (x > WEST.x1) return Math.abs(z - WEST.gateZ) < (x > -BOUND - 1.4 ? WEST.gateHW : WEST.rampHW); // the street up the rise
     return x > WEST.x0 && z > WEST.z0 && z < WEST.z1;
@@ -302,9 +333,9 @@ export function buildLobby(scene: THREE.Scene) {
   // the game itself is lobby/blackjack.ts. The dealer has his back to the room's back wall; players face him.
   const bj = blackjackTable(false);
   bj.add(contactShadow(3.2, 3.2, 0, 0.2, 0.005, 0.3));
-  bj.position.set(BJ_AT[0] + WEST_OFF.x, WEST_OFF.y + 0.12, BJ_AT[1]);
+  bj.position.set(BJ_AT[0] + SHADY_OFF.x, SHADY_OFF.y + 0.12, BJ_AT[1] + SHADY_OFF.z);
   scene.add(bj);
-  addCol(BJ_AT[0] + WEST_OFF.x - 1.45, BJ_AT[0] + WEST_OFF.x + 1.45, BJ_AT[1] - 0.9, BJ_AT[1] + 0.55, 'bj');
+  addCol(BJ_AT[0] + SHADY_OFF.x - 1.45, BJ_AT[0] + SHADY_OFF.x + 1.45, BJ_AT[1] + SHADY_OFF.z - 0.9, BJ_AT[1] + SHADY_OFF.z + 0.55, 'bj');
 
   // a fingerpost by the fountain: where everything is
   {
@@ -422,6 +453,7 @@ export function buildLobby(scene: THREE.Scene) {
         x = Math.sin(a) * d,
         z = Math.cos(a) * d;
       if (z < 0 && Math.abs(x) < 9) continue; // the lane out of the gate
+      if (z < -BOUND && z > SHADY.z0 - 8 && x > SHADY.x0 - 6 && x < SHADY.x1 + 6) continue; // Shady Lane
       if (x > BOUND - 2 && x < FUN.x1 + 60 && Math.abs(z) < FUN.z + 6) continue; // Fun Land and its driving range
       if (x < -BOUND + 2 && x > WEST.x0 - 20 && z > WEST.z0 - 10 && z < WEST.z1 + 26) continue; // the West Side and the shopfronts behind its car park
       const grove = Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05 - 0.7);
@@ -471,9 +503,14 @@ export function buildLobby(scene: THREE.Scene) {
   // the Birdie Ball machine (spin it with Birdie Dollars; see gachaMachine.ts)
   const gacha = createGachaMachine();
   gacha.group.add(contactShadow(0.9, 0.9, 0, 0, 0.005, 0.55));
-  gacha.group.position.set(-85.0 + WEST_OFF.x, WEST_OFF.y + 0.085, 6.9); // in the Lucky Lie Lounge, by the door on the west wall
+  gacha.group.position.set(-85.0 + SHADY_OFF.x, SHADY_OFF.y + 0.085, 6.9 + SHADY_OFF.z); // in the Lucky Lie Lounge, by the door on the west wall
   scene.add(gacha.group);
-  addCol(-85.35 + WEST_OFF.x, -84.65 + WEST_OFF.x, 6.55, 7.25, 'gacha');
+  addCol(-85.35 + SHADY_OFF.x, -84.65 + SHADY_OFF.x, 6.55 + SHADY_OFF.z, 7.25 + SHADY_OFF.z, 'gacha');
+  // Shady Lane's filler shops (lobby/filler.ts): the whole south side behind their fronts, and the two on the north side
+  addCol(-34, -5.9, -62.4, SHADY.z1, 'shop');
+  addCol(5.9, 48, -62.4, SHADY.z1, 'shop');
+  addCol(-34, -18, SHADY.z0, SHADY.front, 'shop');
+  addCol(38.5, 48, SHADY.z0, SHADY.front, 'shop');
   return { light, colliders, plots, gacha, fountain };
 }
 
@@ -481,6 +518,7 @@ export function buildLobby(scene: THREE.Scene) {
 export function groundY(x: number, z: number) {
   if (x > BOUND) return puttFloor(x, z);
   if (x < -BOUND) return westY(x, z) + (westSurface(x, z) === 'paved' ? 0.06 : 0);
+  if (z < -BOUND) return shadySurface(x, z) === 'paved' ? 0.06 : 0;
   if (Math.abs(x) < 9.5 && Math.abs(z) < 9.5) return 0.1;
   for (const [v, off, a, b] of SIDEWALKS) {
     const u = v ? x : z,
@@ -492,7 +530,7 @@ export function groundY(x: number, z: number) {
 }
 /** What's underfoot, for footstep sounds (audio/ambience.ts). */
 export function surfaceOf(x: number, z: number): 'concrete' | 'asphalt' | 'gravel' | 'grass' {
-  const ws = westSurface(x, z);
+  const ws = westSurface(x, z) || shadySurface(x, z);
   if (ws) return ws === 'paved' ? 'concrete' : ws;
   const f = funSurface(x, z);
   if (f) return f === 'paved' ? 'concrete' : f === 'track' ? 'asphalt' : 'grass';
