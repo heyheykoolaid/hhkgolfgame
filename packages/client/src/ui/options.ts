@@ -2,6 +2,7 @@
 // whatever the current situation adds (on the course: "Leave the round"). Settings are remembered in this browser.
 // Other modules read `opts` directly each frame, or subscribe with `onOptions` when they need to react to a change.
 import { creditsHTML } from './credits';
+import { accountHTML, wireAccount } from './signup';
 export const opts = {
   /** volumes, 0–1 */
   master: 0.8,
@@ -83,7 +84,8 @@ function build() {
   );
   addEventListener('keyup', e => isOpen && e.stopImmediatePropagation(), true);
 }
-let showCredits = false;
+let showCredits = false,
+  showCode = false;
 function render() {
   if (!el) return;
   const slider = (k: keyof Opts, label: string, min = 0, max = 1) =>
@@ -114,6 +116,7 @@ function render() {
     <h3>Controls</h3>
     ${slider('look', 'Mouse look speed', 0.4, 2)}
     ${toggle('panel', 'Controls panel', 'the key guide down the right-hand side')}
+    ${accountHTML(showCode)}
     <div class="oacts"><button data-credits>Credits</button>${acts.map((a, i) => `<button class="${a.danger ? 'danger' : ''}" data-a="${i}">${a.label}</button>`).join('')}<button class="primary" data-a="-1">Back to the game <kbd>Esc</kbd></button></div>
   </div>`;
   el.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(i => {
@@ -133,6 +136,10 @@ function render() {
       set('sharp', +b.dataset.s!);
       render();
     };
+  });
+  wireAccount(el, showCode, sh => {
+    showCode = sh;
+    render();
   });
   el.querySelector<HTMLButtonElement>('[data-credits]')!.onclick = () => {
     showCredits = true;
@@ -168,6 +175,7 @@ export const options = {
   close() {
     if (!el || !isOpen) return;
     isOpen = false;
+    showCode = false;
     el.classList.add('hidden');
   },
   toggle() {

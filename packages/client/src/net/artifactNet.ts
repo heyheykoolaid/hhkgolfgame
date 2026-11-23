@@ -148,7 +148,7 @@ export class ArtifactNet implements GameNet {
     this.pf = pf;
     const lobby = pf.room;
     if (!lobby || this.match === 'idle') {
-      this.ev.onStatus(lobby ? '' : 'solo practice (open the published page to play together)', true);
+      this.ev.onStatus(lobby ? '' : 'solo practice (no other players on this copy of the game)', true);
       return;
     }
     try {

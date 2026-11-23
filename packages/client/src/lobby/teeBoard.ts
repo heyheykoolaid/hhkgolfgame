@@ -356,7 +356,7 @@ export function createTeeBoard(host: TeeHost) {
       course = homeOn ? realPanel() : teeFmt === 'one' ? `<p class="muted">${holeInfo}</p>` : cupPreview(teeFmt);
     const html = `${fmt}${course}
       <div class="btns"><button id="t-solo" class="primary">Play solo now</button></div>
-      <h3>Group round</h3><p class="muted">${online ? 'Join the queue; the first player in line starts the round for up to 4 golfers. Players take turns (walk and drive any time; only hitting waits for your turn).' : 'Group rounds work on the published page.'}</p>
+      <h3>Group round</h3><p class="muted">${online ? 'Join the queue; the first player in line starts the round for up to 4 golfers. Players take turns (walk and drive any time; only hitting waits for your turn).' : 'Group rounds need other players: this copy of the game is running on its own.'}</p>
       ${online ? `<div class="queue">${rows}</div><div class="btns">${host.q() ? '<button id="t-leave">Leave the queue</button>' : '<button id="t-join">Join the queue</button>'}${amHost && n >= 2 ? `<button id="t-go" class="primary">Start the round (${n})</button>` : amHost ? '<span class="muted">Waiting for at least one more golfer…</span>' : ''}</div>${amHost ? `<label class="casual"><input type="checkbox" id="t-casual"${teeCasual ? ' checked' : ''}> Casual: everyone plays at once (no turns, no betting)</label>` : ''}` : ''}`;
     if (html === teeHTML) return;
     teeHTML = html;

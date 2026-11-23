@@ -1,0 +1,25 @@
+// Golden Hills on Cloudflare: one Worker serves the game's files and its small API.
+// Deploy with `npm run deploy -w @gh/worker` after `npm -w @gh/client run build` (or let the GitHub Action do both).
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "golden-hills",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  // the game itself: everything Vite builds. Requests for files never reach the Worker's code (and cost nothing).
+  "assets": {
+    "directory": "../client/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+  },
+  "durable_objects": {
+    "bindings": [
+      // one World: accounts (names and their tokens) and the saved documents (lots, looks, progress)
+      { "name": "WORLD", "class_name": "World" },
+      // one Room per presence room: the lobby, and each golf match
+      { "name": "ROOM", "class_name": "Room" },
+    ],
+  },
+  // SQLite-backed Durable Objects: the kind the free plan allows
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["World", "Room"] }],
+  "observability": { "enabled": true },
+}

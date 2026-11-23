@@ -1173,7 +1173,7 @@ export function createLobby(env: LobbyEnv) {
   }
   function openChat() {
     if (!pf?.room) {
-      toast('Chat works on the published page, with other players here.');
+      toast('Chat needs other players: this copy of the game is running on its own.');
       return;
     }
     P.mode = 'chat';
@@ -1835,9 +1835,11 @@ export function createLobby(env: LobbyEnv) {
       inGolf = [...remotes.values()].filter(r => r.pres?.g).length,
       q = tee.queue().length;
     $('lstatus').innerHTML = !pf?.room
-      ? '<i class="off"></i>Solo · open the published page to play with friends'
+      ? pf
+        ? '<i class="off"></i>Solo · nobody to play with on this copy of the game'
+        : '<i class="off"></i>Connecting…'
       : `<i></i>${n + 1} here${inGolf ? ` · ${inGolf} on the course` : ''}${q ? ` · ⛳ ${q} waiting for a tee time` : ''}${n ? '' : ' · share the link to invite friends'}`;
-    $('llot').textContent = MY ? `Lot ${MY.lot} · yours` : pf?.db ? 'Visiting' : 'Lot 7 · yours (offline)';
+    $('llot').textContent = MY ? `Lot ${MY.lot} · yours` : pf?.db ? 'Visiting' : pf ? 'Lot 7 · yours (offline)' : 'Golden Hills';
   }
 
   // ---------------- lots (shared db) ----------------

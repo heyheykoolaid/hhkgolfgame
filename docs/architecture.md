@@ -9,7 +9,8 @@ A monorepo at `game/` (TypeScript, Vite, Three.js r170, Rapier physics).
 |---|---|
 | `packages/shared` | Pure game rules with no browser or Three.js code. Everything here is deterministic and unit-tested (61 tests). |
 | `packages/client` | The game: one page, one renderer, two modes (the lobby town and a round of golf). |
-| `packages/server` | A Colyseus server path kept for a future launch. The published page doesn't use it. |
+| `packages/server` | A Colyseus server path kept for a future launch. Nothing uses it; `packages/worker` replaced the plan. |
+| `packages/worker` | **The game's own server on Cloudflare (Nov 23):** one Worker that serves the built game and a small API: accounts (name + token), JSON documents with the same paths and rules as the artifact page's database, and one Durable Object per presence room. See `hosting.md`. |
 | `tools/` | Asset builders (`mh/` for the MakeHuman golfer and mocap, `props/`) and `lint/swallowed.mjs`. |
 | `docs/` | **Local copies of the project's design docs** (see "Editing the design docs" in §6). |
 
@@ -158,6 +159,8 @@ Everything multiplayer follows from four rules.
 **Decoration is not synced.** Ambience, gusts, clouds, birds, the jet and the cat are each player's own. The strollers follow each player's own clock, so they agree to within a few seconds. Don't build anything that matters to play on any of them.
 
 **What isn't protected:** a modified client can lie about its own score, wallet or plants. That's accepted for a friends-only game.
+
+**Two hosts, one game (Nov 23).** `platform()` returns the same `{ room, db, user }` shape either way. On the artifact page it comes from `window.claude.use(...)`. Elsewhere `net/cloud.ts` builds it against `packages/worker` if `/api/hello` answers: `room.onPeers / presence / join / leave / onConnection` over a WebSocket per room (the server sends `hi`, `join`, `p`, `x` and `resend`), `db.doc(path).get / set` over HTTP, and `db.collection('plots').onSnapshot` over a WebSocket that sends every lot and then each change. Only what the game already uses was built; a new kind of database call needs adding to both `cloud.ts` and the Worker. The first visit's name card is `ui/signup.ts`; the options menu's Account section comes from the same file.
 
 ## 5. Traps already hit (and the guard for each)
 - **A `//` comment swallowing code.** The code used to be written many statements to a line, and a `// note` added mid-line silently disabled everything after it. The audit found two live cases: **shadows had been switched off for the whole game**, and trees weren't marked as shared. Guards: all source is formatted one statement per line, and `npm run lint` fails if a comment contains code.
