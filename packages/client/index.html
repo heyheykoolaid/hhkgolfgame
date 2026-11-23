@@ -7,8 +7,131 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,700;0,800;1,800&family=Inter:wght@400;600;700&family=Permanent+Marker&display=swap" />
 <link rel="stylesheet" href="/src/ui/hud.css" />
+<style>
+/* the loading screen: plain HTML and CSS here in the page, so it shows before any of the game has downloaded */
+#loader{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 115%,#f2a04a 0%,#b8562a 26%,#4a2416 58%,#1a120a 100%);color:#2a1a10;font-family:Inter,system-ui,sans-serif;transition:opacity .6s ease}
+#loader.gone{opacity:0;pointer-events:none}
+#loader .sun{position:absolute;left:50%;bottom:-120px;width:420px;height:420px;margin-left:-210px;border-radius:50%;background:radial-gradient(circle,#ffe2a0 0%,#ffb45a 45%,rgba(255,140,60,0) 70%);opacity:.55;animation:ldsun 6s ease-in-out infinite alternate}
+@keyframes ldsun{to{transform:translateY(-14px) scale(1.04)}}
+#loader .hills{position:absolute;left:0;right:0;bottom:0;height:22vh;background:#2a1810;clip-path:polygon(0 60%,12% 38%,26% 55%,40% 30%,55% 52%,70% 26%,84% 48%,100% 34%,100% 100%,0 100%)}
+#loader .card{position:relative;width:min(520px,90vw);background:#f0e2c4;border:4px solid #2a1a10;border-radius:24px;padding:22px 26px 18px;box-shadow:0 10px 0 rgba(0,0,0,.35);transform:rotate(-.6deg)}
+#loader h1{margin:0;font:52px/1 "Permanent Marker","Barlow Condensed",Impact,sans-serif;letter-spacing:.01em}
+#loader .sub{margin:4px 0 16px;font:700 15px Inter,sans-serif;opacity:.75}
+#loader .bar{position:relative;height:30px;border:4px solid #2a1a10;border-radius:16px;background:#fff8e6;overflow:hidden}
+#loader .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#ff5d8f,#ff9b3d 55%,#ffd447);border-right:4px solid #2a1a10;transition:width .35s ease}
+#loader .fill::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-45deg,rgba(255,255,255,.28) 0 10px,rgba(255,255,255,0) 10px 20px);background-size:28px 28px;animation:ldstripe .8s linear infinite}
+@keyframes ldstripe{to{background-position:28px 0}}
+#loader .ball{position:absolute;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 40%,#d8d2c4 75%);border:3px solid #2a1a10;left:0;transition:left .35s ease;animation:ldspin 1s linear infinite}
+@keyframes ldspin{to{transform:rotate(360deg)}}
+#loader .row{display:flex;justify-content:space-between;gap:10px;margin-top:10px;font:700 14px Inter,sans-serif}
+#loader .row b{font:800 20px "Barlow Condensed",Impact,sans-serif;color:#b3261e}
+#loader .tip{margin-top:12px;padding-top:10px;border-top:2px dashed rgba(42,26,16,.25);font:600 13.5px/1.4 Inter,sans-serif;min-height:38px}
+#loader .tip i{font-style:normal;font:800 12px "Barlow Condensed",Impact,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#b3261e;margin-right:6px}
+#loader .oops{display:none;margin-top:10px;font:700 14px Inter,sans-serif;color:#b3261e}
+#loader .oops button{margin-left:8px;font:800 14px Inter,sans-serif;background:#e2574c;color:#fff3d0;border:3px solid #2a1a10;border-radius:10px;padding:4px 12px;cursor:pointer}
+</style>
+
 </head>
 <body>
+<div id="loader"><div class="sun"></div><div class="hills"></div>
+  <div class="card">
+    <h1>Golden Hills</h1>
+    <div class="sub">Golf, a little town, and whatever happens in between.</div>
+    <div class="bar"><div class="fill"></div><div class="ball"></div></div>
+    <div class="row"><span class="what">Opening the gates…</span><b class="pct">0%</b></div>
+    <div class="tip"></div>
+    <div class="oops">Something went wrong while loading.<button onclick="location.reload()">Try again</button></div>
+  </div>
+</div>
+<script>
+/* The loading bar. It counts the bytes the game actually downloads as they arrive: fetches as they stream, and
+ * scripts, pictures and styles as each one finishes. EXPECT is how much a first visit downloads (measured; see
+ * docs/architecture.md "Loading screen"), so the bar can't be exact and holds at 97% until the game says it's ready
+ * (window.__loader.built(), from main.ts) and what it was still fetching has arrived. */
+(function () {
+  var EXPECT = 41e6, el = document.getElementById('loader'), fill = el.querySelector('.fill'), ball = el.querySelector('.ball'),
+    pct = el.querySelector('.pct'), what = el.querySelector('.what'), tip = el.querySelector('.tip'), oops = el.querySelector('.oops'),
+    got = 0, active = 0, built = false, done = false, shown = 0, seen = {}, t0 = Date.now();
+  var LABELS = [[/rapier/, 'Waking up the physics'], [/golfer/, 'Dressing the golfers'], [/packs\//, 'Moving the furniture in'],
+    [/ground\//, 'Laying the turf'], [/city\//, 'Building the skyline'], [/sky\//, 'Painting the sunset'], [/balls\//, 'Polishing the Birdie Balls'],
+    [/funland|fairground/, 'Opening Fun Land'], [/casino/, 'Shuffling the cards'], [/radio|sfx/, 'Tuning the radio'], [/props\//, 'Unpacking the props'],
+    [/data\/courses/, 'Reading the scorecards'], [/\/api\//, 'Checking in at the clubhouse'], [/build\/index/, 'Opening the gates']];
+  var TIPS = ['Press <b>M</b> for the town map, or <b>Tab</b> for the menu.', 'Hold <b>Space</b> while steering at speed to drift.',
+    'The pawn shop on Shady Lane buys trophies. No questions asked.', 'Your active car replaces the golf cart, in town and on the course.',
+    'Press <b>B</b> on your own lot to build on it.', 'Birdies earn Birdie Dollars. The machine in the Lucky Lie Lounge takes them.',
+    'Grow Supply on Shady Lane has everything for your plants.', 'Wrench &amp; Ride fits engines, tyres and brakes.',
+    'Bet on a hole with <b>B</b> during a group round.', 'Press <b>Q</b> to wave, point, cheer or flop.'];
+  var tn = Math.floor(Math.random() * TIPS.length);
+  function showTip() { tip.innerHTML = '<i>Tip</i>' + TIPS[tn++ % TIPS.length]; }
+  showTip();
+  var tipT = setInterval(showTip, 6000);
+  function label(url) {
+    for (var i = 0; i < LABELS.length; i++) if (LABELS[i][0].test(url)) { what.textContent = LABELS[i][1] + '…'; return; }
+  }
+  function draw() {
+    if (done) return;
+    var k = Math.min(built ? 1 : 0.97, got / EXPECT);
+    if (built && active === 0) k = 1;
+    shown = Math.max(shown, k); // (never goes backwards)
+    var p = Math.round(shown * 100);
+    fill.style.width = p + '%';
+    ball.style.left = 'calc(' + p + '% + ' + (p > 4 ? -6 : 14) + 'px)';
+    pct.textContent = p + '%';
+    if (built && (active === 0 || Date.now() - built > 12000)) finish();
+    else if (!built && Date.now() - t0 > 120000) {
+      what.textContent = 'Still going: a slow connection, or a big first download…';
+      if (Date.now() - t0 > 240000) oops.style.display = 'block';
+    }
+  }
+  function finish() {
+    if (done) return;
+    done = true;
+    fill.style.width = '100%'; ball.style.left = 'calc(100% - 6px)'; pct.textContent = '100%'; what.textContent = 'Tee time!';
+    clearInterval(tipT); clearInterval(drawT);
+    setTimeout(function () { el.classList.add('gone'); setTimeout(function () { el.remove(); }, 700); }, 350);
+  }
+  var drawT = setInterval(draw, 150);
+  // fetches: count each body's bytes as the game reads it
+  var of = window.fetch;
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : input && input.url ? input.url : String(input), p = of.apply(this, arguments);
+    if (done) return p;
+    seen[url] = 1; active++; label(url);
+    return p.then(function (r) {
+      if (!r.body || !r.ok || done || typeof TransformStream === 'undefined') { active--; return r; }
+      var ended = false, end = function () { if (!ended) { ended = true; active--; } };
+      var counted = r.body.pipeThrough(new TransformStream({
+        transform: function (c, ctl) { got += c.byteLength; ctl.enqueue(c); },
+        flush: function () { end(); }
+      }));
+      setTimeout(end, 20000); // (a body nobody reads doesn't hold the screen up for ever)
+      var out = new Response(counted, { status: r.status, statusText: r.statusText, headers: r.headers });
+      try { Object.defineProperty(out, 'url', { value: r.url }); } catch (e) {}
+      return out;
+    }, function (e) { active--; throw e; });
+  };
+  // everything else (the game's scripts, pictures, styles): counted as each one finishes
+  try {
+    new PerformanceObserver(function (list) {
+      list.getEntries().forEach(function (e) {
+        if (e.initiatorType === 'fetch' || e.initiatorType === 'xmlhttprequest') return;
+        got += e.decodedBodySize || e.transferSize || 0;
+        label(e.name);
+      });
+    }).observe({ type: 'resource', buffered: true });
+  } catch (e) {}
+  // the game's own script failing to arrive (a dropped connection): offer to try again
+  addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (!built && t && t.tagName === 'SCRIPT') oops.style.display = 'block';
+  }, true);
+  window.__loader = {
+    built: function () { if (!built) built = Date.now(); draw(); },
+    get bytes() { return got; },
+    get active() { return active; }
+  };
+})();
+</script>
 <canvas id="gl"></canvas>
 <div id="grade"></div>
 <svg id="arcmeter" xmlns="http://www.w3.org/2000/svg"></svg>

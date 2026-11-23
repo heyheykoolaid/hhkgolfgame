@@ -275,7 +275,16 @@ export function createLobby(env: LobbyEnv) {
   const west = buildWestSide(scene, colliders);
   // Shaders are otherwise built the first time something comes into view, which shows up as a hitch the first time
   // you turn to face it (very noticeable in a kart). Build them all up front, and again once the late models are in.
-  for (const ms of [1500, 9000]) setTimeout(() => void renderer.compileAsync?.(scene, camera)?.catch(() => {}), ms);
+  // (compile, not compileAsync: three's async version polls on a timer and throws from inside it, past any catch, when a
+  // material is swapped in the meantime; the static batcher swaps them all the time)
+  for (const ms of [1500, 9000])
+    setTimeout(() => {
+      try {
+        renderer.compile(scene, camera);
+      } catch {
+        /* a shader that fails here is built the normal way when it comes into view */
+      }
+    }, ms);
   gacha.setEnv(renderer);
   // grass on the bare ground between the streets and lots (not on roads, sidewalks, the plaza or the lot pads)
   const grass = new Grass({

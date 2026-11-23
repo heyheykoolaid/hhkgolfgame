@@ -61,6 +61,16 @@ else {
   showWelcome();
 }
 
+// the loading screen (index.html) goes once the town is built, you're checked in and a frame has been drawn
+lobby.ready.then(() =>
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const L = (window as any).__loader;
+      if (L) L.built();
+      else document.getElementById('loader')?.remove(); // (a host that blocked its script: never leave the screen covering the game)
+    }),
+  ),
+);
 // One bad frame must never stop the game: the next frame is always scheduled, and an error is reported once.
 const seenErr = new Set<string>();
 function frame(now: number) {
