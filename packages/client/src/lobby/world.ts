@@ -91,6 +91,11 @@ export interface Plot {
   ownerName: string;
   color: string;
   mailFlag?: THREE.Object3D;
+  /** the RV's soft shadow on the pad, and the mailbox (packed away with the RV while the owner is out of the game) */
+  rvShadow?: THREE.Object3D;
+  mailbox?: THREE.Object3D;
+  /** the owner is out of the game: no RV, no mailbox, no name on the sign */
+  away?: boolean;
 }
 export interface Collider {
   x0: number;
@@ -99,6 +104,8 @@ export interface Collider {
   z1: number;
   tag: string;
   r?: number;
+  /** switched off for now (an away owner's RV): walked through, and its car-physics box disabled */
+  off?: boolean;
 } // r: round collider of radius r centred in the box
 
 const mats = new Map<string, THREE.MeshStandardMaterial>();
@@ -378,14 +385,7 @@ export function buildLobby(scene: THREE.Scene) {
 
   // the way to the course: a gate at the north end of the main street
   const gate = new THREE.Group(),
-    gt = textTex(
-      [
-        { t: 'GOLDEN HILLS GOLF', s: 72, b: true, c: '#ffd27a' },
-        { t: 'FIRST TEE ↑', s: 40 },
-      ],
-      768,
-      200,
-    );
+    gt = textTex([{ t: 'WEST SIDE', s: 84, b: true, c: '#ffd27a', y: 112 }], 768, 200);
   gate.add(box(0.4, 5, 0.4, M('#8a6a45'), -4, 2.5, 0), box(0.4, 5, 0.4, M('#8a6a45'), 4, 2.5, 0), box(8.8, 1.3, 0.3, M('#3a2a1a'), 0, 5.2, 0));
   const gf = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 1.15), new THREE.MeshStandardMaterial({ map: gt }));
   gf.position.set(0, 5.2, 0.16);
@@ -585,8 +585,10 @@ function buildPlot(p: Plot, addCol: (x0: number, x1: number, z0: number, z1: num
     rv = buildRV(stripeM); // lobby/rv.ts
   const RVZ = -HALF + 2.0;
   rv.position.set(-1.5, 0, RVZ);
-  g.add(rv, contactShadow(8.4, 3.3, -1.5, RVZ));
+  const rvShadow = contactShadow(8.4, 3.3, -1.5, RVZ);
+  g.add(rv, rvShadow);
   p.rv = rv;
+  p.rvShadow = rvShadow;
   p.stripe = [stripeM];
   colL(-5.4, 2.4, RVZ - 1.3, RVZ + 1.3, 'rv');
   // (the lawn chair and cooler under the awning are now ordinary Build Mode items: see STARTER in build.ts)
@@ -617,6 +619,7 @@ function buildPlot(p: Plot, addCol: (x0: number, x1: number, z0: number, z1: num
   mb.add(cyl(0.05, 0.05, 1.1, 6, M('#5a4430'), 0, 0.55, 0), box(0.28, 0.25, 0.5, M('#4a4a4a', 0.5, 0.4), 0, 1.2, 0));
   mb.position.set(3, 0, HALF - 0.4);
   g.add(mb);
+  p.mailbox = mb;
   const flag = new THREE.Group();
   flag.add(box(0.03, 0.3, 0.03, M('#c0392b', 0.5), 0, 0.15, 0), box(0.03, 0.1, 0.14, M('#c0392b', 0.5), 0, 0.26, 0.07)); // raised when there's mail
   flag.position.set(0.16, 1.15, -0.1);
@@ -654,8 +657,36 @@ function chainLink() {
   return t;
 }
 /** Paint the lot sign and the owner colour onto the RV. */
+/** The owner has left the game (or come back): their RV, mailbox and name go (or return). The lot stays theirs. */
+export function setPlotAway(p: Plot, away: boolean) {
+  if (!!p.away === away) return;
+  p.away = away;
+  for (const o of [p.rv, p.rvShadow, p.mailbox]) if (o) o.visible = !away;
+  const mat = p.sign.material as THREE.MeshStandardMaterial;
+  mat.map?.dispose();
+  mat.map = away
+    ? textTex(
+        [
+          { t: `LOT ${p.lot}`, s: 60, c: '#ffd27a', b: true, y: 100 },
+          { t: 'back soon', s: 34, y: 170, c: '#c9b9a0' },
+        ],
+        512,
+        240,
+      )
+    : textTex(
+        [
+          { t: `LOT ${p.lot}`, s: 44, c: '#ffd27a', y: 52 },
+          { t: p.ownerName.toUpperCase().slice(0, 18), s: 60, b: true, y: 134, c: '#f4ead8' },
+        ],
+        512,
+        240,
+      );
+  mat.needsUpdate = true;
+}
 export function setPlotOwner(p: Plot, owner: string | null, name: string, color: string, mine: boolean) {
   p.owner = owner;
+  p.away = false;
+  for (const o of [p.rv, p.rvShadow, p.mailbox]) if (o) o.visible = true;
   p.ownerName = name;
   p.color = color;
   for (const m of p.stripe) (m as THREE.MeshStandardMaterial).color.set(owner ? color : '#8a8f86');

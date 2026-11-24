@@ -13,6 +13,7 @@ import {
   buildLobby,
   LOTS,
   setPlotOwner,
+  setPlotAway,
   toWorld,
   groundY,
   surfaceOf,
@@ -353,7 +354,7 @@ export function createLobby(env: LobbyEnv) {
       w.cylinder(0, 2.2, 0, 0.1, 0.78);
       for (const c of colliders)
         if (H[c.tag])
-          w.box(
+          (c as any).phys = w.box(
             (c.x0 + c.x1) / 2,
             H[c.tag] / 2,
             (c.z0 + c.z1) / 2,
@@ -361,6 +362,7 @@ export function createLobby(env: LobbyEnv) {
             H[c.tag] / 2,
             Math.max(0.05, (c.z1 - c.z0) / 2),
           );
+      for (const c of colliders) if (c.off) (c as any).phys?.setEnabled(false); // (an away owner's RV, switched off before physics was up)
       // the one invisible wall there is: a square round the whole map, so nobody drives off to the horizon. Everything
       // inside it that stops you is something you can see.
       for (const [x, z, hx, hz] of [
@@ -473,7 +475,11 @@ export function createLobby(env: LobbyEnv) {
     if (!inWorld(x, z)) return { x0: 0, x1: 0, z0: 0, z1: 0, tag: 'edge' };
     return (
       colliders.find((c: Collider) =>
-        c.r ? Math.hypot(x - (c.x0 + c.x1) / 2, z - (c.z0 + c.z1) / 2) < c.r + r : x > c.x0 - r && x < c.x1 + r && z > c.z0 - r && z < c.z1 + r,
+        c.off
+          ? false
+          : c.r
+            ? Math.hypot(x - (c.x0 + c.x1) / 2, z - (c.z0 + c.z1) / 2) < c.r + r
+            : x > c.x0 - r && x < c.x1 + r && z > c.z0 - r && z < c.z1 + r,
       ) ?? null
     );
   }
@@ -2171,6 +2177,7 @@ export function createLobby(env: LobbyEnv) {
       if (here && (!st || st.phase === 'out' || st.phase === 'gone')) startLotIn(p, mine ? 'Your' : name + '’s');
       if (!here && st && (st.phase === 'in' || st.phase === 'shown')) startLotOut(p, name ? name + '’s' : 'The');
       const show = here || lotAnim.get(p.lot)?.phase === 'out';
+      if (owner) setLotAway(p, !show);
       if (!(mine && build.on)) renderLot(p, show ? layoutOf(owner) : [], colliders, owner ? color : '#8a8f86');
       const sa = lotAnim.get(p.lot);
       if (sa?.phase === 'in' && sa.t === 0) lotGroup(p.lot)?.children.forEach(o => o.scale.setScalar(0.001)); // (nothing shows before it pops in)
@@ -2238,6 +2245,16 @@ export function createLobby(env: LobbyEnv) {
     st.who = who;
     return st;
   }
+  /** An owner out of the game: their RV, mailbox and name go, and the RV stops being solid (on foot and in cars). */
+  function setLotAway(p: Plot, away: boolean) {
+    if (!!p.away === away) return;
+    setPlotAway(p, away);
+    for (const c of colliders)
+      if (c.tag === 'rv' && Math.hypot((c.x0 + c.x1) / 2 - p.cx, (c.z0 + c.z1) / 2 - p.cz) < 10) {
+        c.off = away;
+        (c as any).phys?.setEnabled?.(!away);
+      }
+  }
   function startLotIn(p: Plot, who: string) {
     const st = lotAnimFor(p, who);
     st.phase = 'in';
@@ -2267,6 +2284,13 @@ export function createLobby(env: LobbyEnv) {
           sc = st.phase === 'in' ? (u <= 0 ? 0.001 : easeBack(u)) : Math.max(0.001, 1 - u);
         o.scale.setScalar(sc);
       });
+      // the RV and mailbox: up first on the way in, away last on the way out
+      const pl = plots.find(q => q.lot === lot);
+      if (pl) {
+        const ru = st.phase === 'in' ? Math.min(1, k / 0.25) : Math.min(1, Math.max(0, (k - 0.7) / 0.3)),
+          rs = st.phase === 'in' ? Math.max(0.001, easeBack(ru)) : Math.max(0.001, 1 - ru);
+        for (const o of [pl.rv, pl.mailbox]) o?.scale.setScalar(rs);
+      }
       lotBar(
         st,
         st.phase === 'in' ? k : 1 - k,
@@ -2274,6 +2298,7 @@ export function createLobby(env: LobbyEnv) {
       );
       if (k >= 1) {
         for (const o of items) o.scale.setScalar(1);
+        if (pl) for (const o of [pl.rv, pl.mailbox]) o?.scale.setScalar(1);
         st.bar.visible = false;
         st.phase = st.phase === 'in' ? 'shown' : 'gone';
         if (st.phase === 'gone') refreshPlots(); // now clear the yard
