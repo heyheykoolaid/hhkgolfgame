@@ -698,7 +698,7 @@ export function setPlotAway(p: Plot, away: boolean) {
     ? textTex(
         [
           { t: `LOT ${p.lot}`, s: 60, c: '#ffd27a', b: true, y: 100 },
-          { t: 'back soon', s: 34, y: 170, c: '#c9b9a0' },
+          { t: p.owner ? 'packing up' : 'free', s: 34, y: 170, c: '#c9b9a0' },
         ],
         512,
         240,

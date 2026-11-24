@@ -113,6 +113,8 @@ interface LPres {
   sk?: number[];
   /** a jukebox this player last set: [lot, item index, band (-1 = off), when (s)] */
   jb?: [number, number, number, number];
+  /** the lot I'm on, and since when (lots go to whoever is in the game: refreshPlots) */
+  lt?: [number, number];
   /** best go-kart lap, seconds */
   kb?: number;
   /** mini putt in progress: hole, strokes, ball x and z in centimetres */
@@ -476,7 +478,10 @@ export function createLobby(env: LobbyEnv) {
   };
   const keys: Record<string, boolean> = {};
   let MY: Plot | null = null,
-    claimedAt = 0;
+    claimedAt = 0,
+    /** when I took the lot I'm on (presence `lt`), and whether anyone's presence has arrived yet */
+    myLotSince = 0,
+    peersSeen = false;
   const plotDocs = new Map<string, any>();
   // your golf cart: lives in your garage; out on the streets once you take it (see "your cart" below)
   const _cv = new THREE.Vector3();
@@ -2241,6 +2246,7 @@ export function createLobby(env: LobbyEnv) {
     if (peerErrN++ < 5) console.warn('[peer]', e);
   };
   function onPeers(ch: any) {
+    peersSeen = true;
     const live = new Set<string>(),
       bjPeers: { uid: string; bj?: BJPres }[] = [],
       bhPeers: { uid: string; bj?: BJPres }[] = [];
@@ -2352,6 +2358,7 @@ export function createLobby(env: LobbyEnv) {
       ge: gest && clock - gest.t0 < 3 ? [gest.i, gest.n] : undefined,
       rd: cart.car && RS.on && radio.ready ? [RS.band, Math.round(RS.vol * 10) / 10] : undefined,
       jb: myJuke || undefined,
+      lt: MY && myLotSince ? [MY.lot, myLotSince] : undefined,
       sk:
         P.mode === 'skate' && skate
           ? [
@@ -2389,27 +2396,47 @@ export function createLobby(env: LobbyEnv) {
   }
 
   // ---------------- lots (shared db) ----------------
+  // Lots are handed out to whoever is in the game (in town or on the course), not kept for people who aren't: each
+  // player picks a free lot when they arrive and says which in their presence (`lt`: [lot, since]); if two pick the
+  // same one, whoever has been on it longest keeps it and the other moves. Your yard (everything you've placed, your
+  // plants, your home) is yours, not the lot's: it moves in wherever you land. Your lot record keeps the lot you
+  // like (`lot`), which you get back whenever it's free.
   function refreshPlots() {
-    const taken = new Map<number, { uid: string; at: number }>();
-    for (const [uid, d] of plotDocs) {
-      if (!d || !d.lot) continue;
-      const c = taken.get(d.lot);
-      if (!c || d.claimedAt < c.at || (d.claimedAt === c.at && uid < c.uid)) taken.set(d.lot, { uid, at: d.claimedAt || 0 });
+    const taken = new Map<number, { uid: string; since: number }>(),
+      claim = (lot: number, uid: string, since: number) => {
+        const c = taken.get(lot);
+        if (!(lot >= 1 && lot <= plots.length)) return;
+        if (!c || since < c.since || (since === c.since && uid < c.uid)) taken.set(lot, { uid, since });
+      };
+    for (const r of remotes.values()) {
+      const lt = r.pres?.lt,
+        lot = Array.isArray(lt) ? Math.floor(+lt[0]) : +plotDocs.get(r.by)?.lot || 0; // (an older client says nothing: its saved lot)
+      if (lot) claim(lot, r.by, Array.isArray(lt) ? +lt[1] || 0 : +plotDocs.get(r.by)?.claimedAt || 0);
     }
+    // a lot someone just left stays theirs while their yard packs up
+    for (const p of plots)
+      if (p.owner && p !== MY && !taken.has(p.lot) && lotAnim.get(p.lot)?.phase === 'out') taken.set(p.lot, { uid: p.owner, since: 0 });
     if (pf?.db) {
-      let myLot = [...taken.entries()].find(([, v]) => v.uid === pf!.uid)?.[0] || 0;
-      if (!myLot && pf.canWrite && plotsReady) {
-        myLot = LOT_ORDER.find(l => !taken.has(l)) || 0;
+      const me = pf.uid,
+        mine = MY && myLotSince ? taken.get(MY.lot) : undefined;
+      // keep the lot I'm on unless someone who was there first is on it too
+      let myLot =
+        MY && myLotSince && (!mine || mine.uid === me || myLotSince < mine.since || (myLotSince === mine.since && me < mine.uid)) ? MY.lot : 0;
+      if (!myLot && plotsReady && (peersSeen || performance.now() > 8000)) {
+        const want = +plotDocs.get(me)?.lot || 0;
+        myLot = want && !taken.has(want) ? want : LOT_ORDER.find(l => !taken.has(l)) || 0;
         if (myLot) {
-          claimedAt = Date.now();
-          taken.set(myLot, { uid: pf.uid, at: claimedAt });
-          pf.db
-            .doc('plots/' + pf.uid)
-            .set({ lot: myLot, color: colorFor(pf.uid), claimedAt })
-            .catch(() => {});
-          toast(`Welcome to the neighbourhood! <b>Lot ${myLot}</b> is yours.`, 3500);
+          const moved = !!MY;
+          myLotSince = Date.now();
+          if (!plotDocs.has(me) && pf.canWrite) {
+            claimedAt = Date.now();
+            saveMyPlot({ lot: myLot, color: colorFor(me), claimedAt });
+            toast(`Welcome to the neighbourhood! <b>Lot ${myLot}</b> is yours while you're here.`, 3500);
+          } else if (moved) toast(`Someone was already on lot ${MY!.lot}: your place has moved in on <b>lot ${myLot}</b>.`, 4000);
+          setTimeout(() => sendPres(true), 0);
         }
       }
+      if (myLot) taken.set(myLot, { uid: me, since: myLotSince });
       MY = myLot ? plots[myLot - 1] : null;
     } else MY = plots[6];
     for (const p of plots) {
@@ -2431,7 +2458,7 @@ export function createLobby(env: LobbyEnv) {
       if (here && (!st || st.phase === 'out' || st.phase === 'gone')) startLotIn(p, mine ? 'Your' : name + '’s');
       if (!here && st && (st.phase === 'in' || st.phase === 'shown')) startLotOut(p, name ? name + '’s' : 'The');
       const show = here || lotAnim.get(p.lot)?.phase === 'out';
-      if (owner) setLotAway(p, !show);
+      setLotAway(p, !show); // (a free lot is bare: no trailer, no mailbox)
       if (!(mine && build.on)) renderLot(p, show ? layoutOf(owner) : [], colliders, owner ? color : '#8a8f86');
       const sa = lotAnim.get(p.lot);
       if (sa?.phase === 'in' && sa.t === 0) lotGroup(p.lot)?.children.forEach(o => o.scale.setScalar(0.001)); // (nothing shows before it pops in)
