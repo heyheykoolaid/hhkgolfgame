@@ -43,8 +43,64 @@ function plaqueTexture(title: string, sub: string, metal: string) {
   return t;
 }
 
+/** The mini putt trophy's seed: not a tournament's (their seeds stay far below it), so it always builds the one
+ *  hand-made design below. */
+export const MINIGOLF_SEED = 999999937;
+/** The Fun Land mini putt trophy: always the same. A square of putting felt on a timber plinth, the windmill from hole
+ *  9 in gold with its sails, a golf ball by the cup, and a plaque. About 0.5 m tall. */
+function minigolfTrophy(sub: string) {
+  const g = new THREE.Group(),
+    gold = new THREE.MeshStandardMaterial({ color: '#e2b23c', metalness: 1, roughness: 0.24 }),
+    wood = new THREE.MeshStandardMaterial({ color: '#5a3820', roughness: 0.55 }),
+    felt = new THREE.MeshStandardMaterial({ color: '#2f8a4a', roughness: 0.9 }),
+    red = new THREE.MeshStandardMaterial({ color: '#c8452f', roughness: 0.5 }),
+    white = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.4 }),
+    add = (geo: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) => {
+      const o = new THREE.Mesh(geo, m);
+      o.position.set(x, y, z);
+      o.castShadow = o.receiveShadow = true;
+      g.add(o);
+      return o;
+    };
+  add(new THREE.BoxGeometry(0.3, 0.1, 0.3), wood, 0, 0.05, 0);
+  add(new THREE.BoxGeometry(0.31, 0.012, 0.31), red, 0, 0.094, 0);
+  add(new THREE.BoxGeometry(0.26, 0.012, 0.26), felt, 0, 0.106, 0);
+  const pm = new THREE.MeshStandardMaterial({
+    map: plaqueTexture('Mini Putt Champion', sub || 'Fun Land · nine holes', '#e2b23c'),
+    metalness: 0.6,
+    roughness: 0.35,
+  });
+  add(new THREE.PlaneGeometry(0.24, 0.06), pm, 0, 0.05, 0.152);
+  // the windmill: a tapering gold tower, a red cap, four sails on a hub
+  add(new THREE.CylinderGeometry(0.038, 0.06, 0.2, 8), gold, -0.04, 0.212, -0.03);
+  add(new THREE.ConeGeometry(0.05, 0.06, 8), red, -0.04, 0.342, -0.03);
+  const hub = new THREE.Group();
+  hub.position.set(-0.04, 0.29, 0.015);
+  hub.rotation.z = 0.35;
+  g.add(hub);
+  for (let i = 0; i < 4; i++) {
+    const sail = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.12, 0.004), gold);
+    sail.position.set(Math.sin((i * Math.PI) / 2) * 0.062, Math.cos((i * Math.PI) / 2) * 0.062, 0);
+    sail.rotation.z = (-i * Math.PI) / 2;
+    sail.castShadow = true;
+    hub.add(sail);
+  }
+  add(new THREE.SphereGeometry(0.012, 8, 6), gold, -0.04, 0.29, 0.02);
+  // the cup and flag, and a ball on the felt
+  add(new THREE.CylinderGeometry(0.014, 0.014, 0.004, 14), new THREE.MeshStandardMaterial({ color: '#111' }), 0.08, 0.113, 0.06);
+  add(new THREE.CylinderGeometry(0.002, 0.002, 0.16, 6), gold, 0.08, 0.19, 0.06);
+  add(new THREE.PlaneGeometry(0.05, 0.03), red, 0.105, 0.255, 0.06).material = new THREE.MeshStandardMaterial({
+    color: '#c8452f',
+    side: THREE.DoubleSide,
+  });
+  add(new THREE.SphereGeometry(0.011, 12, 8), white, 0.04, 0.124, 0.08);
+  g.userData = { cup: null, height: 0.38 };
+  return g;
+}
+
 /** Build a trophy. title/sub go on the plaque (sub: e.g. the winner's name and score). */
 export function buildTrophy(seed: number, n: TourSize, sub = ''): THREE.Group {
+  if (seed === MINIGOLF_SEED) return minigolfTrophy(sub);
   const cup = cupFor(seed, n),
     g = new THREE.Group(),
     big = n === 9 ? 1 : 0.72;

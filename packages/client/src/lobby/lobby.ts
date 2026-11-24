@@ -50,7 +50,8 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { setPlaced, ownAtLeast, addItem, findAttic } from '../avatar/progress';
+import { setPlaced, ownAtLeast, addItem, findAttic, awardTrophy } from '../avatar/progress';
+import { MINIGOLF_SEED } from '../world/trophy';
 import type { Shop } from './wardrobe';
 import { speedo } from '../ui/speedo';
 import { tickWater } from '../world/water';
@@ -1077,7 +1078,7 @@ export function createLobby(env: LobbyEnv) {
       render = () => {
         const n = progress().items.hobo || 0;
         $('lm-body').innerHTML = `<p class="muted" style="font-style:italic">“${esc(said)}”</p>
-        <div class="hobocard">${invIcon('seeds')}<div><b>Hobo seeds</b><p class="muted">Plant one in a grow pot or bed. It grows a rainbow plant. ${n ? `You have <b>${n}</b>.` : ''}</p></div>
+        <div class="hobocard">${invIcon('seeds')}<div><b>Hobo seeds</b><p class="muted">Plant one in a grow pot or bed. ${n ? `You have <b>${n}</b>.` : ''}</p></div>
         <button id="hb-buy" class="primary">Buy one · ${money(HOBO_SEED_PRICE)}</button></div>
         <p class="muted">He'll be gone ${hoboAt ? 'in about ' + Math.max(1, Math.round((hoboAt.until - Date.now()) / 60000)) + ' min' : 'soon'}.</p>`;
         $('hb-buy').onclick = async () => {
@@ -1582,7 +1583,35 @@ export function createLobby(env: LobbyEnv) {
   let cullT = 0;
   const _cb = new THREE.Box3(),
     _cs = new THREE.Sphere();
-  const putt = createPutt({ scene, camera, pw: () => pw, course: () => fun.puttCourse(), ballSkin: () => look.ball, P, toast });
+  const putt = createPutt({
+    scene,
+    camera,
+    pw: () => pw,
+    course: () => fun.puttCourse(),
+    ballSkin: () => look.ball,
+    P,
+    toast,
+    // par or better at mini putt: the one hand-made mini putt trophy (world/trophy.ts MINIGOLF_SEED), once
+    async won(strokes, toPar) {
+      const who = pf?.names.get(pf?.uid || '') || 'You',
+        got = await awardTrophy({
+          id: 'minigolf',
+          seed: MINIGOLF_SEED,
+          n: 3,
+          title: 'Fun Land Mini Putt Champion',
+          at: Date.now(),
+          strokes,
+          toPar,
+          field: 1,
+          who,
+          board: [{ n: who, s: strokes, p: toPar }],
+        });
+      if (got) {
+        playSample('trophy', 0.6);
+        toast('🏆 <b>Mini Putt Champion!</b> The Fun Land trophy is yours. It’s in your inventory; put it on your lot in Build Mode.', 6000);
+      }
+    },
+  });
   const range = createRange({ scene, camera, ballSkin: () => look.ball, P, toast, info: () => fun.range });
   // ---------------- lot games: cornhole, horseshoes and the jukebox (lobby/lotGames.ts), at anyone's lot
   const games = createLotGames({ scene, camera, P, toast, ground: (x, z) => groundY(x, z) });
@@ -2135,7 +2164,16 @@ export function createLobby(env: LobbyEnv) {
         name = owner ? (mine ? 'You' : pf?.names.get(owner) || 'A golfer') : '',
         color = owner ? colorFor(owner) : '#8a8f86';
       if (p.owner !== owner || p.ownerName !== name) setPlotOwner(p, owner, name, color, mine);
-      if (!(mine && build.on)) renderLot(p, layoutOf(owner), colliders, owner ? color : '#8a8f86'); // everyone's yard, as its owner left it
+      // a yard is out only while its owner is here (in town or on the course): it loads in when they join, with a
+      // progress bar over the lot, and is packed away when they leave
+      const here = !!owner && (mine || [...remotes.values()].some(r => r.by === owner)),
+        st = lotAnim.get(p.lot);
+      if (here && (!st || st.phase === 'out' || st.phase === 'gone')) startLotIn(p, mine ? 'Your' : name + '’s');
+      if (!here && st && (st.phase === 'in' || st.phase === 'shown')) startLotOut(p, name ? name + '’s' : 'The');
+      const show = here || lotAnim.get(p.lot)?.phase === 'out';
+      if (!(mine && build.on)) renderLot(p, show ? layoutOf(owner) : [], colliders, owner ? color : '#8a8f86');
+      const sa = lotAnim.get(p.lot);
+      if (sa?.phase === 'in' && sa.t === 0) lotGroup(p.lot)?.children.forEach(o => o.scale.setScalar(0.001)); // (nothing shows before it pops in)
     }
     if (pf)
       resolveNames(
@@ -2151,6 +2189,97 @@ export function createLobby(env: LobbyEnv) {
     renderStatus();
   }
   let plotsReady = false;
+  // ---------------- lots loading in and out (owners joining and leaving), with a bar over the lot
+  type LotAnim = { phase: 'in' | 'shown' | 'out' | 'gone'; t: number; who: string; bar: THREE.Sprite; cv: HTMLCanvasElement };
+  const lotAnim = new Map<number, LotAnim>();
+  function lotBar(st: LotAnim, k: number, text: string) {
+    const x = st.cv.getContext('2d')!,
+      W = st.cv.width,
+      H = st.cv.height;
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = 'rgba(22,16,10,.82)';
+    x.beginPath();
+    x.roundRect(4, 4, W - 8, H - 8, 26);
+    x.fill();
+    x.fillStyle = '#f6ecd8';
+    x.font = 'bold 34px Inter, sans-serif';
+    x.textAlign = 'center';
+    x.fillText(text, W / 2, 50);
+    x.fillStyle = 'rgba(255,232,190,.2)';
+    x.beginPath();
+    x.roundRect(30, 70, W - 60, 26, 13);
+    x.fill();
+    const g = x.createLinearGradient(30, 0, W - 30, 0);
+    g.addColorStop(0, '#7ad06a');
+    g.addColorStop(1, '#ffd94a');
+    x.fillStyle = g;
+    x.beginPath();
+    x.roundRect(30, 70, Math.max(26, (W - 60) * k), 26, 13);
+    x.fill();
+    (st.bar.material as THREE.SpriteMaterial).map!.needsUpdate = true;
+  }
+  function lotAnimFor(p: Plot, who: string) {
+    let st = lotAnim.get(p.lot);
+    if (!st) {
+      const cv = document.createElement('canvas');
+      cv.width = 512;
+      cv.height = 112;
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+      bar.scale.set(4.4, 0.96, 1);
+      bar.renderOrder = 10;
+      bar.position.set(p.cx, 3.7, p.cz);
+      bar.visible = false;
+      scene.add(bar);
+      st = { phase: 'gone', t: 0, who, bar, cv };
+      lotAnim.set(p.lot, st);
+    }
+    st.who = who;
+    return st;
+  }
+  function startLotIn(p: Plot, who: string) {
+    const st = lotAnimFor(p, who);
+    st.phase = 'in';
+    st.t = 0;
+    st.bar.visible = true;
+  }
+  function startLotOut(p: Plot, who: string) {
+    const st = lotAnimFor(p, who);
+    st.phase = 'out';
+    st.t = 0;
+    st.bar.visible = true;
+  }
+  const easeBack = (t: number) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
+  /** Each frame: pieces pop in one after another (or shrink away in reverse), and the bar fills to match. */
+  function lotAnimFrame(dt: number) {
+    for (const [lot, st] of lotAnim) {
+      if (st.phase === 'shown' || st.phase === 'gone') continue;
+      const g = lotGroup(lot),
+        items = g ? g.children : [],
+        n = items.length,
+        dur = st.phase === 'in' ? 0.9 + n * 0.14 : 0.5 + n * 0.06;
+      st.t += dt;
+      const k = Math.min(1, st.t / dur);
+      items.forEach((o, i) => {
+        const slot = st.phase === 'in' ? i / Math.max(1, n) : (n - 1 - i) / Math.max(1, n),
+          u = Math.min(1, Math.max(0, (k - slot * 0.8) / 0.2)),
+          sc = st.phase === 'in' ? (u <= 0 ? 0.001 : easeBack(u)) : Math.max(0.001, 1 - u);
+        o.scale.setScalar(sc);
+      });
+      lotBar(
+        st,
+        st.phase === 'in' ? k : 1 - k,
+        st.phase === 'in' ? `${st.who} lot · moving in ${Math.round(k * 100)}%` : `${st.who} lot · packing up`,
+      );
+      if (k >= 1) {
+        for (const o of items) o.scale.setScalar(1);
+        st.bar.visible = false;
+        st.phase = st.phase === 'in' ? 'shown' : 'gone';
+        if (st.phase === 'gone') refreshPlots(); // now clear the yard
+      }
+    }
+  }
 
   // ---------------- boot (platform) ----------------
   const ready = (async () => {
@@ -2661,6 +2790,7 @@ export function createLobby(env: LobbyEnv) {
     radioFrame(dt);
     west.update();
     tickWater(clock);
+    lotAnimFrame(dt);
     batcher.update(dt);
     if ((cullT -= dt) <= 0) {
       cullT = 0.25;
@@ -2806,6 +2936,8 @@ export function createLobby(env: LobbyEnv) {
       openWardrobe,
       openTee: tee.open,
       startBatch: tee.startBatch,
+      lotAnim,
+      spots: SPOTS,
       games,
       hoboNow,
       get pf() {

@@ -263,6 +263,7 @@ export function buildTrail(scene: THREE.Scene, dirt: THREE.Material) {
     t.colorSpace = THREE.SRGBColorSpace;
     const board = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.8), new THREE.MeshStandardMaterial({ map: t, side: THREE.DoubleSide }));
     board.position.set(SPUR.x + SPUR.w / 2 + 1.6, 2.1, SPUR.z0 + 3);
+    board.rotation.y = Math.PI; // (read from town, looking south)
     G.add(board);
     for (const dx of [-1.1, 1.1]) {
       const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6), post);

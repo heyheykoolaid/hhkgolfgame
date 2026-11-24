@@ -45,7 +45,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const SYM: Record<SlotSym, string> = { cherry: '🍒', lemon: '🍋', bell: '🔔', flag: '⛳', seven: '7', gem: '💎' };
 const STOOL_Z = 0.95, // the stool stands this far in front of the cabinet's middle
   SEAT_H = 0.74,
-  SCREEN_Y = 1.42,
+  SCREEN_Y = 1.47,
   DECK_Y = 1.07;
 
 // ------------------------------------------------------------------ a machine in the room
@@ -171,8 +171,10 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off: { x:
     add(G, new THREE.PlaneGeometry(0.5, 1.63), side, x + 0.362, 0.995, z - 0.06).rotation.y = Math.PI / 2;
     add(G, new THREE.PlaneGeometry(0.76, 0.78), printed(deckArt(def)), x, 1.037, z + 0.08, -Math.PI / 2);
     for (const s of [-1, 1]) add(G, new THREE.BoxGeometry(0.02, 1.66, 0.02), chrome, x + s * 0.362, 1.0, z + 0.2); // chrome edge trim
-    // a dark bezel round the screen, so it reads as a monitor set into the cabinet
-    add(G, new THREE.BoxGeometry(0.68, 0.7, 0.03), dark, x, SCREEN_Y, z + 0.185, -0.12);
+    // a dark bezel round the screen, so it reads as a monitor set into the cabinet. Both lean back a little; they stand
+    // far enough out from the head that its front never cuts across their top (it did, and the screen looked off-centre
+    // on its bezel), and the screen sits square in the middle of the bezel
+    add(G, new THREE.BoxGeometry(0.66, 0.68, 0.03), dark, x, SCREEN_Y, z + 0.235, -0.12);
     const cv = document.createElement('canvas');
     cv.width = cv.height = 512;
     const tex = new THREE.CanvasTexture(cv);
@@ -184,7 +186,7 @@ export function buildMachines(G: THREE.Group, xs: number[], z: number, off: { x:
       new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
       x,
       SCREEN_Y,
-      z + 0.203,
+      z + 0.254,
       -0.12,
     );
     scr.userData.noBatch = true;

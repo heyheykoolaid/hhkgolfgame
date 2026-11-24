@@ -35,14 +35,7 @@ export function hoboNow(now = Date.now()) {
   return { x: s[0], z: s[1], yaw: s[2], until: start + HOBO_STAYS };
 }
 
-const LINES = [
-  'Psst. Seeds. Real special ones. Grew ’em under a rainbow, I did.',
-  'Five hundred a seed. No refunds, no questions, no receipts.',
-  'Plant it, water it, don’t tell the gnomes. Or do. Heh.',
-  'Your mom sold my baseball cards too, y’know.',
-  'I used to be a scratch golfer. Then I scratched too much.',
-  'The pawnbroker owes ME money. Tell him I said so.',
-];
+const LINES = ['I\u2019m down on my luck and these seeds are the last thing I own, wanna buy \u2019em?'];
 
 /** A small wire shopping cart, full of junk. */
 function cart() {

@@ -33,6 +33,8 @@ export interface PuttHost {
   ballSkin(): string | undefined;
   P: { x: number; z: number; yaw: number; vx: number; vz: number; mode: string };
   toast(html: string, ms?: number): void;
+  /** a round finished at par or better (the mini putt trophy) */
+  won?(strokes: number, toPar: number): void;
 }
 
 export function createPutt(host: PuttHost) {
@@ -516,6 +518,7 @@ export function createPutt(host: PuttHost) {
       if (!best || total < best) localStorage.setItem('gh.puttBest', String(total));
     } catch {}
     const d = total - par;
+    if (d <= 0) setTimeout(() => host.won?.(total, d), 1500);
     stop(
       `<b>Mini putt: ${total}</b> (${d === 0 ? 'level par' : d > 0 ? d + ' over' : -d + ' under'}) · ${S.card.join(' ')}${!best || total < best ? ' · <b>your best round</b>' : ` · best ${best}`}`,
     );

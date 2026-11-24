@@ -772,7 +772,7 @@ export function createSmoke(host: SmokeHost) {
         icon: invIcon('seeds'),
         n: pr.items.hobo,
         name: 'Hobo seeds',
-        sub: 'From the hobo. Plant one in a grow pot or bed: it grows a rainbow plant. The Street Dealer pays a fortune for the bud… or you could share it with a gnome.',
+        sub: 'From the hobo. Plant one in a grow pot or bed and see what comes up.',
       });
     if (pr.grinder)
       slots.push({ key: 'grinder', icon: invIcon('grinder'), name: 'Grinder', sub: 'Makes the grinding step of a roll quicker and cleaner.' });
