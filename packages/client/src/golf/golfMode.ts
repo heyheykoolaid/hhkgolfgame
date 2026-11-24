@@ -91,6 +91,7 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       ['Shift', 'Hold: view from above'],
       ['M', 'Map'],
       ['B', 'Bets'],
+      ['R', 'Step away and walk'],
     ],
   ],
   putt: [
@@ -101,6 +102,7 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       [['W', 'S'], 'Power'],
       ['Space', 'Start the stroke', true],
       ['Shift', 'Hold: view from above'],
+      ['R', 'Step away and walk'],
     ],
   ],
   swing: [
@@ -114,6 +116,7 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
   wait: [
     'Not your turn',
     [
+      ['R', 'Step away and walk', true],
       ['B', 'Bets'],
       ['M', 'Map'],
     ],
@@ -127,6 +130,16 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       ['T', 'Address your ball from anywhere'],
       ['M', 'Map'],
       ['B', 'Bets'],
+    ],
+  ],
+  walkDone: [
+    'Holed out',
+    [
+      [['W', 'A', 'S', 'D'], 'Walk the course'],
+      ['Shift', 'Run'],
+      ['E', 'Get in the cart'],
+      ['M', 'Map'],
+      ['Esc', 'Leave the round'],
     ],
   ],
   drive: [
@@ -310,6 +323,10 @@ export function createGolf(env: GolfEnv) {
     cup?: CupSim | null;
     flop?: Flop | null;
     wx: number;
+    /** their last reported spot on foot, and when it arrived (clock) */
+    bx: number;
+    bz: number;
+    bAt: number;
     wz: number;
     wy: number;
     wyaw: number;
@@ -356,6 +373,9 @@ export function createGolf(env: GolfEnv) {
     scene.add(ball);
     a = {
       wx: NaN,
+      bx: NaN,
+      bz: NaN,
+      bAt: 0,
       wz: 0,
       wy: 0,
       wyaw: 0,
@@ -474,7 +494,9 @@ export function createGolf(env: GolfEnv) {
         : ph === 'power' || ph === 'acc'
           ? 'swing'
           : ph === 'walk' || ph === 'drive'
-            ? ph
+            ? ph === 'walk' && net.me()?.done
+              ? 'walkDone'
+              : ph
             : 'flight';
     controls.set('g' + k, COURSE_KEYS[k][0], COURSE_KEYS[k][1]);
   }
@@ -640,7 +662,7 @@ export function createGolf(env: GolfEnv) {
         );
       }
       if (S.phase === 'drive' && !e.repeat && cartRadio.key(e, toast)) return;
-      if (e.code === 'KeyT') {
+      if (e.code === 'KeyT' && !net.me()?.done) {
         const b = myBall();
         W.x = b.x - Math.sin(S.aimYaw) * 1.5;
         W.z = b.z - Math.cos(S.aimYaw) * 1.5;
@@ -650,6 +672,14 @@ export function createGolf(env: GolfEnv) {
       return;
     }
     if (S.phase !== 'aim') return;
+    if (e.code === 'KeyR') {
+      // step back from the ball and walk: whenever you like, your turn or not (E or T comes back to it)
+      const b = myBall();
+      W.x = b.x - Math.sin(S.aimYaw) * 1.8;
+      W.z = b.z - Math.cos(S.aimYaw) * 1.8;
+      roam.startWalking();
+      return;
+    }
     if (e.code === 'KeyQ' || e.code === 'KeyE') {
       const d =
         e.code === 'KeyQ'
@@ -1241,7 +1271,7 @@ export function createGolf(env: GolfEnv) {
             if (res.outcome === 'rest') toast(`${yd(res.total)} yd · ${res.restSurface}`, 1200);
             S.watchShot = null;
             if (net.me()?.done) {
-              S.phase = 'aim';
+              S.phase = 'aim'; // (holed: the pick-up and the cheer play at the cup; you're on your feet when the card shows)
               finishHole();
             } else roam.startWalking();
           }
@@ -1297,7 +1327,8 @@ export function createGolf(env: GolfEnv) {
         a.golfer.playOnce('pickup', ...(p.strokes < COURSE.par ? ['cheer'] : []));
       }
       if (!p.done) a.doneSeen = false;
-      a.root.visible = !p.done || a.golfer.busy() || (id === net.sessionId ? false : !!p.body && p.body.m !== 'addr');
+      a.root.visible =
+        !p.done || a.golfer.busy() || (id === net.sessionId ? S.phase === 'walk' || S.phase === 'drive' : !!p.body && p.body.m !== 'addr');
       // ---- on foot / in a cart (not standing over the ball)
       const mineR = id === net.sessionId,
         body = mineR ? null : p.body;
@@ -1344,9 +1375,19 @@ export function createGolf(env: GolfEnv) {
             a.wz = body.z;
             a.wyaw = body.yaw;
           }
-          const k = 1 - Math.exp(-dt * 8);
-          a.wx += (body.x - a.wx) * k;
-          a.wz += (body.z - a.wz) * k;
+          // where they are now, not where they were when they last told us: carry them on along their heading for the
+          // time since that message (at most a third of a second), then ease toward it
+          if (body.x !== a.bx || body.z !== a.bz) {
+            a.bx = body.x;
+            a.bz = body.z;
+            a.bAt = clock;
+          }
+          const ahead = mode === 'walk' ? Math.min(0.33, clock - a.bAt) * body.spd : 0,
+            tx = body.x + Math.sin(body.yaw) * ahead,
+            tz = body.z + Math.cos(body.yaw) * ahead,
+            k = 1 - Math.exp(-dt * 14);
+          a.wx += (tx - a.wx) * k;
+          a.wz += (tz - a.wz) * k;
           let dy = body.yaw - a.wyaw;
           dy = Math.atan2(Math.sin(dy), Math.cos(dy));
           a.wyaw += dy * k;
@@ -1813,9 +1854,14 @@ export function createGolf(env: GolfEnv) {
       !!me && !me.done && !birdsEye() && (S.phase === 'aim' || S.phase === 'power' || S.phase === 'acc' || (S.phase === 'follow' && S.followT < 0.6)),
     );
     // round over: my ball is in (or I gave up) and nothing is still flying
-    if (me && me.done && !mine?.play && !mine?.pending && !endShown) {
+    // a tournament card put away while others finish comes back by itself once everyone is in (its countdown starts)
+    if (endAway && T && !tourWaiting(T, net.players(), net.sessionId).length) endAway = false;
+    if (me && me.done && !mine?.play && !mine?.pending && !endShown && !endAway) {
       endT += dt;
-      if (endT > 1.4 && !mine?.golfer.busy()) showEnd(false);
+      if (endT > 1.4 && !mine?.golfer.busy()) {
+        showEnd(false);
+        if (S.phase === 'aim') roam.startWalking(); // free to walk the course: the card has a button to put it away
+      }
     } else if (!me?.done) endT = 0; // the end card waits for the pick-up / cheer
     if (endShown) renderEnd();
     if (dev.cam) {
@@ -1834,6 +1880,8 @@ export function createGolf(env: GolfEnv) {
   // ---------------- start / stop / scorecard ----------------
   const esc = (t: string) => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   let endShown = false,
+    /** the round's card was put away to walk the course (Esc → Leave the round brings it back) */
+    endAway = false,
     endT = 0,
     endHTML = '';
   const scoreName = (n: number) => {
@@ -1862,6 +1910,18 @@ export function createGolf(env: GolfEnv) {
     $('golfcard').classList.remove('hidden');
     renderEnd();
   }
+  /** "Walk the course": put the card away and walk; Esc → Leave the round brings it back. */
+  function wireWalk() {
+    const w = document.getElementById('gc-walk');
+    if (w)
+      w.onclick = () => {
+        endShown = false;
+        endAway = true;
+        $('golfcard').classList.add('hidden');
+        if (S.phase !== 'walk' && S.phase !== 'drive') roam.startWalking();
+        toast('Walk where you like. <kbd>Esc</kbd> → Leave the round when you’re done.', 3500);
+      };
+  }
   function renderEnd() {
     const me = net.me(),
       quitting = (renderEnd as any).quitting && !(me?.done && !T);
@@ -1881,7 +1941,7 @@ export function createGolf(env: GolfEnv) {
       : `<h2>${me ? scoreName(me.strokes) : 'Round over'}</h2><p class="muted">${me ? `${me.strokes} strokes · par ${COURSE.par}${COURSE.code ? ` · hole code <b>${COURSE.code}</b>` : ''}` : ''}</p>`;
     const btns = quitting
       ? '<button id="gc-stay">Keep playing</button><button id="gc-lobby" class="primary">Back to the lobby</button>'
-      : `<button id="gc-lobby" class="primary">${bets.atRisk() ? `Leave and forfeit ${money(bets.atRisk())}` : 'Back to the lobby'}</button>`;
+      : `<button id="gc-walk">Walk the course</button><button id="gc-lobby" class="primary">${bets.atRisk() ? `Leave and forfeit ${money(bets.atRisk())}` : 'Back to the lobby'}</button>`;
     const html = `${head}<div class="standings">${list}</div>${quitting ? '' : bets.cardHTML()}<div class="btns">${btns}</div>`;
     if (html === endHTML) return;
     endHTML = html;
@@ -1892,8 +1952,10 @@ export function createGolf(env: GolfEnv) {
     if (st)
       st.onclick = () => {
         endShown = false;
+        endAway = false;
         $('golfcard').classList.add('hidden');
       };
+    wireWalk();
   }
   // ---------------- tournaments: a mini cup (3 holes) or a championship (9). Cards and standings: golf/tournament.ts
   let T: Tour | null = null;
@@ -1934,6 +1996,7 @@ export function createGolf(env: GolfEnv) {
       a.wx = NaN;
     }
     endShown = false;
+    endAway = false;
     endT = 0;
     endHTML = '';
     $('golfcard').classList.add('hidden');
@@ -1996,6 +2059,7 @@ export function createGolf(env: GolfEnv) {
       $('golfcard').classList.add('tour');
       const b = (id: string) => document.getElementById(id);
       if (b('gc-lobby')) b('gc-lobby')!.onclick = () => env.onExit();
+      wireWalk();
       if (b('gc-quit'))
         b('gc-quit')!.onclick = () => {
           if (bets.atRisk()) {
@@ -2078,7 +2142,22 @@ export function createGolf(env: GolfEnv) {
   });
   const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
   function start(o: GolfStart) {
-    options.context('On the course', () => (endShown ? [] : [{ label: 'Leave the round', danger: true, run: () => showEnd(true) }]));
+    options.context('On the course', () =>
+      endShown
+        ? []
+        : [
+            {
+              label: 'Leave the round',
+              danger: true,
+              run: () => {
+                if (endAway && net.me()?.done) {
+                  endAway = false;
+                  showEnd(false); // (your round is over: the card with its scores and "Back to the lobby")
+                } else showEnd(true);
+              },
+            },
+          ],
+    );
     cur = o;
     for (const id of [...avatars.keys()]) dropAvatar(id);
     bets.reset();
@@ -2122,6 +2201,7 @@ export function createGolf(env: GolfEnv) {
     Object.assign(S, { phase: 'aim', club: 0, aimYaw: 0, puttRange: 1, t: 0, power: 0, p0: 0, m: 0, u: 0, followT: 0, watchShot: null, autoFor: '' });
     teeOff = true;
     endShown = false;
+    endAway = false;
     endT = 0;
     $('golfcard').classList.add('hidden');
     boardHTML = '';

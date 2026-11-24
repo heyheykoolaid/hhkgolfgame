@@ -124,10 +124,10 @@ export function createRoaming(host: RoamHost) {
       S.phase = 'walk';
       return;
     }
-    if (S.phase !== 'walk' || me.done) return;
+    if (S.phase !== 'walk') return;
     const b = myBall(),
       db = Math.hypot(b.x - W.x, b.z - W.z);
-    if (db < 3.2) {
+    if (db < 3.2 && !me.done) {
       S.phase = 'aim';
       S.autoFor = '';
       return;
@@ -261,9 +261,9 @@ export function createRoaming(host: RoamHost) {
       }
     // prompt
     let pr = '';
-    if (S.phase === 'walk' && me && !me.done) {
+    if (S.phase === 'walk' && me) {
       const b = myBall(),
-        db = Math.hypot(b.x - W.x, b.z - W.z);
+        db = me.done ? Infinity : Math.hypot(b.x - W.x, b.z - W.z); // (holed out: no ball to walk to, but the cart is still yours)
       const nearCart = cart && Math.hypot(cart.root.position.x - W.x, cart.root.position.z - W.z) < 3.5;
       pr =
         nearCart && cartStuck
@@ -271,8 +271,10 @@ export function createRoaming(host: RoamHost) {
           : db < 3.2
             ? '<kbd>E</kbd> Address your ball'
             : cart && Math.hypot(cart.root.position.x - W.x, cart.root.position.z - W.z) < 2.8
-              ? `<kbd>E</kbd> Drive the ${cart.kind === 'cart' ? 'cart' : cart.name.toLowerCase()} · your ball is ${Math.round(db * 1.0936)} yd away`
-              : `Your ball: ${Math.round(db * 1.0936)} yd`; // (the controls panel lists the keys)
+              ? `<kbd>E</kbd> Drive the ${cart.kind === 'cart' ? 'cart' : cart.name.toLowerCase()}${me.done ? '' : ` · your ball is ${Math.round(db * 1.0936)} yd away`}`
+              : me.done
+                ? ''
+                : `Your ball: ${Math.round(db * 1.0936)} yd`; // (the controls panel lists the keys)
     } else if (S.phase === 'drive' && cartStuck)
       pr = `<kbd>E</kbd> ${cartStuck === 'water' ? 'Haul the cart out of the water' : 'Flip the cart back over'}`;
     else if (S.phase === 'drive') pr = '';

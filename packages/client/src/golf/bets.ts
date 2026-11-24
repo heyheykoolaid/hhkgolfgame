@@ -4,7 +4,7 @@
 //   B        the bet menu (stake, offers, live shot bets, results)
 //   Y / N    answer the offer at the top of the list
 //
-// Flow: an offer is open for up to 20 s (or until everyone on the hole has answered); nobody can tee off while a pot
+// Flow: an offer is open for up to 35 s (or until everyone on the hole has answered); nobody can tee off while a pot
 // offer is open. The proposer locks it; every member then pays their stake out of their own wallet. One member (the
 // lowest uid still here) publishes each result and everyone copies it. Leave before a bet settles and you forfeit it.
 import { playSample } from '../audio/samples';
@@ -595,7 +595,7 @@ export function createBets(host: BetsHost) {
     }
     return false;
   }
-  /** Nobody tees off while a pot offer is open (they close within 20 s, sooner once everyone has answered). */
+  /** Nobody tees off while a pot offer is open (they close within 35 s, sooner once everyone has answered). */
   function blocking() {
     if (!host.on() || teedOff) return false;
     return offers().some(o => !isLive(o.t) && nowS - (firstSaw.get(o.id) ?? nowS) < OFFER_SECONDS * slow() + 10);

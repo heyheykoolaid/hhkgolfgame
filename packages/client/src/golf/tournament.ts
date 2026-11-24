@@ -118,7 +118,7 @@ export function tourCardHTML(
   if (!final) {
     head = `<div class="cupname">${esc(t.cup.title)}</div><h2>${o.scoreName}</h2><p class="muted">Hole ${t.h + 1} of ${t.n} · ${o.strokes} strokes · par ${o.par}</p>`;
     foot = o.wait.length
-      ? `<p class="muted">Waiting for ${o.wait.map(esc).join(', ')}…</p><div class="btns"><button id="gc-quit">Leave</button></div>`
+      ? `<p class="muted">Waiting for ${o.wait.map(esc).join(', ')}…</p><div class="btns"><button id="gc-quit">Leave</button><button id="gc-walk" class="primary">Walk the course</button></div>`
       : last
         ? ''
         : `<div class="btns"><button id="gc-quit">Leave</button><button id="gc-next" class="primary">Hole ${t.h + 2} → (${Math.max(0, o.secsLeft)})</button></div>`;
@@ -128,7 +128,7 @@ export function tourCardHTML(
     head = `<div class="cupname">${esc(t.cup.title)}</div><h2>${iWon ? (winners.length > 1 ? 'Shared win!' : 'Champion!') : winners.length ? `${esc(who.join(' & '))} win${who.length > 1 || who[0] === 'You' ? '' : 's'}` : 'So close'}</h2>
       <p class="muted">${solo ? (iWon ? `${toParText(best)} · you beat the course` : `${toParText(best)} · finish at par or better to take the cup`) : `${toParText(best)} over ${t.n} holes`}</p>
       ${winners.length ? '<canvas id="gc-trophy" width="220" height="220"></canvas>' : ''}`;
-    foot = `${iWon ? '<p class="muted">The trophy is in your trophy case.</p>' : ''}<div class="btns"><button id="gc-lobby" class="primary">Back to the lobby</button></div>`;
+    foot = `${iWon ? '<p class="muted">The trophy is in your trophy case.</p>' : ''}<div class="btns"><button id="gc-walk">Walk the course</button><button id="gc-lobby" class="primary">Back to the lobby</button></div>`;
     t.sub = winners.length ? `${winners.map(r => (r.me ? o.myName : r.name)).join(' & ')} · ${toParText(best)}` : '';
   }
   return { html: `${head}${table}${o.extra}${foot}`, final };

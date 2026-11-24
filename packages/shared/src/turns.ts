@@ -25,8 +25,8 @@ export interface Turn {
   phase: TurnPhase;
 }
 
-export const TURN_SECONDS = 50,
-  TURN_WARN = 15,
+export const TURN_SECONDS = 80,
+  TURN_WARN = 20,
   TURN_GRACE = 8,
   MAX_SKIPS = 3;
 

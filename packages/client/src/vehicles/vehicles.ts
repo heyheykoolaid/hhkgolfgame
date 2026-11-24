@@ -1721,10 +1721,21 @@ class Cart implements Vehicle {
       st: +this.steer.toFixed(2),
     };
   }
+  private lastP: number[] = [];
+  private lastAt = 0;
   follow(st: VehState, dt: number) {
     if (!st?.p || !st?.q) return;
-    this.tp.set(st.p[0], st.p[1], st.p[2]);
+    // where it is now, not where it was when its driver last told us: carry it on along its nose for the time since
+    // that message (at most a third of a second; a car is long past a message's 100 ms gap at speed)
+    const now = performance.now() / 1000;
+    if (st.p[0] !== this.lastP[0] || st.p[2] !== this.lastP[2]) {
+      this.lastP = st.p;
+      this.lastAt = now;
+    }
     this.tq.set(st.q[0], st.q[1], st.q[2], st.q[3]).normalize();
+    const ahead = Math.min(0.33, now - this.lastAt) * (st.s || 0),
+      fwd = _mk.set(1, 0, 0).applyQuaternion(this.tq);
+    this.tp.set(st.p[0] + fwd.x * ahead, st.p[1] + fwd.y * ahead, st.p[2] + fwd.z * ahead);
     if (!this.have) {
       this.root.position.copy(this.tp);
       this.root.quaternion.copy(this.tq);

@@ -61,8 +61,8 @@ export interface BetPres {
   tp?: [number, number];
 }
 
-export const OFFER_SECONDS = 20,
-  LIVE_SECONDS = 15,
+export const OFFER_SECONDS = 35,
+  LIVE_SECONDS = 25,
   ABSENT_GRACE = 15;
 export const offerId = (o: Omit<Offer, 'id'>) =>
   isLive(o.t) ? `${o.by}.${o.t}.${o.a}.${o.h}.${o.on}.${o.ts}.${o.side}` : `${o.by}.${o.t}.${o.a}.${o.h}`;
