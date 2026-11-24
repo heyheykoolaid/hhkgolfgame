@@ -544,10 +544,10 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     spots: [
       { id: 'growshop', x: -97, z: ST.z0 - 1.4, r: 2.2, label: 'Grow Supply' },
       { id: 'club', x: -60, z: ST.z0 - 1.2, r: 2.4, label: 'Clubhouse · tee times and trophies' },
-      { id: 'store:clothes', x: -110.9, z: 36.2, r: 2.6, label: 'Threads · clothing' },
-      { id: 'store:barber', x: -100.2, z: 36.2, r: 2.2, label: 'The Clip Joint · barber' },
-      { id: 'store:tattoo', x: -90.7, z: 36.2, r: 2.4, label: 'Ink Spot · tattoos' },
-      { id: 'store:pro', x: -79.2, z: 36.2, r: 2.6, label: 'Pro Shop · ball trails' },
+      { id: 'store:clothes', x: shopRow.rooms.clothes!.spot[0], z: shopRow.rooms.clothes!.spot[1], r: 1.6, label: 'Threads · clothing' },
+      { id: 'store:barber', x: shopRow.rooms.barber!.spot[0], z: shopRow.rooms.barber!.spot[1], r: 1.6, label: 'The Clip Joint · barber' },
+      { id: 'store:tattoo', x: shopRow.rooms.tattoo!.spot[0], z: shopRow.rooms.tattoo!.spot[1], r: 1.6, label: 'Ink Spot · tattoos' },
+      { id: 'store:pro', x: shopRow.rooms.pro!.spot[0], z: shopRow.rooms.pro!.spot[1], r: 1.6, label: 'Pro Shop · ball trails' },
       { id: 'pawn', x: -120.8, z: 0.7, r: 2.1, label: 'Lucky Pawn · sell trophies' },
       { id: 'store:home', x: shopRow.rooms.home!.spot[0], z: shopRow.rooms.home!.spot[1], r: 1.5, label: 'Homestead · furniture for your lot' },
       { id: 'store:auto', x: shopRow.rooms.auto!.spot[0], z: shopRow.rooms.auto!.spot[1], r: 1.5, label: 'Wrench & Ride · cars, paint and parts' },
@@ -558,6 +558,31 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     }) as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
     /** The people behind the walk-in shops' counters: world x and z, and the look of each. */
     clerks: [
+      ...(
+        [
+          ['clothes', { body: 'female', shirt: '#27405e', top: 'button', pants: '#2c2f38', hairStyle: 'pony', glasses: 'round' }],
+          ['barber', { shirt: '#f1eee6', top: 'button', pants: '#2c2f38', hairStyle: 'short', stubble: true }],
+          [
+            'tattoo',
+            {
+              shirt: '#141016',
+              top: 'tee',
+              pants: '#2c2f38',
+              hairStyle: 'long',
+              tatArmL: 'dragon',
+              tatArmR: 'skullrose',
+              tatInk: '#1c3a4a',
+              earring: true,
+            },
+          ],
+          ['pro', { shirt: '#2b4a3a', top: 'button', pants: '#d9cdb2', hairStyle: 'short', capStyle: 'cap', cap: '#2b4a3a' }],
+        ] as const
+      ).map(([k, look]) => ({
+        x: shopRow.rooms[k]!.staff[0] + WEST_OFF.x,
+        z: shopRow.rooms[k]!.staff[1],
+        yaw: shopRow.rooms[k]!.staffYaw ?? Math.PI,
+        look: look as Record<string, unknown>,
+      })),
       {
         x: shopRow.rooms.auto!.staff[0] + WEST_OFF.x,
         z: shopRow.rooms.auto!.staff[1],

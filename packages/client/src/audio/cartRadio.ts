@@ -44,9 +44,9 @@ export const cartRadio = {
         'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:12;display:none;padding:8px 16px 9px;border-radius:10px;background:linear-gradient(#2a2622,#14110e);border:1px solid rgba(255,232,190,.28);box-shadow:inset 0 0 0 2px #0c0a08,0 6px 18px rgba(0,0,0,.45);color:#ffd27a;font:700 15px "Barlow Condensed",Inter,sans-serif;letter-spacing:.06em;text-align:center;pointer-events:none;min-width:260px;white-space:nowrap';
       document.body.appendChild(hud);
     }
-    const n = driving && RS.on ? radio.now(RS.band) : null,
+    const n = driving && RS.on ? radio.label(RS.band) : null,
       html = n
-        ? `<span style="color:#ff6a4a">●</span> ${n.band.tag} <span style="opacity:.55;font-weight:600">${RS.band + 1 === 10 ? 0 : RS.band + 1} · ${n.band.genre}</span><div style="font:600 13px Inter,sans-serif;letter-spacing:0;color:#f6ecd8;margin-top:2px">${n.track.t}${n.track.a ? ` <span style="opacity:.6">· ${n.track.a}</span>` : ''} <span style="opacity:.5">· vol ${Math.round(RS.vol * 10)}</span></div>`
+        ? `<span style="color:#ff6a4a">●</span> ${n.tag} <span style="opacity:.55;font-weight:600">${RS.band + 1 === 10 ? 0 : RS.band + 1} · ${n.genre}</span><div style="font:600 13px Inter,sans-serif;letter-spacing:0;color:#f6ecd8;margin-top:2px">${n.live ? '<span style="color:#ff6a4a;font-weight:800;letter-spacing:.06em">LIVE</span> ' : ''}${n.line}${n.who ? ` <span style="opacity:.6">· ${n.who}</span>` : ''} <span style="opacity:.5">· vol ${Math.round(RS.vol * 10)}</span></div>`
         : '';
     if (html !== shown) {
       shown = html;

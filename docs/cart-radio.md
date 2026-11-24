@@ -2,6 +2,9 @@
 
 The stereo in your golf cart, go-kart or car. It works like a rolling boombox: other players hear it from where the vehicle is. Related: `world-feel.md` (audio landscape), `roadmap.md`.
 
+## Live stations (Nov 24)
+On Cloudflare, each band plays live internet stations (`audio/stations.ts`, listed in the roadmap's Nov 24 entry), falling back to the shipped tracks below when none play or on the artifact page. The decisions above stand: everyone near a cart hears it, nothing ducks.
+
 ## How it works today (Nov 16)
 This section is the truth; the original design below is kept for what is still to build.
 - **It does not play live internet radio.** The published page can only play sound from the game's own files (tested Nov 15: the host blocks outside streams). So each of the ten bands is a **playlist of four public-domain tracks shipped with the game** (40 tracks, about 50 MB, from the SoundSafari CC0 collection: FreePD and Free Music Archive; `public/radio/`, listed in `radio.json`).

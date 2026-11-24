@@ -3,7 +3,7 @@
 // display windows, a sign band, an optional striped awning) and then each shop's own dressing in and around it.
 import * as THREE from 'three';
 import { M, box, cyl, textTex } from './world';
-import { buildGarage, buildShowroom, type Room } from './interiors';
+import { buildGarage, buildShowroom, buildBoutique, buildBarber, buildTattoo, buildProShop, type Room } from './interiors';
 
 function stripeTex(a: string, b: string, n: number) {
   const c = document.createElement('canvas');
@@ -162,12 +162,12 @@ function storefront(f: Front) {
 
 /** Build the row. Fronts face -z along z = front. Returns a per-frame update (the barber's pole turns). */
 export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1: number, z0: number, z1: number, tag?: string) => void) {
-  type Place = { spot: [number, number]; staff: [number, number] };
-  const rooms: { auto?: Place; home?: Place } = {},
+  type Place = { spot: [number, number]; staff: [number, number]; staffYaw?: number };
+  const rooms: { auto?: Place; home?: Place; clothes?: Place; barber?: Place; tattoo?: Place; pro?: Place } = {},
     /** Furnish a hollow shop and turn what it reports (in its own frame) into the district's. */
     room = (build: (r: Room) => Place, g: THREE.Group, x: number, w: number, d: number, h: number): Place => {
       const p = build({ g, w, d, h, col: (x0, x1, z0, z1, tag) => col(x + x0, x + x1, front + z0, front + z1, tag) });
-      return { spot: [x + p.spot[0], front + p.spot[1]], staff: [x + p.staff[0], front + p.staff[1]] };
+      return { spot: [x + p.spot[0], front + p.spot[1]], staff: [x + p.staff[0], front + p.staff[1]], staffYaw: p.staffYaw };
     };
   const spin: THREE.Object3D[] = [];
   // ---- Threads: painted brick, a striped awning, dressed mannequins in the windows
@@ -182,6 +182,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         wall: wallM('brick', '#8a4a3a', '#6a362a', w, 5.2),
         trim: '#f1e6d0',
         sign: ['THREADS', '#27405e', '#ffe9a8'],
+        open: true,
         awning: ['#27405e', '#f1e6d0'],
       });
     const shirts = ['#c8452f', '#2f8a86', '#e2b23a', '#6a4a8a', '#f1e6d0', '#3a5a3a'];
@@ -214,7 +215,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         );
       }
     G.add(s.g);
-    col(-110.9 - w / 2, -110.9 + w / 2, front, front + 9);
+    rooms.clothes = room(buildBoutique, s.g, -110.9, w, 9, 5.2);
   }
   // ---- The Clip Joint: white tile, a turning barber's pole, a chair in the window
   {
@@ -228,6 +229,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         wall: wallM('tile', '#eef0ee', '#c9d2d0', w, 4.4),
         trim: '#27405e',
         sign: ['THE CLIP JOINT', '#f1eee6', '#8a2f28'],
+        open: true,
         doorW: 1.3,
       });
     const pt = stripeTex('#c8452f', '#f1eee6', 2);
@@ -277,7 +279,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         ),
       );
     G.add(s.g);
-    col(-100.2 - w / 2, -100.2 + w / 2, front, front + 8);
+    rooms.barber = room(buildBarber, s.g, -100.2, w, 8, 4.4);
   }
   // ---- Ink Spot: black-painted brick, a neon sign, flash sheets in the windows
   {
@@ -291,6 +293,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         wall: wallM('brick', '#2a2630', '#1a1820', w, 4.8),
         trim: '#1a1820',
         sign: ['INK SPOT', '#141016', '#ff5a8a'],
+        open: true,
       });
     const neon = glow('#ff5a8a', 2.4);
     s.g.add(box(w - 1, 0.05, 0.05, neon, 0, 4.8 - 1.3, -0.1), box(w - 1, 0.05, 0.05, glow('#5ad8ff', 2.2), 0, 4.8 - 0.2, -0.1));
@@ -333,7 +336,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         );
       }
     G.add(s.g);
-    col(-90.7 - w / 2, -90.7 + w / 2, front, front + 8);
+    rooms.tattoo = room(buildTattoo, s.g, -90.7, w, 8, 4.8);
   }
   // ---- the Pro Shop: green clapboard under a shingled gable, clubs and a bag in the window, a golf ball on the roof
   {
@@ -348,6 +351,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
         wall: wallM('board', '#3f6a4a', '#2f5038', w, h),
         trim: '#f1e6d0',
         sign: ['PRO SHOP', '#2b4a3a', '#ffe9a8'],
+        open: true,
         awning: ['#2b4a3a', '#f1e6d0'],
       });
     const roofM = M('#5a4636', 0.9),
@@ -382,7 +386,7 @@ export function buildShopRow(G: THREE.Group, front: number, col: (x0: number, x1
     }
     s.g.add(box(2.0, 0.05, 0.12, M('#8a6a45', 0.8), s.wx, s.sillY + 1.25, 0.8));
     G.add(s.g);
-    col(-79.2 - w / 2, -79.2 + w / 2, front, front + 9);
+    rooms.pro = room(buildProShop, s.g, -79.2, w, 9, h);
   }
   // ---- Wrench & Ride Auto: a grey block garage at the west end of the row; tyres stacked by the door, oil drums, a
   // tool chest and a jack in the windows

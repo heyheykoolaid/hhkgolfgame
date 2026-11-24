@@ -461,3 +461,440 @@ export function buildShowroom(r: Room) {
   );
   return { spot: [CX, CZ - 1.0] as [number, number], staff: [CX, CZ + 0.95] as [number, number] };
 }
+
+// ------------------------------------------------------------------ the West Side's other four shops
+// Threads, The Clip Joint and Ink Spot open the wardrobe, whose camera stands 2.9 m in front of you facing back at you;
+// so where you press E is well inside each room, with you facing the door and the room's back wall behind you.
+type Place = { spot: [number, number]; staff: [number, number]; staffYaw?: number };
+/** A checked floor (two colours), `n` squares to a tile of the texture. */
+const checker = (a: string, b: string, n = 4) =>
+  canvasTex(128, 128, x => {
+    const q = 128 / n;
+    for (let j = 0; j < n; j++)
+      for (let i = 0; i < n; i++) {
+        x.fillStyle = (i + j) % 2 ? a : b;
+        x.fillRect(i * q, j * q, q, q);
+      }
+    grain(x, 128, 128, 500, 0.05);
+  });
+/** A plain painted wall with a dado of a second colour and a rail between them (`dado` is a share of the height). */
+const paintedWall = (top: string, low: string, rail: string, dado = 0.32, brick = false) =>
+  canvasTex(256, 256, x => {
+    x.fillStyle = top;
+    x.fillRect(0, 0, 256, 256);
+    grain(x, 256, 256, 800, 0.04);
+    const y0 = 256 * (1 - dado);
+    x.fillStyle = low;
+    x.fillRect(0, y0, 256, 256 - y0);
+    if (brick) {
+      x.strokeStyle = 'rgba(0,0,0,.28)';
+      x.lineWidth = 2;
+      for (let j = 0; y0 + j * 16 < 256; j++) {
+        const y = y0 + j * 16;
+        x.beginPath();
+        x.moveTo(0, y);
+        x.lineTo(256, y);
+        x.stroke();
+        for (let i = 0; i < 9; i++) {
+          const bx = i * 32 + (j % 2 ? 16 : 0);
+          x.beginPath();
+          x.moveTo(bx, y);
+          x.lineTo(bx, y + 16);
+          x.stroke();
+        }
+      }
+    }
+    x.fillStyle = rail;
+    x.fillRect(0, y0 - 6, 256, 6);
+  });
+const plainCeil = (c: string) =>
+  inner(
+    canvasTex(32, 32, x => ((x.fillStyle = c), x.fillRect(0, 0, 32, 32))),
+    0.3,
+  );
+/** A dressmaker's form: the shape the shop windows use, in a shirt colour, on a stand. */
+function form(g: THREE.Group, x: number, z: number, shirt: string, base = 0, turn = 0) {
+  const f = new THREE.Mesh(
+    new THREE.LatheGeometry(
+      [0, 0.17, 0.2, 0.15, 0.21, 0.07, 0.06, 0].map((r, i) => new THREE.Vector2(r, [0, 0.02, 0.3, 0.5, 0.66, 0.74, 0.8, 0.8][i])),
+      12,
+    ),
+    M(shirt, 0.8),
+  );
+  f.scale.z = 0.6;
+  f.position.set(x, base + 0.85, z);
+  f.rotation.y = turn;
+  const metal = M('#3a3a3c', 0.5, 0.5);
+  g.add(f, cyl(0.02, 0.02, 0.85, 5, metal, x, base + 0.43, z), cyl(0.16, 0.16, 0.03, 12, metal, x, base + 0.02, z));
+}
+
+/** Threads: a clothing shop. Rails of shirts along the left wall, folded stacks on shelves along the right, forms on a
+ *  plinth, a fitting room in the back corner, a long mirror on the back wall, a till by the door. */
+export function buildBoutique(r: Room): Place {
+  const { g } = r,
+    floorT = checker('#d9cdb4', '#c9bc9f', 2),
+    wallT = paintedWall('#2f4f5a', '#8a4a3a', '#f1e6d0', 0.3, true);
+  wallT.repeat.set(3, 1);
+  const { x0, x1, z1 } = shell(r, inner(floorT, 0.25, 0.6), inner(wallT, 0.25), plainCeil('#f1ebdc'), '#ffe8c8', '#2f4f5a', 1.2);
+  const chrome = M('#c9ccd0', 0.25, 0.8),
+    wood = photoM('timber', '#8a5f38'),
+    shirts = ['#c8452f', '#2f8a86', '#e2b23a', '#6a4a8a', '#f1e6d0', '#3a5a3a', '#e86aa6', '#2c2f38'];
+  // rails: a chrome bar on two stands, shirts on hangers side by side
+  for (const [rz, n] of [
+    [2.6, 9],
+    [5.2, 8],
+  ] as [number, number][]) {
+    const rx = x0 + 0.75;
+    g.add(box(0.04, 0.04, 2.2, chrome, rx, 1.55, rz));
+    for (const e of [-1, 1]) g.add(cyl(0.02, 0.02, 1.55, 6, chrome, rx, 0.78, rz + e * 1.1), box(0.5, 0.03, 0.06, chrome, rx, 0.02, rz + e * 1.1));
+    for (let i = 0; i < n; i++) {
+      const sz = rz - 0.95 + (i * 1.9) / (n - 1),
+        c = M(shirts[((i * 3 + rz * 2) % shirts.length) | 0], 0.85);
+      g.add(box(0.42, 0.62, 0.05, c, rx, 1.18, sz), box(0.1, 0.18, 0.05, c, rx - 0.25, 1.38, sz), box(0.1, 0.18, 0.05, c, rx + 0.25, 1.38, sz));
+    }
+    r.col(x0, x0 + 1.1, rz - 1.25, rz + 1.25, 'bench');
+  }
+  // shelves of folded stacks along the right wall
+  {
+    const sx = x1 - 0.32;
+    for (const y of [0.4, 1.0, 1.6, 2.2]) {
+      g.add(tile(box(0.55, 0.05, 3.4, wood, sx, y, 4.3), 1.2));
+      for (let i = 0; i < 6; i++)
+        for (let k = 0; k < 3; k++)
+          g.add(box(0.4, 0.07, 0.42, M(shirts[((i + k * 2 + y * 3) % shirts.length) | 0], 0.9), sx, y + 0.06 + k * 0.075, 2.9 + i * 0.56));
+    }
+    for (const z of [2.55, 6.05]) g.add(box(0.55, 2.3, 0.05, wood, sx, 1.15, z));
+    r.col(x1 - 0.65, x1, 2.5, 6.1, 'bench');
+  }
+  // three forms on a round plinth, left of centre
+  const PX = -1.7,
+    PZ = 3.3;
+  g.add(cyl(1.0, 1.05, 0.18, 24, M('#f1e6d0', 0.7), PX, 0.09, PZ));
+  form(g, PX - 0.45, PZ - 0.2, '#c8452f', 0.18, 0.4);
+  form(g, PX + 0.45, PZ - 0.2, '#2f8a86', 0.18, -0.4);
+  form(g, PX, PZ + 0.4, '#e2b23a', 0.18);
+  r.col(PX - 1.05, PX + 1.05, PZ - 1.05, PZ + 1.05, 'bench');
+  // the fitting room: a curtain on a rail in the back-left corner
+  {
+    const cm = inner(
+        canvasTex(64, 64, x => {
+          for (let i = 0; i < 8; i++) {
+            x.fillStyle = i % 2 ? '#7a2a22' : '#8a3a30';
+            x.fillRect(i * 8, 0, 8, 64);
+          }
+        }),
+        0.2,
+      ),
+      cx = x0 + 1.0;
+    g.add(box(1.7, 0.04, 0.04, chrome, cx, 2.45, z1 - 1.6), box(0.04, 0.04, 1.6, chrome, x0 + 1.85, 2.45, z1 - 0.8));
+    const cur = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.3), cm);
+    cur.position.set(cx, 1.3, z1 - 1.6);
+    cur.rotation.y = Math.PI;
+    const side = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.3), cm);
+    side.position.set(x0 + 1.85, 1.3, z1 - 0.8);
+    side.rotation.y = -Math.PI / 2;
+    g.add(cur, side);
+    r.col(x0, x0 + 1.9, z1 - 1.65, z1, 'bench');
+  }
+  // the mirror on the back wall (a gold frame round a pale, slightly shiny pane) and a rug in front of it
+  g.add(
+    box(1.6, 2.3, 0.06, M('#c9a24a', 0.4, 0.6), 1.2, 1.35, z1 - 0.04),
+    Object.assign(
+      box(1.44, 2.14, 0.02, new THREE.MeshStandardMaterial({ color: '#cfe0e6', roughness: 0.05, metalness: 0.9 }), 1.2, 1.35, z1 - 0.08),
+      {},
+    ),
+  );
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.6), inner(checker('#27405e', '#f1e6d0', 8), 0.2));
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(1.2, 0.026, z1 - 2.6);
+  g.add(rug);
+  // the till by the door
+  counter(g, 3.9, 2.0, 2.0, M('#27405e', 0.7), wood);
+  r.col(2.85, 4.95, 1.65, 2.35, 'bench');
+  return { spot: [1.2, z1 - 2.7], staff: [3.9, 2.95], staffYaw: Math.PI };
+}
+
+/** The Clip Joint: a barber's. Black and white floor, white tile, two chairs facing a long mirror on the left wall, a
+ *  bench and a rack of magazines on the right, products on glass shelves, a striped pole inside too. */
+export function buildBarber(r: Room): Place {
+  const { g } = r,
+    tileT = canvasTex(128, 128, x => {
+      x.fillStyle = '#eef0ee';
+      x.fillRect(0, 0, 128, 128);
+      x.strokeStyle = 'rgba(120,140,140,.45)';
+      x.lineWidth = 2;
+      for (let i = 0; i <= 8; i++) {
+        x.beginPath();
+        x.moveTo(i * 16, 0);
+        x.lineTo(i * 16, 128);
+        x.moveTo(0, i * 16);
+        x.lineTo(128, i * 16);
+        x.stroke();
+      }
+      x.fillStyle = '#27405e';
+      x.fillRect(0, 84, 128, 6);
+    });
+  tileT.repeat.set(3, 2);
+  const { x0, x1, z1 } = shell(
+    r,
+    inner(checker('#f1eee6', '#1c1c20', 2), 0.22, 0.4),
+    inner(tileT, 0.25, 0.4),
+    plainCeil('#f4f4f0'),
+    '#f4f8ff',
+    '#eef0ee',
+    0.9,
+  );
+  const chrome = M('#c9ccd0', 0.25, 0.8),
+    leather = M('#7a2a22', 0.5),
+    glass = new THREE.MeshStandardMaterial({ color: '#cfe0e6', roughness: 0.05, metalness: 0.9 });
+  // the long mirror on the left wall, a counter under it, two chairs facing it
+  g.add(box(0.05, 1.3, 4.6, M('#27405e', 0.5), x0 + 0.03, 1.75, 4.1), box(0.03, 1.18, 4.48, glass, x0 + 0.06, 1.75, 4.1));
+  g.add(box(0.45, 0.06, 4.6, M('#f1eee6', 0.4), x0 + 0.23, 0.95, 4.1), box(0.4, 0.9, 4.5, M('#27405e', 0.6), x0 + 0.21, 0.47, 4.1));
+  for (let i = 0; i < 6; i++)
+    g.add(
+      cyl(
+        0.035,
+        0.04,
+        0.18 + (i % 3) * 0.04,
+        8,
+        M(['#7fb0c8', '#e2b23a', '#9ac87a', '#c8452f', '#f1eee6', '#2f8a86'][i], 0.3),
+        x0 + 0.25,
+        1.06,
+        2.2 + i * 0.75,
+      ),
+    );
+  r.col(x0, x0 + 0.5, 1.8, 6.4);
+  for (const cz of [3.1, 5.2]) {
+    const cx = x0 + 1.25;
+    g.add(
+      cyl(0.3, 0.34, 0.08, 14, chrome, cx, 0.04, cz),
+      cyl(0.06, 0.06, 0.42, 8, chrome, cx, 0.29, cz),
+      box(0.58, 0.14, 0.56, leather, cx, 0.55, cz),
+      box(0.12, 0.7, 0.56, leather, cx + 0.32, 0.95, cz),
+      box(0.12, 0.2, 0.34, leather, cx + 0.4, 1.38, cz),
+      box(0.5, 0.06, 0.08, chrome, cx, 0.72, cz - 0.3),
+      box(0.5, 0.06, 0.08, chrome, cx, 0.72, cz + 0.3),
+      box(0.25, 0.05, 0.4, chrome, cx - 0.42, 0.2, cz),
+    );
+    r.col(cx - 0.45, cx + 0.45, cz - 0.4, cz + 0.4, 'bench');
+  }
+  // the waiting bench and a magazine rack on the right wall, a coat stand by the door
+  {
+    const bx = x1 - 0.35;
+    g.add(box(0.5, 0.08, 2.4, leather, bx, 0.46, 3.0), box(0.1, 0.5, 2.4, leather, x1 - 0.08, 0.75, 3.0));
+    for (const e of [-1, 1]) g.add(box(0.45, 0.42, 0.06, chrome, bx, 0.21, 3.0 + e * 1.1));
+    r.col(x1 - 0.65, x1, 1.75, 4.25, 'bench');
+    g.add(box(0.12, 0.9, 0.7, M('#5a3a26', 0.8), x1 - 0.08, 1.6, 5.2));
+    for (let i = 0; i < 4; i++)
+      g.add(
+        box(
+          0.03,
+          0.26,
+          0.2,
+          M(['#c8452f', '#2f8a86', '#e2b23a', '#f1e6d0'][i], 0.6),
+          x1 - 0.16,
+          1.38 + (i % 2) * 0.32,
+          5.0 + Math.floor(i / 2) * 0.36,
+        ),
+      );
+  }
+  // a pole on the back wall too, and a price board
+  g.add(cyl(0.08, 0.08, 0.8, 12, M('#c8452f', 0.5), x0 + 0.3, 2.9, z1 - 0.2), cyl(0.1, 0.1, 0.08, 12, chrome, x0 + 0.3, 3.32, z1 - 0.2));
+  const board = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.8, 1.0),
+    inner(
+      textTex(
+        [
+          { t: 'CUTS  ·  SHAVES', s: 64, c: '#8a2f28', b: true, y: 80 },
+          { t: 'Stubble · Face paint · Colour', s: 40, c: '#27405e', y: 160 },
+        ],
+        768,
+        256,
+        '#f1eee6',
+      ),
+      0.5,
+    ),
+  );
+  board.position.set(0.9, 2.4, z1 - 0.03);
+  board.rotation.y = Math.PI;
+  g.add(board);
+  return { spot: [0.7, z1 - 2.6], staff: [x0 + 1.25, 4.15], staffYaw: Math.PI / 2 };
+}
+
+/** Ink Spot: a tattoo parlour. Black walls papered with flash (the game's own designs), a red and black floor, a
+ *  padded table under an arm lamp, a rolling cart of inks, a neon sign inside. */
+export function buildTattoo(r: Room): Place {
+  const { g } = r,
+    sheet = new THREE.TextureLoader().load(new URL('golfer/tattoos.png', document.baseURI).href);
+  sheet.colorSpace = THREE.SRGBColorSpace;
+  const wallT = paintedWall('#221d26', '#141016', '#ff5a8a', 0.28);
+  wallT.repeat.set(3, 1);
+  const { x0, x1, z1 } = shell(
+    r,
+    inner(checker('#5a1a1e', '#141016', 2), 0.2, 0.5),
+    inner(wallT, 0.25),
+    plainCeil('#1c1820'),
+    '#ffd6e6',
+    '#221d26',
+    1.0,
+  );
+  // flash: framed sheets of the game's own designs on the left and back walls
+  let fi = 0;
+  const flash = (x: number, y: number, z: number, yaw: number) => {
+    const t = sheet.clone(),
+      i = (fi++ * 7) % 18;
+    t.repeat.set(1 / 6, 1 / 3);
+    t.offset.set((i % 6) / 6, 1 - (Math.floor(i / 6) + 1) / 3);
+    t.needsUpdate = true;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.62), M('#f1e6d0', 0.9)),
+      art = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: '#3a2a2a' }));
+    for (const [m, o] of [
+      [back, 0.005],
+      [art, 0.012],
+    ] as [THREE.Mesh, number][]) {
+      m.position.set(x + Math.sin(yaw) * o, y, z + Math.cos(yaw) * o);
+      m.rotation.y = yaw;
+      g.add(m);
+    }
+  };
+  for (let row = 0; row < 3; row++) for (let i = 0; i < 7; i++) flash(x0 + 0.01, 1.4 + row * 0.75, 1.7 + i * 0.75, Math.PI / 2);
+  for (let row = 0; row < 2; row++) for (let i = 0; i < 5; i++) flash(-2.6 + i * 0.62, 2.4 + row * 0.75, z1 - 0.01, Math.PI);
+  // the table: padded, on a chrome column, with a pillow; an arm lamp over it; a stool; the ink cart
+  const TX = 2.3,
+    TZ = 4.6,
+    chrome = M('#c9ccd0', 0.25, 0.8),
+    vinyl = M('#141016', 0.45);
+  g.add(
+    box(0.7, 0.14, 2.0, vinyl, TX, 0.82, TZ),
+    box(0.62, 0.08, 0.4, vinyl, TX, 0.93, TZ + 0.72),
+    cyl(0.08, 0.08, 0.72, 8, chrome, TX, 0.38, TZ),
+    box(0.6, 0.05, 1.2, chrome, TX, 0.03, TZ),
+  );
+  r.col(TX - 0.4, TX + 0.4, TZ - 1.05, TZ + 1.05, 'bench');
+  g.add(cyl(0.025, 0.025, 1.8, 6, chrome, x1 - 0.3, 0.9, TZ - 1.2), box(0.03, 0.03, 1.1, chrome, x1 - 0.75, 1.8, TZ - 0.75));
+  g.add(cyl(0.1, 0.18, 0.16, 12, lit('#fff4e0', 2.2), TX + 0.25, 1.72, TZ - 0.3));
+  g.add(cyl(0.2, 0.2, 0.06, 12, vinyl, TX - 0.75, 0.6, TZ - 0.6), cyl(0.03, 0.03, 0.58, 6, chrome, TX - 0.75, 0.3, TZ - 0.6));
+  {
+    const kx = TX - 0.9,
+      kz = TZ + 0.9;
+    g.add(box(0.55, 0.04, 0.4, chrome, kx, 0.85, kz), box(0.55, 0.04, 0.4, chrome, kx, 0.45, kz));
+    for (const [dx, dz] of [
+      [-0.25, -0.18],
+      [0.25, -0.18],
+      [-0.25, 0.18],
+      [0.25, 0.18],
+    ])
+      g.add(cyl(0.012, 0.012, 0.85, 5, chrome, kx + dx, 0.43, kz + dz));
+    for (let i = 0; i < 8; i++)
+      g.add(
+        cyl(
+          0.022,
+          0.022,
+          0.08,
+          8,
+          M(['#141016', '#c8452f', '#2f6a8a', '#3f8a4a', '#e2b23a', '#7a2f8a', '#ff5a8a', '#f1e6d0'][i], 0.3),
+          kx - 0.21 + (i % 4) * 0.14,
+          0.91,
+          kz - 0.1 + Math.floor(i / 4) * 0.2,
+        ),
+      );
+    r.col(kx - 0.3, kx + 0.3, kz - 0.22, kz + 0.22, 'bench');
+  }
+  // neon inside: INK on the back wall, and the shop's waiting couch by the door
+  g.add(box(1.6, 0.06, 0.04, lit('#5ad8ff', 2.4), 1.9, 3.5, z1 - 0.06), box(1.6, 0.06, 0.04, lit('#ff5a8a', 2.4), 1.9, 3.3, z1 - 0.06));
+  const ink = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 0.55),
+    new THREE.MeshStandardMaterial({
+      map: textTex([{ t: 'INK SPOT', s: 120, c: '#ff5a8a', b: true, y: 140 }], 768, 256, '#141016'),
+      emissive: '#ffffff',
+      emissiveIntensity: 0.9,
+    }),
+  );
+  (ink.material as THREE.MeshStandardMaterial).emissiveMap = (ink.material as THREE.MeshStandardMaterial).map;
+  ink.position.set(1.9, 2.75, z1 - 0.04);
+  ink.rotation.y = Math.PI;
+  g.add(ink);
+  g.add(box(0.7, 0.42, 1.8, M('#5a1a1e', 0.6), x1 - 0.4, 0.21, 2.2), box(0.14, 0.5, 1.8, M('#5a1a1e', 0.6), x1 - 0.1, 0.65, 2.2));
+  r.col(x1 - 0.8, x1, 1.25, 3.15, 'bench');
+  return { spot: [-0.6, z1 - 2.6], staff: [TX - 0.75, TZ - 1.25], staffYaw: -Math.PI / 2 };
+}
+
+/** The Pro Shop: a wall of clubs, bags on stands, a pyramid of balls, a putting strip with a cup, framed courses,
+ *  and the counter where the trails are sold. */
+export function buildProShop(r: Room): Place {
+  const { g } = r,
+    wallT = paintedWall('#e9e1cc', '#2f5038', '#f1e6d0', 0.36);
+  wallT.repeat.set(3, 1);
+  const { x0, x1, z1 } = shell(
+    r,
+    inner(photoM('timber', '#8a5f38').map!, 0.25, 0.7),
+    inner(wallT, 0.25),
+    plainCeil('#f4efe2'),
+    '#fff0d6',
+    '#e9e1cc',
+    1.4,
+  );
+  const steel = M('#c9ccd0', 0.3, 0.7),
+    head = M('#2a2a2c', 0.4, 0.5),
+    wood = M('#5a3a26', 0.8);
+  // the club wall: three rows of clubs standing in a rack along the left wall
+  g.add(box(0.12, 0.05, 6.0, wood, x0 + 0.25, 0.55, 4.6), box(0.12, 0.05, 6.0, wood, x0 + 0.25, 1.55, 4.6));
+  for (let i = 0; i < 24; i++) {
+    const cz = 1.75 + i * 0.25,
+      tall = 0.9 + (i % 4) * 0.06;
+    g.add(
+      cyl(0.01, 0.01, tall, 5, steel, x0 + 0.25, 0.1 + tall / 2, cz),
+      box(0.07, 0.05, 0.1, i % 7 === 0 ? M('#c9a24a', 0.4, 0.6) : head, x0 + 0.27, 0.1, cz + 0.02),
+    );
+  }
+  r.col(x0, x0 + 0.45, 1.6, 7.7);
+  // bags on stands down the middle
+  const bagC = ['#8a2f28', '#2b4a3a', '#27405e', '#e2b23a'];
+  bagC.forEach((c, i) => {
+    const bx = -1.6 + i * 1.2,
+      bz = 5.6;
+    g.add(cyl(0.17, 0.15, 0.92, 12, M(c, 0.7), bx, 0.55, bz), cyl(0.18, 0.18, 0.1, 12, M('#f1e6d0', 0.7), bx, 1.0, bz));
+    for (let k = 0; k < 3; k++)
+      g.add(cyl(0.01, 0.01, 0.4, 5, steel, bx - 0.06 + k * 0.06, 1.2, bz), box(0.07, 0.05, 0.08, head, bx - 0.06 + k * 0.06, 1.42, bz));
+    r.col(bx - 0.22, bx + 0.22, bz - 0.22, bz + 0.22, 'bench');
+  });
+  // a pyramid of balls on a round table
+  {
+    const TX = 0.4,
+      TZ = 3.4,
+      white = new THREE.MeshStandardMaterial({ color: '#f6f3ea', roughness: 0.45 });
+    g.add(cyl(0.55, 0.55, 0.05, 20, wood, TX, 0.78, TZ), cyl(0.05, 0.05, 0.76, 8, wood, TX, 0.39, TZ), cyl(0.3, 0.3, 0.03, 14, wood, TX, 0.02, TZ));
+    const ball = new THREE.SphereGeometry(0.035, 10, 8);
+    for (let lv = 0; lv < 5; lv++)
+      for (let i = 0; i < 5 - lv; i++)
+        for (let j = 0; j < 5 - lv; j++) {
+          const b = new THREE.Mesh(ball, white);
+          b.position.set(TX + (i - (4 - lv) / 2) * 0.072, 0.84 + lv * 0.06, TZ + (j - (4 - lv) / 2) * 0.072);
+          g.add(b);
+        }
+    r.col(TX - 0.55, TX + 0.55, TZ - 0.55, TZ + 0.55, 'bench');
+  }
+  // a putting strip along the back wall: green carpet, a white cup with a little flag
+  {
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(5.0, 0.9), inner(checker('#3f7a3a', '#3a7236', 10), 0.15, 0.9));
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(0.3, 0.03, z1 - 0.7);
+    g.add(strip, cyl(0.06, 0.06, 0.01, 14, M('#111', 0.9), 2.4, 0.036, z1 - 0.7), cyl(0.006, 0.006, 0.5, 5, M('#f1e6d0', 0.5), 2.4, 0.28, z1 - 0.7));
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.12), new THREE.MeshStandardMaterial({ color: '#c8452f', side: THREE.DoubleSide }));
+    flag.position.set(2.49, 0.47, z1 - 0.7);
+    g.add(flag);
+  }
+  // framed course pictures over the strip (from the paintings pack when it's in; frames until then)
+  for (let i = 0; i < 3; i++)
+    g.add(
+      box(1.0, 0.7, 0.04, M('#c9a24a', 0.4, 0.6), -1.4 + i * 1.5, 2.6, z1 - 0.03),
+      box(0.88, 0.58, 0.02, M(['#5f8a4a', '#7fa860', '#4f7a3a'][i], 0.8), -1.4 + i * 1.5, 2.6, z1 - 0.055),
+    );
+  // the counter, right of the door, with trails on show behind it
+  counter(g, 3.4, 2.4, 2.4, M('#2b4a3a', 0.7), wood);
+  r.col(2.15, 4.65, 2.05, 2.75, 'bench');
+  ['#e23b2f', '#f2cf3a', '#5fae4a', '#2f8fa8', '#8a4fc0'].forEach((c, i) =>
+    g.add(box(0.05, 0.6, 0.12, lit(c, 1.4), x1 - 0.06, 1.5 + (i % 2) * 0.2, 1.9 + i * 0.32)),
+  );
+  return { spot: [3.4, 1.4], staff: [3.4, 3.35], staffYaw: Math.PI };
+}
