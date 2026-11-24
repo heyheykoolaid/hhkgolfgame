@@ -716,6 +716,7 @@ export function createLobby(env: LobbyEnv) {
     const n = nearest();
     if (!n) return;
     if (n.id === 'tee') tee.open();
+    else if (n.id === 'rocket') tee.open('moon');
     else if (n.id === 'shop') toast('The pro shop has moved to the West Side: clothes, a barber, tattoos and golf gear are all up the hill.', 4200);
     else if (n.id === 'store:pro') void openProShop();
     else if (n.id === 'store:home') void openFurniture();

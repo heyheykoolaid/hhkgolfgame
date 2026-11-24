@@ -14,7 +14,7 @@ import { opts } from '../ui/options';
 import { SKY_NOW } from '../world/skylife';
 import { WIND } from '../world/wind';
 
-export type Zone = 'town' | 'course';
+export type Zone = 'town' | 'course' | 'moon';
 export type Surface = 'concrete' | 'asphalt' | 'gravel' | 'grass' | 'green' | 'sand';
 export type AmbientInput = {
   zone: Zone;
@@ -32,6 +32,7 @@ export type AmbientInput = {
 const MIX: Record<Zone, { wind: number; road: number; crickets: number; birds: number; cars: number }> = {
   town: { wind: 0.4, road: 1, crickets: 0.8, birds: 0.8, cars: 1 },
   course: { wind: 1.25, road: 0.4, crickets: 0.55, birds: 1.2, cars: 0.35 },
+  moon: { wind: 0.12, road: 0, crickets: 0, birds: 0, cars: 0.2 }, // no air to carry much: a faint hiss in the helmet
 };
 
 /** The engine's partials (multiples of the firing note) and how loud each is in the low, middle and high rev bands:

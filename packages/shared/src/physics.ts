@@ -1,6 +1,6 @@
 // @ts-nocheck — ported from the prototype; types are added incrementally
 // Ball flight, bounce and roll. Deterministic given the RNG (setRng) — the server is the authority.
-import { heightAt, gradAt, normalAt, surfaceAt, treesNear, COURSE, clamp } from './course';
+import { heightAt, gradAt, normalAt, surfaceAt, treesNear, COURSE, clamp, buggyAt } from './course';
 let rand: () => number = Math.random;
 export function setRng(fn: () => number) {
   rand = fn;
@@ -30,6 +30,25 @@ export const SURF = {
   ob: { e: 0.18, f: 0.3, mu: 0.42, grip: 0.25 },
   water: { e: 0, f: 0, mu: 5, grip: 0 },
 };
+
+// The Moon: grey dust that a ball plugs into and stops dead in (no roll to speak of), everywhere but the green
+// (a smooth landing pad) and the cart path. Read through surf(): the table above stays Earth's.
+export const MOON_SURF = {
+  tee: { e: 0.14, f: 0.18, mu: 1.1, grip: 0.9 },
+  fairway: { e: 0.14, f: 0.18, mu: 1.1, grip: 0.9 },
+  fringe: { e: 0.14, f: 0.22, mu: 0.6, grip: 0.9 },
+  rough: { e: 0.08, f: 0.1, mu: 1.8, grip: 0.4 },
+  heavy: { e: 0.05, f: 0.06, mu: 2.4, grip: 0.2 },
+  ob: { e: 0.08, f: 0.1, mu: 1.8, grip: 0.4 },
+  hardpan: { e: 0.2, f: 0.3, mu: 0.6, grip: 0.4 },
+  bunker: { e: 0.02, f: 0.08, mu: 2.6, grip: 0.1 },
+};
+export const surfP = (s: string) => (COURSE.locale === 'moon' && MOON_SURF[s]) || SURF[s];
+/** gravity in flight on the current hole */
+export const gFlight = () => G * (COURSE.grav ?? 1);
+/** a moon buggy's body, for a ball: a short upright cylinder round its middle */
+export const BUGGY_R = 1.5,
+  BUGGY_H = 1.4;
 
 export const CLUBS = [
   { name: 'Driver', short: '1W', carry: 228, launch: 11, spin: 0.32, sens: 1.0 },
@@ -101,7 +120,7 @@ export function airStep(b, dt, wind) {
     rvz = b.vz - wind.z;
   const sp = Math.hypot(rvx, rvy, rvz) || 1e-6;
   let ax = -KD * sp * rvx,
-    ay = -KD * sp * rvy - G,
+    ay = -KD * sp * rvy - gFlight(),
     az = -KD * sp * rvz;
   // lift: perpendicular to velocity, in the vertical plane containing it
   const uy = rvy / sp;
@@ -196,7 +215,40 @@ export function cupCheck(b, px, pz, speed) {
 
 // Advance the ball one step. Returns an event string or null:
 // 'land' (first ground contact), 'tree', 'lip', 'water', 'ob', 'holed', 'rest'
+/** A ball meeting a moon buggy at time t (shared-clock seconds) bounces off its side, and picks up some of its speed. */
+export function buggyHit(b, t) {
+  const L = COURSE.buggies;
+  if (!L || t == null) return false;
+  let hit = false;
+  for (const g of L) {
+    const p = buggyAt(g, t),
+      dx = b.x - p.x,
+      dz = b.z - p.z,
+      dh = Math.hypot(dx, dz);
+    if (dh >= BUGGY_R + BALL_R || b.y > heightAt(p.x, p.z) + BUGGY_H) continue;
+    const nx = dx / (dh || 1),
+      nz = dz / (dh || 1),
+      vn = (b.vx - p.vx) * nx + (b.vz - p.vz) * nz;
+    if (vn < 0) {
+      b.vx -= 1.6 * vn * nx;
+      b.vz -= 1.6 * vn * nz;
+      b.vx = b.vx * 0.7 + p.vx * 0.5;
+      b.vz = b.vz * 0.7 + p.vz * 0.5;
+      if (b.state === 'air') b.vy = Math.max(b.vy, 1.5);
+      b.sb *= 0.3;
+      hit = true;
+    }
+    b.x = p.x + nx * (BUGGY_R + BALL_R);
+    b.z = p.z + nz * (BUGGY_R + BALL_R);
+  }
+  return hit;
+}
+
 export function stepBall(b, dt, env) {
+  if (env.t != null && buggyHit(b, env.t)) {
+    if (b.state === 'rest') b.state = 'roll';
+    return 'buggy';
+  }
   if (b.state === 'air') {
     airStep(b, dt, env.wind || ZERO_WIND);
     let ev = null;
@@ -209,7 +261,7 @@ export function stepBall(b, dt, env) {
     const surf = surfaceAt(b.x, b.z);
     if (surf === 'water') return 'water';
     if (surf === 'ob') return 'ob';
-    const P = SURF[surf];
+    const P = surfP(surf);
     const [gx, gz] = gradAt(b.x, b.z);
     const asx = -G * gx,
       asz = -G * gz;
@@ -281,7 +333,7 @@ export function groundContact(b, gh) {
   const surf = surfaceAt(b.x, b.z);
   if (surf === 'water') return 'water';
   if (surf === 'ob') return 'ob';
-  const P = SURF[surf];
+  const P = surfP(surf);
   const [nx, ny, nz] = normalAt(b.x, b.z);
   b.y = gh + BALL_R;
   const vn = b.vx * nx + b.vy * ny + b.vz * nz;
@@ -347,7 +399,7 @@ export function simulateFlat(speed, launchDeg, sb) {
 }
 export const _speedCache = new Map();
 export function speedForCarry(target, launchDeg, sb) {
-  const key = target.toFixed(1) + '|' + launchDeg + '|' + sb.toFixed(3);
+  const key = target.toFixed(1) + '|' + launchDeg + '|' + sb.toFixed(3) + '|' + (COURSE.grav ?? 1);
   if (_speedCache.has(key)) return _speedCache.get(key);
   // Carry is not monotonic in speed for high-spin, high-loft clubs (fast shots balloon and fall short),
   // so search only the rising branch: below the speed that gives maximum carry.

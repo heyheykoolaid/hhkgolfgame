@@ -2,6 +2,7 @@
 // horses, a striped big top, and three game stalls, with bunting between them. The shapes are turned (lathe) and
 // swept where a real one would be rounded, canvas is painted in stripes, and the lit parts glow in the evening light.
 import * as THREE from 'three';
+import { rustyRocket } from '../world/rocket';
 import { M, box, cyl, textTex } from './world';
 
 const V2 = (x: number, y: number) => new THREE.Vector2(x, y);
@@ -525,6 +526,8 @@ const balloon = (i: number) => {
 };
 
 // ---------------------------------------------------------------- putting it in the park
+/** Where the Rusty Rocket stands (its door faces west). */
+export const ROCKET: [number, number] = [118, 22];
 export function buildFairground(G: THREE.Group, col: (x0: number, x1: number, z0: number, z1: number) => void) {
   const wheel = bigWheel();
   wheel.root.position.set(160, 0, 5); // east of the grandstands, facing town across the whole park
@@ -576,6 +579,16 @@ export function buildFairground(G: THREE.Group, col: (x0: number, x1: number, z0
   B(2, 3);
   B(3, 4);
   B(4, 5);
+  // the Rusty Rocket, behind the big top: climb in and it takes your group to the Moon course (lobby.ts 'rocket')
+  const rocket = rustyRocket(false);
+  rocket.position.set(ROCKET[0], 0, ROCKET[1]);
+  rocket.rotation.y = -Math.PI / 2; // door and ladder face the park (west)
+  G.add(rocket);
+  const rs = signBoard('RUSTY ROCKET', 3.4, 0.85, NAVY, GOLD);
+  rs.position.set(ROCKET[0] - 1.72, 5.6, ROCKET[1]);
+  rs.rotation.y = -Math.PI / 2;
+  G.add(rs);
+  col(ROCKET[0] - 2.3, ROCKET[0] + 2.3, ROCKET[1] - 2.3, ROCKET[1] + 2.3);
   return {
     update(t: number) {
       wheel.update(t);

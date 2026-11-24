@@ -6,7 +6,7 @@ import { accountHTML, wireAccount } from './signup';
 export const opts = {
   /** volumes, 0–1 */
   master: 0.8,
-  ambience: 0.7,
+  ambience: 0.3,
   effects: 1,
   /** the cart radio: your own and everyone's */
   radio: 0.8,

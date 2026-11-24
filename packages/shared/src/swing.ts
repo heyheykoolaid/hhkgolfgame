@@ -199,9 +199,13 @@ export interface ShotState {
   ball: BallLie;
   wind: { x: number; z: number };
   golfer?: Golfer;
+  /** when the ball is struck, in shared-clock seconds: places the moon buggies (no clock = no buggies) */
+  t0?: number;
 }
-export type ShotEvent = { t: number; type: 'land' | 'tree' | 'lip' | 'water' | 'ob' | 'holed' | 'rest' };
+export type ShotEvent = { t: number; type: 'land' | 'tree' | 'lip' | 'water' | 'ob' | 'holed' | 'rest' | 'buggy' };
 export interface ShotResult {
+  /** the strike time the moon buggies were placed by (from ShotState.t0) */
+  t0?: number;
   input: ShotInput;
   club: string;
   lie: string;
@@ -281,8 +285,8 @@ export function simulateShot(state: ShotState, rawInput: ShotInput, seed: number
     outcome: ShotResult['outcome'] = 'rest',
     carry = 0;
   for (let i = 1; i < 45 / DT; i++) {
-    const ev: string | null = stepBall(b, DT, { wind: state.wind, trees: true });
     t = i * DT;
+    const ev: string | null = stepBall(b, DT, { wind: state.wind, trees: true, t: state.t0 == null ? null : state.t0 + t });
     if (i % 8 === 0) frames.push([+t.toFixed(3), +b.x.toFixed(3), +b.y.toFixed(3), +b.z.toFixed(3)]);
     if (!ev) continue;
     events.push({ t: +t.toFixed(3), type: ev as any });
@@ -303,6 +307,7 @@ export function simulateShot(state: ShotState, rawInput: ShotInput, seed: number
     end = { ...state.ball };
   } else if (outcome === 'holed') end = { x: COURSE.pin.x, z: COURSE.pin.z, teed: false };
   return {
+    t0: state.t0,
     input,
     club: club.name,
     lie,

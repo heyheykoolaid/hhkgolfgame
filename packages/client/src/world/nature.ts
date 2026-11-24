@@ -239,6 +239,7 @@ export function terrainMaterial() {
     uPond: { value: new THREE.Vector4(p?.x ?? 1e5, p?.z ?? 1e5, p?.rx ?? 1, p?.rz ?? 1) },
     uWaterY: { value: WATER_Y },
     uCup: { value: new THREE.Vector3(COURSE.pin.x, COURSE.pin.z, CUP_HOLE_R) }, // the hole is really cut out of the green
+    uMoon: { value: COURSE.locale === 'moon' ? 1 : 0 },
   };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
@@ -249,7 +250,7 @@ export function terrainMaterial() {
       .replace(
         '#include <common>',
         `#include <common>
-uniform sampler2D tGrass, tSand, tDirt, tNoise; uniform vec3 uBunk[${MAXB}]; uniform vec4 uGreen, uPond; uniform float uWaterY, uGreenA, uPondA; uniform vec3 uCup;
+uniform sampler2D tGrass, tSand, tDirt, tNoise; uniform vec3 uBunk[${MAXB}]; uniform vec4 uGreen, uPond; uniform float uWaterY, uGreenA, uPondA, uMoon; uniform vec3 uCup;
 float ghGE = 9.0;
 vec2 ghRot(vec2 d, float a) { float c = cos(a), s = sin(a); return vec2(d.x * c - d.y * s, d.x * s + d.y * c); }
 varying float vDirt; varying vec3 vWP;`,
@@ -267,11 +268,12 @@ varying float vDirt; varying vec3 vWP;`,
   col = mix(col, col * vec3(1.18, 1.08, 0.82), smoothstep(0.56, 0.68, mac2) * 0.5);
   // dirt (cart path, hardpan)
   vec3 dirtC = (texture2D(tDirt, w * 0.22).rgb * 0.55 + texture2D(tDirt, mat2(0.8, -0.6, 0.6, 0.8) * w * 0.057 + 0.37).rgb * 0.45) * (0.9 + mac * 0.2);
+  dirtC = mix(dirtC, vec3(dot(dirtC, vec3(0.33))) * vec3(0.95, 0.92, 0.88), uMoon * 0.85);   // grey tracks on the Moon
   col = mix(col, dirtC, smoothstep(0.25, 0.75, vDirt));
   // fringe + green: per-pixel ellipse, fine double-cut pattern on the green
   vec2 gq = ghRot(w - uGreen.xy, uGreenA) / uGreen.zw; float ge = dot(gq, gq); ghGE = ge;
   float gW = 1.0 - smoothstep(0.975, 1.02, ge), fW = (1.0 - smoothstep(1.26, 1.32, ge)) - gW;
-  vec3 fringeC = vec3(0.30, 0.40, 0.15) * (0.7 + det * 0.6);
+  vec3 fringeC = mix(vec3(0.30, 0.40, 0.15), vec3(0.42, 0.41, 0.39), uMoon) * (0.7 + det * 0.6);   // (the Moon: a dust apron round the pad)
   float cut = step(0.5, fract((w.x + w.y) * 0.18)) * 0.06 - step(0.5, fract((w.x - w.y) * 0.18)) * 0.04;
   vec3 greenC = vec3(0.36, 0.50, 0.19) * (0.86 + cut + texture2D(tGrass, w * 1.3).r * 0.22) * (0.95 + mac * 0.1);
   col = mix(col, fringeC, clamp(fW, 0.0, 1.0)); col = mix(col, greenC, gW);
@@ -281,6 +283,7 @@ varying float vDirt; varying vec3 vWP;`,
     sW = max(sW, 1.0 - smoothstep(b.z - 0.08, b.z + 0.06, d)); lip = max(lip, (1.0 - smoothstep(b.z, b.z + 0.9, d)) * step(b.z, d));
     rim = max(rim, smoothstep(b.z - 1.2, b.z, d) * step(d, b.z)); }
   vec3 sandC = (texture2D(tSand, w * 0.3).rgb * 0.55 + texture2D(tSand, mat2(0.8, -0.6, 0.6, 0.8) * w * 0.071 + 0.37).rgb * 0.45) * (0.93 + mac * 0.14) * (1.0 - rim * 0.28);
+  sandC = mix(sandC, vec3(dot(sandC, vec3(0.33))) * vec3(0.92, 0.9, 0.86), uMoon * 0.85);   // grey crater sand on the Moon
   col = mix(col * (1.0 - lip * 0.25), sandC, sW);
   // wet, darker banks right at the waterline
   vec2 pq = ghRot(w - uPond.xy, uPondA) / uPond.zw; float pd = dot(pq, pq);
@@ -688,7 +691,7 @@ export function palmModel(h = 9) {
 }
 
 /** Boulder Peak's granite: boulders strewn through the rough and the out-of-bounds, clear of the fairway and green. */
-export function buildBoulders(group: THREE.Object3D) {
+export function buildBoulders(group: THREE.Object3D, look: 'granite' | 'moon' = 'granite') {
   const r = rng((COURSE.seed || 7) * 31 + 5),
     B = COURSE.bounds,
     mat = new THREE.MeshStandardMaterial({ color: '#8f8a82', roughness: 0.95, flatShading: true }),
@@ -717,6 +720,7 @@ export function buildBoulders(group: THREE.Object3D) {
     if (k.s === 'rough' && k.d < fairwayHW(k.along) + 9) continue; // well off the short grass
     if (Math.hypot(x, z) < 22 || Math.hypot(x - COURSE.pin.x, z - COURSE.pin.z) < 26) continue;
     if (TREES.some(t => Math.hypot(t.x - x, t.z - z) < 3)) continue;
+    if (COURSE.craters?.some(k => Math.hypot(k.x - x, k.z - z) < k.r * 1.3)) continue;
     const s = 0.5 + r() * r() * 2.6;
     spots[n % 3].push({ x, y: heightAt(x, z) - s * 0.22, z, s, a: r() * 6.28 });
     n++;
@@ -743,7 +747,7 @@ export function buildBoulders(group: THREE.Object3D) {
     im.castShadow = im.receiveShadow = true;
     list.forEach((b, i) => {
       im.setMatrixAt(i, m4.compose(new THREE.Vector3(b.x, b.y, b.z), q.setFromAxisAngle(up, b.a), new THREE.Vector3(b.s, b.s * 0.85, b.s)));
-      im.setColorAt(i, c.setHSL(0.08, 0.04, 0.78 + (b.a % 1) * 0.2));
+      im.setColorAt(i, look === 'moon' ? c.setHSL(0.1, 0.03, 0.5 + (b.a % 1) * 0.18) : c.setHSL(0.08, 0.04, 0.78 + (b.a % 1) * 0.2));
     });
     group.add(im);
   });

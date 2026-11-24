@@ -893,7 +893,7 @@ export function useHole(seed: number, locale = 'hills') {
     return HOLE1;
   }
   const h = generateHole(seed);
-  return locale === 'peak' ? peakHole(h, seed) : h;
+  return locale === 'peak' ? peakHole(h, seed) : locale === 'moon' ? moonHole(h, seed) : h;
 }
 
 // ---------------------------------------------------------------- Boulder Peak
@@ -1018,6 +1018,116 @@ export function peakHole(base: HoleDef, seed: number): HoleDef {
   }
   setHole(d);
   // the pin stays where the generator put it, as long as it's still a fair spot on the reshaped ground
+  if (classify(d.pin.x, d.pin.z).s !== 'green') d.pin = { x: d.green.x, z: d.green.z };
+  return d;
+}
+
+// ---------------------------------------------------------------- the Moon
+// The same hole, flown to the Moon through the Rusty Rocket at Fun Land. The layout (and its checked landing zones)
+// is kept; the rules change:
+//   · gravity in flight is 0.4 of Earth's: the swing still gives the club's carry (the ball leaves slower), but it
+//     hangs in the sky about 1.6 times as long, so the wind has far longer to move it
+//   · the grey dust stops a ball dead: land it on the green (a smooth landing pad) or near the pin
+//   · bunkers sit in craters with a raised rim, and more craters dot the rough
+//   · a few moon rocks, and one or two moon buggies driving back and forth across the hole
+// No water, no trees. Rolling keeps Earth's friction and slopes (arcade, so putting feels the same everywhere).
+const MOON_NAMES = [
+  'Tranquility Base',
+  'Sea of Serenity',
+  'Dust Bowl',
+  'Far Side',
+  'Crater Lake (Dry)',
+  'Moonwalk',
+  'Low Orbit',
+  'Splashdown',
+  'One Small Step',
+  'Earthrise',
+  'The Rusty Rocket',
+  'Lunar Rover',
+  'Copernicus',
+  'Ocean of Storms',
+  'Houston',
+  'Liftoff',
+  'Zero Roll',
+  'Hang Time',
+  'Moon Pie',
+  'Cheese Wedge',
+];
+export function moonHole(base: HoleDef, seed: number): HoleDef {
+  const d: HoleDef = JSON.parse(JSON.stringify(base)),
+    r = mulberry32((seed ^ 0x6d2b79f5) >>> 0),
+    U = (a: number, b: number) => a + r() * (b - a);
+  d.locale = 'moon';
+  d.name = MOON_NAMES[Math.floor(r() * MOON_NAMES.length)];
+  d.grav = 0.4;
+  d.gust = 1.4; // with the long hang time: the wind pushes a ball about twice as far as at Golden Hills
+  d.pond = null;
+  d.trees = { ...d.trees, count: 0, density: 0, clusters: [] };
+  d.terrain.amp *= 0.7;
+  if (d.plan) d.plan.tip = 'Low gravity, no roll: the ball floats and the wind carries it. Land it on the green.';
+  // the generator's bunkers become craters with sand floors
+  d.craters = d.bunkers.map(b => ({ x: b.x, z: b.z, r: +(b.r * 1.15).toFixed(1), dep: 0.35, rim: 0.55 }));
+  d.rocks = [];
+  setHole(d); // the helpers below measure this hole
+  const at = (along: number) => {
+    const i = Math.max(0, Math.min(CENTER_PTS.length - 2, Math.round(along))),
+      p = CENTER_PTS[i],
+      q = CENTER_PTS[i + 1],
+      L = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    return { x: p.x, z: p.z, tx: (q.x - p.x) / L, tz: (q.z - p.z) / L };
+  };
+  const clear = (x: number, z: number, rr: number) =>
+    greenEd(x, z) > 3 &&
+    Math.hypot(x, z) > 30 &&
+    !d.bunkers.some(b => Math.hypot(b.x - x, b.z - z) < b.r + rr + 3) &&
+    !d.craters!.some(k => Math.hypot(k.x - x, k.z - z) < k.r + rr + 4) &&
+    !d.rocks!.some(k => Math.hypot(k.x - x, k.z - z) < k.r + rr + 5);
+  // dust craters in the rough, where a miss lands
+  for (let tries = 0, n = 5 + Math.floor(r() * 4); tries < 300 && d.craters.length < d.bunkers.length + n; tries++) {
+    const along = U(50, HOLE_LEN - 30),
+      c = at(along),
+      side = r() < 0.5 ? -1 : 1,
+      rr = U(3, 7),
+      off = fairwayHW(along) + rr * 1.6 + U(1, 14),
+      x = c.x - c.tz * off * side,
+      z = c.z + c.tx * off * side;
+    if (classify(x, z).s !== 'rough' || !clear(x, z, rr * 1.6)) continue;
+    d.craters.push({ x: +x.toFixed(1), z: +z.toFixed(1), r: +rr.toFixed(1), dep: +U(0.6, 1.2).toFixed(2), rim: +U(0.4, 0.8).toFixed(2) });
+  }
+  // a few moon rocks (they kick a ball away hard, like Boulder Peak's granite)
+  for (let tries = 0; tries < 200 && d.rocks.length < 2 + Math.floor(r() * 3); tries++) {
+    const along = U(70, HOLE_LEN - 45),
+      c = at(along),
+      side = r() < 0.5 ? -1 : 1,
+      rr = U(2.2, 3.8),
+      off = fairwayHW(along) + rr + U(2, 10),
+      x = c.x - c.tz * off * side,
+      z = c.z + c.tx * off * side;
+    if (classify(x, z).s !== 'rough' || !clear(x, z, rr)) continue;
+    d.rocks.push({ x: +x.toFixed(1), z: +z.toFixed(1), r: +rr.toFixed(1) });
+  }
+  // moon buggies: each crosses the hole on its own line, well clear of the tee and the green
+  d.buggies = [];
+  const nb = HOLE_LEN > 260 ? 2 : HOLE_LEN > 120 ? 1 + (r() < 0.5 ? 1 : 0) : 1;
+  for (let i = 0, tries = 0; i < nb && tries < 40; tries++) {
+    const lo = 60,
+      hi = HOLE_LEN - 45;
+    if (hi <= lo) break;
+    const along = U(lo, hi);
+    if (d.buggies.some(b => Math.abs((b as any)._a - along) < 50)) continue;
+    const c = at(along),
+      half = Math.min(d.obDist - 6, 42),
+      g: any = { x: +c.x.toFixed(1), z: +c.z.toFixed(1), tx: +(-c.tz).toFixed(4), tz: +c.tx.toFixed(4), half, v: +U(3.5, 5).toFixed(2), ph: +U(0, 4 * half).toFixed(1) };
+    // never through the green
+    let ok = true;
+    for (let u = -half; u <= half; u += 2) if (greenEd(g.x + g.tx * u, g.z + g.tz * u) < 4) ok = false;
+    if (!ok) continue;
+    g._a = along;
+    d.buggies.push(g);
+    i++;
+  }
+  for (const b of d.buggies) delete (b as any)._a;
+  setHole(d);
   if (classify(d.pin.x, d.pin.z).s !== 'green') d.pin = { x: d.green.x, z: d.green.z };
   return d;
 }

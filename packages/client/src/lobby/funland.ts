@@ -8,7 +8,7 @@ import { kartModel } from '../vehicles/vehicles';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { M, box, cyl, textTex, photoM, tile, FUN, BOUND, type Collider } from './world';
-import { buildFairground } from './fairground';
+import { buildFairground, ROCKET } from './fairground';
 
 // ---------------------------------------------------------------- the plan (world metres; +x is east, away from town)
 // world.ts imports this file (for funSurface), so nothing at the top level here may read a value from world.ts.
@@ -909,6 +909,7 @@ export function buildFunLand(scene: THREE.Scene, colliders: Collider[]) {
         label: 'Hit a bucket of balls',
       })),
       { id: 'fun:burger', x: JOINT.x0 - 1.2, z: 0, r: 2.2, label: 'Birdie Burger', say: 'Birdie Burger is closed. Back soon.' },
+      { id: 'rocket', x: ROCKET[0] - 3.6, z: ROCKET[1], r: 2.4, label: 'Climb into the Rusty Rocket · golf on the Moon' },
     ] as { id: string; x: number; z: number; r: number; label: string; say?: string }[],
     /** The people in the booth windows: where they stand, which way they face, and what they wear. */
     attendants: [

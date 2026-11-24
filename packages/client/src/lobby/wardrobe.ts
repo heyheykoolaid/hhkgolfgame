@@ -80,8 +80,19 @@ export function createWardrobe(host: WardrobeHost) {
   };
   /** The wardrobe camera stands in front of the golfer. At the shop: step up to the mirror, back to the shop, facing out.
    *  Anywhere else: face whichever way leaves the camera a clear view (not inside a wall). */
+  /** Ink Spot's "take clothes off": what you had on, put back before paying or leaving (null = dressed) */
+  let dressed: Record<string, unknown> | null = null;
+  const CLOTHES = ['top', 'jacket', 'pantsStyle', 'shoeStyle', 'capStyle', 'glasses', 'sleeves', 'socks'] as const;
+  /** the look with your clothes on, whatever the preview shows */
+  const withClothes = (o: Outfit) => (dressed ? sanitizeLook({ ...o, ...dressed } as Outfit) : o);
+  function redress() {
+    if (!dressed) return;
+    host.setLook(withClothes(host.look()));
+    dressed = null;
+  }
   async function openWardrobe(where: Shop = 'clothes') {
     shop = where;
+    dressed = null;
     if (where !== 'mirror')
       P.yaw = Math.PI; // back to the shopfront, facing the camera out on the car park
     else {
@@ -111,16 +122,18 @@ export function createWardrobe(host: WardrobeHost) {
   }
   /** Done: pay for anything in the look you don't own yet (once; it's then in your closet for good), and keep it on. */
   async function checkout() {
-    const need = unowned(host.look()),
+    const need = unowned(withClothes(host.look())),
       cost = need.reduce((a, k) => a + priceOf(k), 0);
     if (cost > progress().cash) {
       host.toast(`That comes to ${money(cost)} and you have ${money(progress().cash)}.`);
       return;
     }
     if (need.length) await addToCloset(need, cost);
+    redress();
     closeWardrobe(true);
   }
   function closeWardrobe(save: boolean) {
+    redress();
     $('lward').classList.add('hidden');
     document.body.classList.remove('warding');
     P.mode = 'walk';
@@ -359,7 +372,7 @@ export function createWardrobe(host: WardrobeHost) {
           pr = priceOf(key);
         return pr && !own.has(key) ? ` <i class="pr">${money(pr)}</i>` : '';
       },
-      need = unowned(look),
+      need = unowned(withClothes(look)),
       cost = need.reduce((a, k) => a + priceOf(k), 0);
     // the tattoo parlour: pick where it goes first, then choose from the designs for that one place
     const parts = shop === 'tattoo' ? (T.rows(look).filter(r => 'tats' in r) as { k: keyof Outfit; label: string }[]) : [];
@@ -396,7 +409,7 @@ export function createWardrobe(host: WardrobeHost) {
     $('lward').innerHTML = `<div class="panel"><h2>${SHOP[shop][0]}</h2><p class="muted">${SHOP[shop][1]} Cash <b>${money(progress().cash)}</b></p>
       <div class="tabs">${tabs.length > 1 ? tabs.map(t => `<button class="tab${t.id === tab ? ' on' : ''}" data-tab="${t.id}">${t.label}</button>`).join('') : ''}</div>
       ${note ? `<p class="muted note">${note}</p>` : ''}${partBar}${rows}
-      <div class="btns"><button id="w-turn">Turn ⟳</button><button id="w-cancel">Cancel</button><button id="w-done" class="primary">${cost ? `Buy and wear · ${money(cost)}` : 'Done'}</button></div></div>`;
+      <div class="btns">${shop === 'tattoo' ? `<button id="w-strip">${dressed ? 'Clothes back on' : 'Take clothes off'}</button>` : ''}<button id="w-turn">Turn ⟳</button><button id="w-cancel">Cancel</button><button id="w-done" class="primary">${cost ? `Buy and wear · ${money(cost)}` : 'Done'}</button></div></div>`;
     const set = (patch: Partial<Outfit>) => {
       host.setLook(sanitizeLook({ ...host.look(), ...patch }));
       renderWardrobe();
@@ -440,6 +453,21 @@ export function createWardrobe(host: WardrobeHost) {
     el.querySelectorAll<HTMLButtonElement>('button[data-flag]').forEach(
       b => (b.onclick = () => set({ [b.dataset.flag!]: !(host.look() as any)[b.dataset.flag!] } as any)),
     );
+    const strip = document.getElementById('w-strip');
+    if (strip)
+      strip.onclick = () => {
+        if (dressed) redress();
+        else {
+          // down to shorts and bare feet so every tattoo shows (the female bodies keep a tee: the wardrobe never takes theirs off)
+          const o = host.look() as any,
+            fem = o.body === 'female' || o.body === 'fmuscle',
+            off: Record<string, unknown> = { top: fem ? 'tee' : 'none', jacket: 'none', pantsStyle: 'shorts', shoeStyle: 'bare', capStyle: 'none', glasses: 'none' };
+          dressed = {};
+          for (const k of CLOTHES) if (k in o) dressed[k] = o[k];
+          host.setLook(sanitizeLook({ ...o, ...Object.fromEntries(Object.entries(off).filter(([k]) => k in o || k === 'top')) }));
+        }
+        renderWardrobe();
+      };
     $('w-turn').onclick = () => {
       P.yaw += Math.PI / 2;
     }; // turn the golfer, not the camera (which could end up inside the shop)

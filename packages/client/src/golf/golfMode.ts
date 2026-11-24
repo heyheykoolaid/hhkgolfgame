@@ -62,6 +62,7 @@ import { TrophyView } from '../world/trophy';
 import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
 import { vehicleKind, cleanKind, DRIVE_FX, type Vehicle } from '../vehicles/vehicles';
 import { Grass, type GrassKind } from '../world/grass';
+import { buildBuggies } from '../world/buggies';
 import { stepLength } from '../characters/golfer';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -178,13 +179,14 @@ export function createGolf(env: GolfEnv) {
   buildDressing(scene);
   // real grass near the camera, by surface (the turf texture takes over further out)
   const GRASS_OF: Record<string, GrassKind> = { rough: 'rough', heavy: 'heavy', ob: 'heavy', fringe: 'fringe', fairway: 'fairway', tee: 'tee' };
-  const grass = new Grass({ kind: (x, z) => GRASS_OF[classify(x, z).s] ?? null, height: heightAt });
+  const grass = new Grass({ kind: (x, z) => (locale.id === 'moon' ? null : (GRASS_OF[classify(x, z).s] ?? null)), height: heightAt });
   // birds on the fairway ahead and by the green; they take off when someone walks or drives at them (world/critters.ts)
   const scarers: Scarer[] = [],
     critters = createCritters(scene, {
       ground: heightAt,
-      open: (x, z) => ['fairway', 'rough', 'fringe', 'tee'].includes(classify(x, z).s),
+      open: (x, z) => locale.id !== 'moon' && ['fairway', 'rough', 'fringe', 'tee'].includes(classify(x, z).s),
       get birdSpots() {
+        if (locale.id === 'moon') return []; // (no birds on the Moon)
         const b = myBall(),
           p = COURSE.pin,
           d = Math.hypot(p.x - b.x, p.z - b.z) || 1,
@@ -220,6 +222,11 @@ export function createGolf(env: GolfEnv) {
     });
   }
   let holeLoc = '';
+  let buggies: ReturnType<typeof buildBuggies> | null = null,
+    /** how far behind the wall clock the buggies are drawn: a shot's flight is played from when the club meets the
+     *  ball, a little after the moment it was simulated for, so while it plays the buggies are drawn at its time */
+    bugLag = 0,
+    bugLagTo = 0;
   function loadHole(seed: number) {
     useHole(seed, locale.id); // always: the lobby's tee board may have previewed another hole since
     if (seed === holeSeed && holeLoc === locale.id && holeGroup) return;
@@ -238,6 +245,7 @@ export function createGolf(env: GolfEnv) {
     buildVegetation(g);
     buildFence(g);
     buildFlag(g);
+    buggies = locale.id === 'moon' ? buildBuggies(g) : null;
     buildSlopeField();
     minimap.setHole();
     $('h-num').textContent = COURSE.number ? String(COURSE.number) : 'R';
@@ -1170,6 +1178,7 @@ export function createGolf(env: GolfEnv) {
     a.cup = null;
     a.pending = null;
     a.t0 = nowS;
+    if (res.t0 != null) bugLagTo = Math.max(0, Math.min(5, Date.now() / 1000 - res.t0));
     a.tImp = 0;
     a.hitStop = putt ? 0 : 0.035 + 0.035 * pw;
     const f0 = res.frames[0],
@@ -1183,7 +1192,7 @@ export function createGolf(env: GolfEnv) {
         bursts.emit(
           at,
           dir,
-          res.lie === 'hardpan' || res.lie === 'path' ? ['#b39a72', '#8f7a58'] : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
+          locale.id === 'moon' ? ['#a9a69f', '#8c8983', '#c4c0b8'] : res.lie === 'hardpan' || res.lie === 'path' ? ['#b39a72', '#8f7a58'] : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
           Math.round(8 + 20 * pw + 14 * res.impact.q),
           3 + 4 * pw,
           3.4,
@@ -1200,7 +1209,7 @@ export function createGolf(env: GolfEnv) {
   }
   let teeOff = false;
   let lastStrike: { grade: 'perfect' | 'good' | 'miss'; late: boolean } | null = null;
-  const EVENT_TOAST: Record<string, string> = { holed: 'IN THE HOLE!', water: 'Splash! +1', ob: 'Out of bounds +1', tree: 'Timber!' };
+  const EVENT_TOAST: Record<string, string> = { holed: 'IN THE HOLE!', water: 'Splash! +1', ob: 'Out of bounds +1', tree: 'Timber!', buggy: 'Bonk! Moon buggy' };
   /** Holed out (or picked up): Birdie Dollars for birdies and better. */
   function finishHole() {
     const me = net.me();
@@ -1261,6 +1270,7 @@ export function createGolf(env: GolfEnv) {
           if (ev.t <= nowS - a.t0 && !(ev as any)._shown) {
             (ev as any)._shown = 1;
             if (ev.type === 'land') sfx.land(id === net.sessionId ? 0.5 : 0.2);
+            if (ev.type === 'buggy') sfx.bonk(id === net.sessionId ? 0.5 : 0.25);
             if (id === net.sessionId && EVENT_TOAST[ev.type]) toast(EVENT_TOAST[ev.type]);
           }
         if (id === net.sessionId) tracer.add(a.ballPos);
@@ -1616,7 +1626,7 @@ export function createGolf(env: GolfEnv) {
     light.sun.castShadow = opts.shadows;
     ambience.update(dt, {
       carts: [...remoteCarts.values()].map(c => ({ pos: c.root.position, speed: c.speed() })),
-      zone: 'course',
+      zone: locale.id === 'moon' ? 'moon' : 'course',
       cam: camera,
       cart:
         S.phase === 'drive' && roam.cart
@@ -1630,6 +1640,13 @@ export function createGolf(env: GolfEnv) {
     });
     pw?.step(dt);
     bursts.update(dt, heightAt);
+    if (buggies) {
+      // catch up quickly when a shot starts; drift back to the wall clock slowly once nothing is in flight
+      if (![...avatars.values()].some(a => a.play?.result.t0 != null)) bugLagTo = 0;
+      const k = bugLagTo > bugLag ? 6 : 0.4;
+      bugLag += Math.sign(bugLagTo - bugLag) * Math.min(Math.abs(bugLagTo - bugLag), k * dt);
+      buggies.update(dt, Date.now() / 1000 - bugLag);
+    }
     const me = net.me();
     if (me && S.phase === 'aim' && !me.busy) {
       autoSetup();
@@ -2215,6 +2232,9 @@ export function createGolf(env: GolfEnv) {
       dev,
       look(v: number[] | null) {
         devCam = v;
+      },
+      get course() {
+        return COURSE;
       },
       /** Dev: roll a ball at the hole from `from` metres at `speed` and trace the drop (x, y, z every 50 ms). */
       cupTest(from = 0.2, speed = 1.2, off = 0.01) {

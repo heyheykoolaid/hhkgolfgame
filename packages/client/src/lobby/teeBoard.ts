@@ -42,6 +42,87 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 
 import { LOCALES, withLocale, type LocaleId } from '../world/locale';
 
+/** The Moon's postcard: black sky and stars, the Earth, grey dunes with a crater, a buggy, and the flag on its pad. */
+function moonPic(c: HTMLCanvasElement, x: CanvasRenderingContext2D) {
+  x.fillStyle = '#07080d';
+  x.fillRect(0, 0, 320, 180);
+  let sd = 77;
+  const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 160; i++) {
+    x.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.7})`;
+    x.fillRect(r() * 320, r() * 120, r() < 0.15 ? 2 : 1, r() < 0.15 ? 2 : 1);
+  }
+  // the Earth, lit from the left (where the low sun is)
+  x.fillStyle = '#1f4f8f';
+  x.beginPath();
+  x.arc(226, 52, 24, 0, 7);
+  x.fill();
+  x.fillStyle = '#4f7a3a';
+  for (const [ex, ey, ew, eh] of [
+    [218, 44, 9, 6],
+    [232, 58, 7, 9],
+    [212, 62, 6, 4],
+  ]) {
+    x.beginPath();
+    x.ellipse(ex, ey, ew, eh, 0.4, 0, 7);
+    x.fill();
+  }
+  x.fillStyle = 'rgba(7,8,13,0.78)';
+  x.beginPath();
+  x.arc(236, 52, 24, -Math.PI / 2, Math.PI / 2);
+  x.ellipse(236, 52, 12, 24, 0, Math.PI / 2, -Math.PI / 2, true);
+  x.fill();
+  // grey ground, lit gold from the low sun
+  const gr = x.createLinearGradient(0, 110, 0, 180);
+  gr.addColorStop(0, '#a49d90');
+  gr.addColorStop(1, '#6e6a63');
+  x.fillStyle = gr;
+  x.beginPath();
+  x.moveTo(0, 124);
+  x.bezierCurveTo(70, 108, 170, 130, 320, 114);
+  x.lineTo(320, 180);
+  x.lineTo(0, 180);
+  x.fill();
+  // a crater with a lit rim
+  x.fillStyle = '#5d5952';
+  x.beginPath();
+  x.ellipse(84, 156, 34, 9, 0, 0, 7);
+  x.fill();
+  x.strokeStyle = '#c9bea8';
+  x.lineWidth = 2;
+  x.beginPath();
+  x.ellipse(84, 155, 36, 10, 0, Math.PI, 2 * Math.PI);
+  x.stroke();
+  // the green: a landing pad, with the flag
+  x.fillStyle = '#86a24c';
+  x.beginPath();
+  x.ellipse(196, 132, 30, 6, 0, 0, 7);
+  x.fill();
+  x.fillStyle = '#f1eee6';
+  x.fillRect(196, 104, 1.6, 28);
+  x.fillStyle = '#e2574c';
+  x.beginPath();
+  x.moveTo(198, 104);
+  x.lineTo(211, 108);
+  x.lineTo(198, 112);
+  x.fill();
+  // a moon buggy
+  x.fillStyle = '#c8582e';
+  x.fillRect(250, 146, 30, 6);
+  x.fillStyle = '#d8a23a';
+  x.fillRect(252, 140, 10, 6);
+  x.fillStyle = '#2b2b2d';
+  for (const wx of [255, 276]) {
+    x.beginPath();
+    x.arc(wx, 154, 4.5, 0, 7);
+    x.fill();
+  }
+  x.fillStyle = '#eceff1';
+  x.beginPath();
+  x.arc(270, 140, 4, 0, 7);
+  x.fill();
+  return c.toDataURL('image/jpeg', 0.85);
+}
 /** A small painted postcard of each course, for the tee board's cards. */
 const pics = new Map<string, string>();
 function localePic(id: LocaleId) {
@@ -53,6 +134,10 @@ function localePic(id: LocaleId) {
   const x = c.getContext('2d')!,
     sky = x.createLinearGradient(0, 0, 0, 120),
     peak = id === 'peak';
+  if (id === 'moon') {
+    pics.set(id, (u = moonPic(c, x)));
+    return u;
+  }
   sky.addColorStop(0, peak ? '#8fb0c8' : '#c9a98c');
   sky.addColorStop(1, peak ? '#f2d7b0' : '#f6cf8e');
   x.fillStyle = sky;
@@ -269,7 +354,7 @@ export function createTeeBoard(host: TeeHost) {
     if (c.length < 5) return '';
     const h = useHole(codeSeed(c) || 1, teeLoc);
     const kind = h.plan?.kind ? ' · ' + h.plan.kind[0].toUpperCase() + h.plan.kind.slice(1) : '';
-    return `${h.name} · par ${h.par}${kind} · ${Math.round(HOLE_LEN * 1.0936)} yd${h.pond ? (teeLoc === 'peak' ? ' · ravine' : ' · water') : ''}`;
+    return `${h.name} · par ${h.par}${kind} · ${Math.round(HOLE_LEN * 1.0936)} yd${h.pond ? (teeLoc === 'peak' ? ' · ravine' : ' · water') : ''}${h.buggies?.length ? ' · moon buggies' : ''}`;
   }
   /** The match id for the chosen hole (the hole travels inside the id, so everyone in the group gets the same one). */
   function teeMatchId() {
@@ -289,7 +374,12 @@ export function createTeeBoard(host: TeeHost) {
     for (const r of host.peers()) if (r.q && !r.away) q.push({ uid: r.by, at: r.q, name: host.nameOf(r.by), me: false, color: colorFor(r.by) });
     return q.sort((a, b) => a.at - b.at || (a.uid < b.uid ? -1 : 1));
   };
-  function openTee() {
+  /** Open the tee times; `loc` picks the course first (the Rusty Rocket at Fun Land opens it on the Moon). */
+  function openTee(loc?: LocaleId) {
+    if (typeof loc === 'string' && LOCALES.some(l => l.id === loc)) {
+      teeLoc = loc;
+      homeOn = false;
+    }
     teeOpen = true;
     teeHTML = '';
     host.openModal('Tee times', '<div id="tee-body"></div>');
@@ -314,7 +404,7 @@ export function createTeeBoard(host: TeeHost) {
     // 1 · where: a picture card per course
     // 1 · where: a picture card per course of ours, and one for playing a real course's card
     const sel = homeOn ? 'real' : teeLoc,
-      where = `<h3 style="margin-top:0">Course</h3><div class="tlocs three">${LOCALES.map(
+      where = `<h3 style="margin-top:0">Course</h3><div class="tlocs">${LOCALES.map(
         l =>
           `<button class="tloc${sel === l.id ? ' on' : ''}" data-loc="${l.id}"><img src="${localePic(l.id)}" alt=""><b>${l.name}</b><small>${l.blurb}</small></button>`,
       ).join(

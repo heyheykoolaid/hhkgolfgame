@@ -46,6 +46,8 @@ interface ShotRef {
   input: ShotInput;
   from: { x: number; z: number; teed: boolean };
   h?: number;
+  /** when it was struck, shared-clock seconds (places the moon buggies) */
+  t0?: number;
 }
 interface Pres {
   v: 1;
@@ -229,7 +231,11 @@ export class ArtifactNet implements GameNet {
             // only shots on the hole I'm playing
             try {
               const result = simulateShot(
-                { ball: { x: num(s.from?.x, -450, 450), z: num(s.from?.z, -150, 750), teed: !!s.from?.teed }, wind: this.wind() },
+                {
+                  ball: { x: num(s.from?.x, -450, 450), z: num(s.from?.z, -150, 750), teed: !!s.from?.teed },
+                  wind: this.wind(),
+                  t0: typeof s.t0 === 'number' && isFinite(s.t0) ? s.t0 : undefined,
+                },
                 s.input,
                 s.seed >>> 0,
               );
@@ -262,8 +268,10 @@ export class ArtifactNet implements GameNet {
       return;
     }
     const from = { x: p.ballX, z: p.ballZ, teed: p.teed },
-      seed = (Math.random() * 2 ** 31) >>> 0;
-    const result = simulateShot({ ball: from, wind: this.wind() }, input, seed);
+      seed = (Math.random() * 2 ** 31) >>> 0,
+      // the moon buggies run on the wall clock: everyone who replays this shot puts them where the shooter's computer did
+      t0 = COURSE.buggies?.length ? +(Date.now() / 1000).toFixed(2) : undefined;
+    const result = simulateShot({ ball: from, wind: this.wind(), t0 }, input, seed);
     p.strokes += 1 + result.penalty;
     p.ballX = result.end.x;
     p.ballZ = result.end.z;
@@ -281,7 +289,7 @@ export class ArtifactNet implements GameNet {
       },
       Math.min(30000, (result.frames[result.frames.length - 1][0] + 0.8) * 1000),
     ) as any;
-    this.myShot = { k: (this.myShot?.k || 0) + 1, seed, input: result.input, from, h: p.h || 0 };
+    this.myShot = { k: (this.myShot?.k || 0) + 1, seed, input: result.input, from, h: p.h || 0, t0 };
     this.publish(true);
     // deliver async, like a server round-trip would
     setTimeout(() => this.ev.onShot({ sessionId: 'me', strokeNumber: p.strokes, result }), 0);

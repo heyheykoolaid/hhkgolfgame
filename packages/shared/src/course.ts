@@ -64,6 +64,12 @@ export interface HoleDef {
   gust?: number;
   /** which course this hole was dressed for */
   locale?: string;
+  /** gravity in flight compared with Earth's (the Moon: 0.4). The roll keeps Earth's: it's arcade friction */
+  grav?: number;
+  /** craters (the Moon): a bowl with a raised rim; a bunker can sit in one (its sand is the floor) */
+  craters?: { x: number; z: number; r: number; dep: number; rim: number }[];
+  /** moon buggies: each drives back and forth along a line across the hole, on the shared clock (see buggyAt) */
+  buggies?: { x: number; z: number; tx: number; tz: number; half: number; v: number; ph: number }[];
   /** a second fairway (split fairway, lay-up area): polyline + half width */
   alt?: { pts: number[][]; hw: number } | null;
   /** shaped ground on top of the base terrain: mounds/ridges (h > 0) and hollows/valleys (h < 0), rotated ellipses */
@@ -315,6 +321,15 @@ export function heightAt(x, z) {
     const d = Math.hypot(x - b.x, z - b.z);
     if (d < b.r * 1.1) h -= 0.55 * smoothstep(b.r * 1.05, b.r * 0.55, d);
   }
+  // craters: a bowl, and a rim thrown up round it (the rim is what kicks a running ball back in)
+  if (COURSE.craters)
+    for (const c of COURSE.craters) {
+      const d = Math.hypot(x - c.x, z - c.z);
+      if (d > c.r * 2.2) continue;
+      const u = d / c.r;
+      if (u < 1) h -= c.dep * (1 - u * u);
+      h += c.rim * Math.exp(-(((u - 1) / 0.32) ** 2));
+    }
   // pond basin
   const pd = pondPd(x, z);
   if (pd < 1.3) h = lerp(h, WATER_Y - 1.1, smoothstep(1.25, 0.9, pd));
@@ -525,3 +540,13 @@ export function setHole(def: HoleDef) {
   TREE_GRID = m;
 }
 setHole(HOLE1);
+
+/** Where moon buggy `b` is at time `t` (seconds on the shared clock): it drives to one end of its line and back. */
+export function buggyAt(b: NonNullable<HoleDef['buggies']>[number], t: number) {
+  const span = b.half * 2,
+    k = (((t * b.v + b.ph) % (span * 2)) + span * 2) % (span * 2),
+    back = k > span,
+    u = (back ? span * 2 - k : k) - b.half,
+    dir = back ? -1 : 1;
+  return { x: b.x + b.tx * u, z: b.z + b.tz * u, vx: b.tx * b.v * dir, vz: b.tz * b.v * dir, yaw: Math.atan2(b.tx * dir, b.tz * dir) };
+}
