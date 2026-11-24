@@ -1212,7 +1212,7 @@ function lowGeometry(g: THREE.BufferGeometry): THREE.BufferGeometry {
   return lg;
 }
 export interface SwingInput {
-  mode: 'idle' | 'swing' | 'putt' | 'walk' | 'sit' | 'stand';
+  mode: 'idle' | 'swing' | 'putt' | 'walk' | 'sit' | 'stand' | 'skate';
   ik?: { hands?: [THREE.Vector3, THREE.Vector3]; feet?: [THREE.Vector3, THREE.Vector3] };
   air?: number;
   speed?: number;
@@ -1550,7 +1550,7 @@ export class Golfer {
       breathe = Math.sin(t * 1.7) * 0.012;
 
     const gripping = inp.mode === 'swing' || inp.mode === 'putt'; // closed grip on the club, otherwise relaxed open hands
-    this.fingers(gripping ? 1 : inp.mode === 'sit' || inp.mode === 'stand' ? 0.85 : 0); // round the grip / the steering wheel / relaxed
+    this.fingers(gripping ? 1 : inp.mode === 'sit' || inp.mode === 'stand' ? 0.85 : inp.mode === 'skate' ? 0.3 : 0); // round the grip / the steering wheel / relaxed
     if (this.meshes.gripHands) this.meshes.gripHands.visible = gripping;
     if (this.meshes.openHands) this.meshes.openHands.visible = !gripping;
     const showClub = inp.showClub !== false && gripping;
@@ -1559,7 +1559,7 @@ export class Golfer {
       this.walk(inp);
       return;
     }
-    if (inp.mode === 'sit' || inp.mode === 'stand') {
+    if (inp.mode === 'sit' || inp.mode === 'stand' || inp.mode === 'skate') {
       this.ride(inp);
       return;
     }
@@ -1891,6 +1891,30 @@ export class Golfer {
         e(n + 'Arm', -0.95 + s * st * 0.22, 0, -s * 0.18);
         e(n + 'ForeArm', -0.75 - s * st * 0.1, 0, 0);
         e(n + 'Hand', 0.1, 0, s * 0.1);
+      }
+    } else if (inp.mode === 'skate') {
+      // on a skateboard, side-on: the board runs along the golfer's own x axis (they face +z, ride toward +x).
+      // inp.s = crouch (0 tall … 1 deep), inp.turn = lean into a carve (−1…1), inp.power = arms out (balance)
+      const c = inp.s,
+        lean = st * 0.22,
+        bal = inp.power ?? 0.5;
+      by.Hips.position.set(0, BPOS('Hips').y - 0.06 - c * 0.26, 0.02 + c * 0.05);
+      e('Hips', 0.1 + c * 0.25, 0.25, lean);
+      e('Spine', 0.12 + c * 0.25, -0.1);
+      e('Spine1', 0.05);
+      e('Spine2', 0.02, -0.15, -lean * 0.5);
+      e('Neck', -0.1 - c * 0.2);
+      e('Head', -0.05, 1.05 + Math.sin(t * 0.8) * 0.05, 0); // looking where they're going
+      for (const [sg, n] of [
+        [1, 'Left'],
+        [-1, 'Right'],
+      ] as [number, string][]) {
+        e(n + 'UpLeg', -0.3 - c * 0.7, 0, sg * 0.25);
+        e(n + 'Leg', 0.5 + c * 1.1);
+        // arms out toward the nose and the tail, swaying for balance
+        e(n + 'Arm', -0.25 + Math.sin(t * 1.7 + sg) * 0.08 * bal, sg * 0.35, -sg * (0.7 + bal * 0.45));
+        e(n + 'ForeArm', -0.35 - c * 0.2, 0, sg * 0.15);
+        e(n + 'Hand', 0, 0, sg * 0.15);
       }
     } else {
       by.Hips.position.set(0, BPOS('Hips').y - 0.03, 0);

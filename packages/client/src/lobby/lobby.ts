@@ -44,6 +44,8 @@ import { createAttendants } from './attendants';
 import { createHobo, hoboNow, HOBO_SEED_PRICE } from './hobo';
 import { createAttic, ATTIC, PUTTER_UNLOCK } from './attic';
 import { createTrailTimer, trailJumpMesh } from './trail';
+import { Skateboard, boardModel, poseRemote, DECKS, type SkateWorld } from '../vehicles/skateboard';
+import { SKATE_RAILS, skateParkMesh } from './skatepark';
 import { createLotGames, BAND_TAGS, type TossKind } from './lotGames';
 import { createTownLife } from './townLife';
 import { createStaticBatcher } from '../world/staticBatch';
@@ -98,6 +100,8 @@ interface LPres {
   sm?: SmokePres;
   /** cart radio, while the cart is out with it on (driven or parked): [band, volume] */
   rd?: [number, number];
+  /** on a skateboard: vehicles/skateboard.ts Skateboard.pres(), then the deck's index in DECKS */
+  sk?: number[];
   /** a jukebox this player last set: [lot, item index, band (-1 = off), when (s)] */
   jb?: [number, number, number, number];
   /** best go-kart lap, seconds */
@@ -121,6 +125,8 @@ interface Remote {
   peer: string;
   by: string;
   golfer: Golfer;
+  /** their skateboard, while they ride one */
+  board?: THREE.Group;
   key: string;
   x: number;
   z: number;
@@ -160,6 +166,17 @@ const TOWN_KEYS: Record<string, [string, ControlRow[]]> = {
       ['Space', 'Hold to charge, let go to putt', true],
       ['R', 'Back to the tee (one stroke)'],
       ['Esc', 'Leave the course'],
+    ],
+  ],
+  skate: [
+    'Skateboard',
+    [
+      ['W', 'Push (in the air: kickflip)'],
+      ['S', 'Brake (in the air: heelflip)'],
+      [['A', 'D'], 'Carve (in the air: spin)'],
+      ['Space', 'Hold to crouch, let go to ollie', true],
+      ['Shift', 'Hold for a manual'],
+      ['K', 'Step off'],
     ],
   ],
   toss: [
@@ -375,10 +392,11 @@ export function createLobby(env: LobbyEnv) {
       {
         // the rise the West Side stands on, for carts and ragdolls: the street's slope and the flat top
         const hills = westRiseMesh(),
-          jumps = trailJumpMesh();
+          jumps = trailJumpMesh(),
+          park = skateParkMesh();
         const R = rapier();
         if (R)
-          for (const m of [hills, jumps])
+          for (const m of [hills, jumps, park])
             w.world.createCollider(
               R.ColliderDesc.trimesh(m.verts, m.indices)
                 .setCollisionGroups(grp(G_STATIC, G_RAG | G_VEH))
@@ -439,7 +457,8 @@ export function createLobby(env: LobbyEnv) {
       | 'stash'
       | 'putt'
       | 'range'
-      | 'toss',
+      | 'toss'
+      | 'skate',
     q: 0,
     go: null as LPres['go'],
     say: '',
@@ -553,7 +572,7 @@ export function createLobby(env: LobbyEnv) {
       if (P.mode === 'wardrobe') closeWardrobe(false);
       else if (P.mode === 'modal') closeModal();
       else if (P.mode === 'gacha') closeGacha();
-      else if (P.mode === 'walk' || (P.mode as string) === 'drive') options.open(); // nothing else is open: the options menu
+      else if (P.mode === 'walk' || P.mode === 'skate' || (P.mode as string) === 'drive') options.open(); // nothing else is open: the options menu
       return;
     }
     if (P.mode === 'gacha') {
@@ -561,6 +580,10 @@ export function createLobby(env: LobbyEnv) {
         e.preventDefault();
         gachaNext();
       }
+      return;
+    }
+    if (e.code === 'KeyK' && !e.repeat && !flop && (P.mode === 'walk' || P.mode === 'skate')) {
+      toggleSkate(); // hop on or off the board
       return;
     }
     if (P.mode !== 'walk') return;
@@ -1701,8 +1724,98 @@ export function createLobby(env: LobbyEnv) {
     thud: () => sfx.land(0.5),
   });
   const { garageOf, hopOut, flip: flipCart, interact: cartInteract, prompt: cartPrompt, ride, syncDecoPhysics, syncParked } = cart;
+  // ---------------- the skateboard (vehicles/skateboard.ts): K to hop on and off, anywhere in town
+  let skate: Skateboard | null = null;
+  const deckId = () => {
+    try {
+      return localStorage.getItem('gh.deck') || 'natural';
+    } catch {
+      return 'natural';
+    }
+  };
+  const skateWorld: SkateWorld = {
+    ground: (x, z) => groundY(x, z),
+    blocked: (x, z, r) => !!hitAt(x, z, r) || cartAt(x, z, r),
+    rails: SKATE_RAILS,
+  };
+  const trickPop = document.createElement('div');
+  trickPop.className = 'trickpop';
+  document.body.appendChild(trickPop);
+  let trickT = 0;
+  function showTrick(html: string, big = false, ms = 1400) {
+    trickPop.innerHTML = html;
+    trickPop.classList.toggle('big', big);
+    trickPop.classList.remove('show');
+    void trickPop.offsetWidth;
+    trickPop.classList.add('show');
+    trickT = ms / 1000;
+  }
+  function toggleSkate() {
+    if (P.mode === 'skate') {
+      stepOff();
+      return;
+    }
+    if (!progress().items.board) {
+      toast('You need a skateboard: the Pro Shop on the West Side sells them.', 3000);
+      return;
+    }
+    if (skate) scene.remove(skate.board);
+    skate = new Skateboard(deckId());
+    scene.add(skate.board);
+    skate.mount(P.x, P.z, P.yaw, Math.hypot(P.vx, P.vz), skateWorld);
+    P.mode = 'skate';
+    P.vx = P.vz = 0;
+    sendPres(true);
+  }
+  function stepOff() {
+    if (!skate) return;
+    P.x = skate.x;
+    P.z = skate.z;
+    P.yaw = skate.yaw;
+    P.gy = groundY(P.x, P.z);
+    P.y = 0;
+    scene.remove(skate.board);
+    skate = null;
+    if (P.mode === 'skate') P.mode = 'walk';
+    sendPres(true);
+  }
+  function skateFrame(dt: number) {
+    if ((trickT -= dt) <= 0) trickPop.classList.remove('show');
+    if (P.mode !== 'skate' || !skate || flop) return;
+    const ev = skate.update(
+      dt,
+      {
+        push: !!(keys.KeyW || keys.ArrowUp),
+        brake: !!(keys.KeyS || keys.ArrowDown),
+        steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0),
+        crouch: !!keys.Space,
+        manual: !!(keys.ShiftLeft || keys.ShiftRight),
+      },
+      skateWorld,
+    );
+    P.x = skate.x;
+    P.z = skate.z;
+    P.yaw = skate.yaw;
+    P.gy = skate.y;
+    P.y = 0;
+    P.spd = 0;
+    for (const e of ev) {
+      if (e.kind === 'push') ambience.step('concrete', 0.5);
+      else if (e.kind === 'trick') showTrick(esc(e.name));
+      else if (e.kind === 'combo') {
+        showTrick(`${esc(e.text)}<b>${e.pts.toLocaleString('en-US')}</b>`, true, 2400);
+        if (e.pts >= 1000) playSample('win', 0.45);
+      } else if (e.kind === 'bail') {
+        // a bail: off the board and down, with the same tumble as being run over
+        const v = new THREE.Vector3(Math.sin(skate.yaw), 0, Math.cos(skate.yaw)).multiplyScalar(Math.max(3, e.v));
+        stepOff();
+        knockMe(v, 'Bail!');
+        return;
+      }
+    }
+  }
   /** Knocked flat by someone's cart. */
-  function knockMe(v: THREE.Vector3) {
+  function knockMe(v: THREE.Vector3, say = 'Run over by a golf cart!') {
     if (!pw || flop || P.mode !== 'walk') return;
     rg = {
       t: Date.now(),
@@ -1718,7 +1831,7 @@ export function createLobby(env: LobbyEnv) {
     P.air = 0;
     sendPres(true);
     sfx.bonk(1);
-    toast('Run over by a golf cart!', 1500);
+    toast(say, 1500);
   }
   // ---------------- camera vs buildings: pull the camera in rather than look through a roof or a wall ----------------
   const CAM_H: Record<string, number> = { rv: 3.0, shop: 2.7, board: 2.8, gacha: 1.7 };
@@ -1999,6 +2112,7 @@ export function createLobby(env: LobbyEnv) {
     r.flop?.dispose();
     r.cart?.dispose();
     r.golfer.dispose();
+    if (r.board) scene.remove(r.board);
     r.tag.remove();
     r.bub.remove();
     remotes.delete(peer);
@@ -2115,6 +2229,16 @@ export function createLobby(env: LobbyEnv) {
       ge: gest && clock - gest.t0 < 3 ? [gest.i, gest.n] : undefined,
       rd: cart.car && RS.on && radio.ready ? [RS.band, Math.round(RS.vol * 10) / 10] : undefined,
       jb: myJuke || undefined,
+      sk:
+        P.mode === 'skate' && skate
+          ? [
+              ...skate.pres(),
+              Math.max(
+                0,
+                DECKS.findIndex(d => d.id === deckId()),
+              ),
+            ]
+          : undefined,
       bj: bjGame.pres(),
       vm: vlt.pres(),
       sm: smoke.pres(),
@@ -2497,6 +2621,7 @@ export function createLobby(env: LobbyEnv) {
         }
       cart.car.contacts?.().forEach((c, i) => grass.press('car' + i, c.x, c.z, 0.35));
     }
+    skateFrame(dt);
     syncDecoPhysics(dt);
     syncParked();
     pw?.step(dt);
@@ -2545,7 +2670,8 @@ export function createLobby(env: LobbyEnv) {
         myPose,
       );
       if (!alive) flop = null;
-    } else if (P.mode === 'bj' && bjGame.isOpen()) bjGame.seatGolfer(me, bjGame.mySeat(), clock);
+    } else if (P.mode === 'skate' && skate) skate.pose(me, clock);
+    else if (P.mode === 'bj' && bjGame.isOpen()) bjGame.seatGolfer(me, bjGame.mySeat(), clock);
     else if (P.mode === 'vlt' && vlt.isOpen()) vlt.seatMe(me, clock);
     else {
       myPose();
@@ -2584,6 +2710,10 @@ export function createLobby(env: LobbyEnv) {
         r.cart = null;
       }
       const riding = !!(r.pres?.dr && r.cart && !r.flop);
+      if (r.board && (away || !Array.isArray(r.pres?.sk))) {
+        scene.remove(r.board);
+        r.board = undefined;
+      }
       {
         // their radio, heard from where their cart is
         const rd = r.pres?.rd;
@@ -2636,7 +2766,17 @@ export function createLobby(env: LobbyEnv) {
         const bs = r.pres?.bj?.s;
         if (typeof bs === 'number' && bs >= 0 && bs < 5) bjGame.seatGolfer(r.golfer, bs, clock);
         else if (typeof r.pres?.vm === 'number') vlt.seatGolfer(r.golfer, r.pres.vm, clock);
-        else {
+        else if (Array.isArray(r.pres?.sk) && r.pres!.sk!.length === 8) {
+          const sk = r.pres!.sk!,
+            deck = DECKS[Math.max(0, Math.min(DECKS.length - 1, Math.floor(+sk[7] || 0)))].id;
+          if (!r.board || r.board.userData.deckId !== deck) {
+            if (r.board) scene.remove(r.board);
+            r.board = boardModel(deck);
+            r.board.userData.deckId = deck;
+            scene.add(r.board);
+          }
+          poseRemote(r.board, r.golfer, r.x, r.z, sk.slice(0, 7), clock);
+        } else {
           rPose();
           // their gesture, timed from when we first saw it
           const ge = r.pres?.ge;
@@ -2913,6 +3053,10 @@ export function createLobby(env: LobbyEnv) {
     sendPres(true);
     renderStatus();
     (window as any).__lobby = {
+      openProShop,
+      get skate() {
+        return skate;
+      },
       mail,
       openFurniture,
       openAuto,
@@ -2983,6 +3127,7 @@ export function createLobby(env: LobbyEnv) {
     radio.stopAll(); // the cart radio stays in town
     if (range.active) range.stop();
     if (games.active) games.stop();
+    if (P.mode === 'skate') stepOff(); // (the board goes in your bag for the round)
     if (putt.active) putt.stop(); // and a mini putt round ends: its ball, aim line, meter and card all go
     cart.dispose(); // heading to the course: the cart goes home
     active = false;

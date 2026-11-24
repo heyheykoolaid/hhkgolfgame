@@ -32,6 +32,8 @@ export interface Body {
   spd: number;
   v?: import('../vehicles/vehicles').VehState | null;
   rg?: { t: number; v: number[]; i: number[]; at: string } | null;
+  /** on a skateboard: Skateboard.pres() and the deck's index */
+  sk?: number[];
 }
 export interface NetEvents {
   onShot(b: ShotBroadcast): void;

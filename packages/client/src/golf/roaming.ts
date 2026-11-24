@@ -9,6 +9,7 @@ import { progress } from '../avatar/progress';
 import { speedo } from '../ui/speedo';
 import { Flop, type PhysWorld } from '../physics/ragdoll';
 import type { GameNet } from '../net/types';
+import { Skateboard, DECKS, type SkateWorld } from '../vehicles/skateboard';
 
 export const cartYaw = (c: Vehicle) => {
   const f = new THREE.Vector3(1, 0, 0).applyQuaternion(c.root.quaternion);
@@ -57,6 +58,49 @@ export function createRoaming(host: RoamHost) {
     cartSafe: { x: number; y: number; z: number; yaw: number } | null = null,
     safeT = 0,
     cartStuck: '' | 'flip' | 'water' = '';
+  // ---- the skateboard (bought at the lobby's Pro Shop): K hops on and off while you're walking
+  let skate: Skateboard | null = null,
+    trickT = 0;
+  const skWorld: SkateWorld = { ground: (x, z) => heightAt(x, z), blocked: (x, z) => walkBlocked(x, z), rails: [] };
+  const deckId = () => {
+    try {
+      return localStorage.getItem('gh.deck') || 'natural';
+    } catch {
+      return 'natural';
+    }
+  };
+  let trickPop: HTMLDivElement | null = null;
+  function showTrick(html: string, big = false, ms = 1100) {
+    if (!trickPop) {
+      trickPop = document.createElement('div');
+      trickPop.className = 'trickpop';
+      document.body.appendChild(trickPop);
+    }
+    trickPop.innerHTML = html;
+    trickPop.classList.toggle('big', big);
+    trickPop.classList.add('show');
+    trickT = ms / 1000;
+  }
+  function stepOff() {
+    if (!skate) return;
+    W.x = skate.x;
+    W.z = skate.z;
+    W.yaw = skate.yaw;
+    W.vx = W.vz = W.spd = 0;
+    scene.remove(skate.board);
+    skate = null;
+  }
+  function toggleSkate() {
+    if (skate) return stepOff();
+    if (S.phase !== 'walk') return;
+    if (!progress().items?.board) {
+      toast('No skateboard yet: the Pro Shop in town sells them.', 2600);
+      return;
+    }
+    skate = new Skateboard(deckId());
+    scene.add(skate.board);
+    skate.mount(W.x, W.z, W.yaw, W.spd, skWorld);
+  }
   function spawnCart() {
     const pw = host.pw();
     if (!pw) return;
@@ -142,8 +186,45 @@ export function createRoaming(host: RoamHost) {
     const me = net.me(),
       meA = avatars.get(net.sessionId);
     const k = (c: string) => held.has(c);
+    if ((trickT -= dt) <= 0) trickPop?.classList.remove('show');
+    if (skate && (S.phase !== 'walk' || meA?.flop)) stepOff(); // (addressing the ball, or the cart: the board goes under your arm)
+    // ---- on the board
+    if (S.phase === 'walk' && skate) {
+      const ev = skate.update(
+        dt,
+        {
+          push: k('KeyW') || k('ArrowUp'),
+          brake: k('KeyS') || k('ArrowDown'),
+          steer: (k('KeyA') || k('ArrowLeft') ? 1 : 0) - (k('KeyD') || k('ArrowRight') ? 1 : 0),
+          crouch: k('Space'),
+          manual: k('ShiftLeft') || k('ShiftRight'),
+        },
+        skWorld,
+      );
+      const B = COURSE.bounds;
+      skate.x = clamp(skate.x, B.x0 + 30, B.x1 - 30);
+      skate.z = clamp(skate.z, B.z0 + 30, B.z1 - 30);
+      W.x = skate.x;
+      W.z = skate.z;
+      W.yaw = skate.yaw;
+      W.spd = Math.abs(skate.v);
+      W.vx = Math.sin(skate.yaw) * skate.v;
+      W.vz = Math.cos(skate.yaw) * skate.v;
+      for (const e of ev) {
+        if (e.kind === 'trick') showTrick(esc(e.name));
+        else if (e.kind === 'combo') showTrick(`${esc(e.text)}<b>${e.pts.toLocaleString('en-US')}</b>`, true, 2400);
+        else if (e.kind === 'bail') {
+          const f = new THREE.Vector3(Math.sin(skate.yaw), 0, Math.cos(skate.yaw)),
+            v = f.clone().multiplyScalar(Math.max(3, e.v));
+          stepOff();
+          flopMe(v, f.multiplyScalar(8 + e.v * 2).setY(9), 'Hips', 0.8);
+          showTrick('Bail!');
+          break;
+        }
+      }
+    }
     // ---- on foot
-    if (S.phase === 'walk' && !meA?.flop) {
+    else if (S.phase === 'walk' && !meA?.flop) {
       let ix = 0,
         iz = 0;
       if (k('KeyW') || k('ArrowUp')) iz += 1;
@@ -286,6 +367,21 @@ export function createRoaming(host: RoamHost) {
   }
   return {
     W,
+    get skate() {
+      return skate;
+    },
+    /** what other players need to draw your board: Skateboard.pres() and the deck */
+    skatePres: () =>
+      skate
+        ? [
+            ...skate.pres(),
+            Math.max(
+              0,
+              DECKS.findIndex(d => d.id === deckId()),
+            ),
+          ]
+        : undefined,
+    toggleSkate,
     get cart() {
       return cart;
     },

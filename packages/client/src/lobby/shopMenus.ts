@@ -4,7 +4,8 @@
 import { $, esc, money } from '../ui/dom';
 import { playSample } from '../audio/samples';
 import { invIcon } from './invIcons';
-import { loadProgress, progress, buyItem, setTrail, setCar, paintCar, fitPart, sellTrophy, isPlaced } from '../avatar/progress';
+import { loadProgress, progress, buyItem, setTrail, setCar, paintCar, fitPart, sellTrophy, isPlaced, addItem } from '../avatar/progress';
+import { DECKS, BOARD_PRICE } from '../vehicles/skateboard';
 import { objectImage } from '../world/trophy';
 import { TRAILS } from '../avatar/trails';
 import { ITEMS, loadItemModels } from './catalog';
@@ -84,6 +85,13 @@ export function createShopMenus(ctx: ShopCtx) {
       );
   }
   /** The pro shop (West Side): ball trails for now. Club skins and club effects are to come. */
+  const curDeck = () => {
+    try {
+      return localStorage.getItem('gh.deck') || 'natural';
+    } catch {
+      return 'natural';
+    }
+  };
   async function openProShop() {
     const pr = await loadProgress();
     openModal(
@@ -95,8 +103,39 @@ export function createShopMenus(ctx: ShopCtx) {
          return `<div class="good"><div class="gi"><span class="trail" style="background:${t.color === 'rainbow' ? 'linear-gradient(90deg,#ff4f4f,#ffd24a,#9cff3a,#8fe3ff,#ff4fc3)' : t.color}"></span></div><div class="gt"><b>${t.name}</b><p>${t.desc}</p><em>${on ? 'In use' : own ? 'Owned' : ''}</em></div>
            <button data-trail="${t.id}" ${on || (!own && pr.cash < t.price) ? 'disabled' : ''}>${on ? 'In use' : own ? 'Use' : money(t.price)}</button></div>`;
        }).join('')}</div>
-       <p class="muted" style="margin-top:10px">A trail is the line your ball draws through the air on every course. Others don't see yours yet.</p></div>`,
+       <p class="muted" style="margin-top:10px">A trail is the line your ball draws through the air on every course. Others don't see yours yet.</p>
+       <h3>Skateboard</h3>${
+         pr.items.board
+           ? `<p class="muted">Yours. Press <kbd>K</kbd> anywhere to hop on (in town and on the course). Pick a deck:</p><div class="tg">${DECKS.map(
+               d =>
+                 `<button class="t${curDeck() === d.id ? ' on' : ''}" data-deck="${d.id}"><i class="sw" style="background:linear-gradient(90deg,${d.c} 60%,${d.c2} 60%)"></i>${d.name}</button>`,
+             ).join('')}</div>`
+           : `<div class="goods"><div class="good"><div class="gi">🛹</div><div class="gt"><b>Skateboard</b><p>Maple deck, street wheels. Push, carve, ollie, flip and grind your way round town and down the fairway. Six decks to pick from, free.</p></div>
+             <button data-board ${pr.cash < BOARD_PRICE ? 'disabled' : ''}>${money(BOARD_PRICE)}</button></div></div>`
+       }</div>`,
     );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-deck]')
+      .forEach(
+        b =>
+          (b.onclick = () => {
+            try {
+              localStorage.setItem('gh.deck', b.dataset.deck!);
+            } catch {}
+            playSample('confirm', 0.4);
+            void openProShop();
+          }),
+      );
+    const bb = $('lmodal').querySelector<HTMLButtonElement>('[data-board]');
+    if (bb)
+      bb.onclick = async () => {
+        const r = await addItem('board', 1, BOARD_PRICE);
+        playSample(r === 'ok' ? 'confirm' : 'error', 0.5);
+        if (r === 'ok') {
+          toast('A skateboard! Press <kbd>K</kbd> to hop on. There’s a skate spot in the south meadow, inside the dirt trail.', 5000);
+          void openProShop();
+        } else toast("You can't afford that right now.");
+      };
     $('lmodal').querySelector('.card')?.classList.add('wide');
     $('lmodal')
       .querySelectorAll<HTMLButtonElement>('[data-trail]')

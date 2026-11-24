@@ -53,6 +53,7 @@ import { awardHole, awardTrophy, progress, addCash } from '../avatar/progress';
 import { createBets } from './bets';
 import { createTurns } from './turns';
 import { createRoaming, cartYaw } from './roaming';
+import { DECKS, boardModel, poseRemote } from '../vehicles/skateboard';
 import { cupStart, cupStep, CUP_DEPTH, CUP_PIN_R, type CupSim } from './cup';
 import { trackCards, tourStandings, tourWaiting, tourWinners, tourCardHTML, toParText, type Tour } from './tournament';
 import { CUP_HOLE_R } from '../world/nature';
@@ -129,9 +130,22 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       [['W', 'A', 'S', 'D'], 'Move'],
       ['Shift', 'Run'],
       ['E', 'Address the ball · get in the cart', true],
+      ['K', 'Skateboard (if you have one)'],
       ['T', 'Address your ball from anywhere'],
       ['M', 'Map'],
       ['B', 'Bets'],
+    ],
+  ],
+  skate: [
+    'Skateboard',
+    [
+      ['W', 'Push (in the air: kickflip)'],
+      ['S', 'Brake (in the air: heelflip)'],
+      [['A', 'D'], 'Carve (in the air: spin)'],
+      ['Space', 'Hold to crouch, let go to ollie', true],
+      ['Shift', 'Hold for a manual'],
+      ['K', 'Step off'],
+      ['E', 'Address your ball (when you reach it)'],
     ],
   ],
   walkDone: [
@@ -328,6 +342,8 @@ export function createGolf(env: GolfEnv) {
   const followCurve = (t: number) => (t < 0.75 ? 1.1 * (1 - (1 - t / 0.75) ** 2.6) : 1.1 - 0.1 * easeInOut(Math.min(1, (t - 0.75) / 0.9)));
   const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
   interface Avatar {
+    /** their skateboard, while they ride one */
+    board?: THREE.Group | null;
     beam?: THREE.Mesh;
     teeSeen?: boolean;
     doneSeen?: boolean;
@@ -423,6 +439,7 @@ export function createGolf(env: GolfEnv) {
       (a.beam.material as THREE.Material).dispose();
     }
     a.flop?.dispose();
+    if (a.board) scene.remove(a.board);
     remoteCarts.get(id)?.dispose();
     remoteCarts.delete(id);
     a.golfer.dispose();
@@ -505,9 +522,11 @@ export function createGolf(env: GolfEnv) {
         : ph === 'power' || ph === 'acc'
           ? 'swing'
           : ph === 'walk' || ph === 'drive'
-            ? ph === 'walk' && net.me()?.done
-              ? 'walkDone'
-              : ph
+            ? ph === 'walk' && roam.skate
+              ? 'skate'
+              : ph === 'walk' && net.me()?.done
+                ? 'walkDone'
+                : ph
             : 'flight';
     controls.set('g' + k, COURSE_KEYS[k][0], COURSE_KEYS[k][1]);
   }
@@ -654,6 +673,7 @@ export function createGolf(env: GolfEnv) {
     if (!endShown && bets.key(e)) return;
     if (e.code === 'Space') {
       e.preventDefault();
+      if (roam.skate) return; // (on the board, Space is the ollie)
       press();
       return;
     }
@@ -662,6 +682,7 @@ export function createGolf(env: GolfEnv) {
       return;
     }
     if (S.phase === 'walk' || S.phase === 'drive') {
+      if (e.code === 'KeyK') roam.toggleSkate();
       if (e.code === 'KeyE') roam.interact();
       if (e.code === 'KeyF' && S.phase === 'walk') {
         const f = new THREE.Vector3(Math.sin(W.yaw), 0, Math.cos(W.yaw));
@@ -1195,7 +1216,13 @@ export function createGolf(env: GolfEnv) {
         bursts.emit(
           at,
           dir,
-          locale.id === 'moon' ? ['#a9a69f', '#8c8983', '#c4c0b8'] : locale.id === 'trip' ? ['#ff7ac8', '#9b62d6', '#ffe66e', '#5fd38d'] : res.lie === 'hardpan' || res.lie === 'path' ? ['#b39a72', '#8f7a58'] : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
+          locale.id === 'moon'
+            ? ['#a9a69f', '#8c8983', '#c4c0b8']
+            : locale.id === 'trip'
+              ? ['#ff7ac8', '#9b62d6', '#ffe66e', '#5fd38d']
+              : res.lie === 'hardpan' || res.lie === 'path'
+                ? ['#b39a72', '#8f7a58']
+                : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
           Math.round(8 + 20 * pw + 14 * res.impact.q),
           3 + 4 * pw,
           3.4,
@@ -1212,7 +1239,16 @@ export function createGolf(env: GolfEnv) {
   }
   let teeOff = false;
   let lastStrike: { grade: 'perfect' | 'good' | 'miss'; late: boolean } | null = null;
-  const EVENT_TOAST: Record<string, string> = { holed: 'IN THE HOLE!', water: 'Splash! +1', ob: 'Out of bounds +1', tree: 'Timber!', buggy: 'Bonk! Moon buggy', post: 'Clang!', warp: 'Warp pipe!', pad: 'Boing!' };
+  const EVENT_TOAST: Record<string, string> = {
+    holed: 'IN THE HOLE!',
+    water: 'Splash! +1',
+    ob: 'Out of bounds +1',
+    tree: 'Timber!',
+    buggy: 'Bonk! Moon buggy',
+    post: 'Clang!',
+    warp: 'Warp pipe!',
+    pad: 'Boing!',
+  };
   /** Holed out (or picked up): Birdie Dollars for birdies and better. */
   function finishHole() {
     const me = net.me();
@@ -1443,7 +1479,24 @@ export function createGolf(env: GolfEnv) {
             .copy(car.seatParent.getWorldQuaternion(new THREE.Quaternion()))
             .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), car.riderYaw));
         };
-        if (mode === 'drive' && car && !a.flop) {
+        // a skateboard: yours is posed by the board itself; theirs from what they publish
+        const sk = !a.flop && mode === 'walk' ? (mineR ? roam.skate : null) : null,
+          rsk = !mineR && !a.flop && mode === 'walk' && body?.sk?.length === 8 ? body.sk : null;
+        if (rsk) {
+          const deck = DECKS[rsk[7]]?.id || 'natural';
+          if (a.board?.userData.deckId !== deck) {
+            if (a.board) scene.remove(a.board);
+            a.board = boardModel(deck);
+            a.board.userData.deckId = deck;
+            scene.add(a.board);
+          }
+        } else if (a.board) {
+          scene.remove(a.board);
+          a.board = null;
+        }
+        if (sk) sk.pose(a.golfer, clock);
+        else if (rsk) poseRemote(a.board!, a.golfer, a.wx, a.wz, rsk, clock);
+        else if (mode === 'drive' && car && !a.flop) {
           car.root.updateMatrixWorld(true);
           seatIt();
           ridePose();
@@ -1471,7 +1524,7 @@ export function createGolf(env: GolfEnv) {
             )
           )
             a.flop = null;
-        } else if (mode !== 'drive') walkPose();
+        } else if (mode !== 'drive' && !sk && !rsk) walkPose();
         a.ball.visible = !p.done;
         continue;
       }
@@ -1677,6 +1730,7 @@ export function createGolf(env: GolfEnv) {
         spd: +W.spd.toFixed(1),
         v: roam.cart ? roam.cart.state() : null,
         rg: myRg && Date.now() - myRg.t < 6000 ? myRg : null,
+        sk: S.phase === 'walk' ? roam.skatePres() : undefined,
       });
     // swing timing — identical maths to the prototype so the feel carries over
     const tm = S.tempo;
@@ -2233,6 +2287,9 @@ export function createGolf(env: GolfEnv) {
     document.body.classList.add('mode-golf');
     resize();
     (window as any).__gh = {
+      get roam() {
+        return roam;
+      },
       dev,
       look(v: number[] | null) {
         devCam = v;
