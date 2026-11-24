@@ -1,6 +1,6 @@
 // The player's look: one Outfit, edited in the wardrobe, saved per account, sent to other players in presence,
 // and used for the same golfer in the lobby and on the course.
-import { TOPS, JACKETS, PANTS, SHOES, HAIRS, PAINTS, GLASSES, TATTOOS, TAT_SPOTS, BODIES, type Outfit } from '../characters/golfer';
+import { TOPS, JACKETS, PANTS, SHOES, HAIRS, PAINTS, GLASSES, TATTOOS, TAT_SPOTS, BODIES, PUTTERS, type Outfit } from '../characters/golfer';
 import { BALL } from './balls';
 import { bodyReady } from '../characters/mhGolfer';
 
@@ -80,6 +80,7 @@ export function sanitizeLook(x: any): Outfit {
   for (const k of ['chain', 'watch', 'earring'] as const) if (typeof x[k] === 'boolean') o[k] = x[k];
   if (typeof x.stubble === 'boolean') o.stubble = x.stubble;
   if (typeof x.ball === 'string' && BALL.has(x.ball)) o.ball = x.ball;
+  if (typeof x.putter === 'string' && (PUTTERS as readonly string[]).includes(x.putter)) o.putter = x.putter;
   return o;
 }
 export const lookKey = (o: Outfit) => {

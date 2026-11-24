@@ -5,6 +5,9 @@ export const LOCALES = [
   { id: 'hills', name: 'Golden Hills', ch: '0', blurb: 'Live oaks, fan palms and the city skyline at golden hour.' },
   { id: 'peak', name: 'Boulder Peak', ch: '1', blurb: 'Pine forest, granite boulders and snow on the peaks all round.' },
   { id: 'moon', name: 'The Moon', ch: '2', blurb: 'Low gravity, no roll, craters and moon buggies. The Earth hangs in a black sky.' },
+  { id: 'haunt', name: 'The Old Estate', ch: '3', blurb: 'Fog, cobbles, gargoyles and a moat with a drawbridge, round a manor nobody lives in.' },
+  /** only reached through the gnome (lobby: a rainbow joint): the tee board doesn't list it */
+  { id: 'trip', name: 'The Bad Batch', ch: '4', blurb: 'Bounce pads, warp pipes and a wind that changes its mind.', hidden: true },
 ] as const;
 export type LocaleId = (typeof LOCALES)[number]['id'];
 /** The locale of the round being played (set by the golf mode when a round starts). */

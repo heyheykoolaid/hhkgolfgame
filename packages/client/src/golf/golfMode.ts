@@ -63,6 +63,7 @@ import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
 import { vehicleKind, cleanKind, DRIVE_FX, type Vehicle } from '../vehicles/vehicles';
 import { Grass, type GrassKind } from '../world/grass';
 import { buildBuggies } from '../world/buggies';
+import { tickDecor } from '../world/locales';
 import { stepLength } from '../characters/golfer';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -233,7 +234,9 @@ export function createGolf(env: GolfEnv) {
     holeSeed = seed;
     holeLoc = locale.id;
     setBackdrop(scene);
-    grass.setTint(locale.id === 'peak' ? '#8fd0a4' : '#ffffff'); // alpine grass is a cooler, deeper green
+    document.body.classList.toggle('tripping', locale.id === 'trip');
+    // alpine grass is a cooler, deeper green; the Old Estate's is dark and wet; the Bad Batch's is mint
+    grass.setTint(locale.id === 'peak' ? '#8fd0a4' : locale.id === 'haunt' ? '#7a8a5a' : locale.id === 'trip' ? '#9effc8' : '#ffffff');
     grass.reset();
     if (holeGroup) {
       scene.remove(holeGroup);
@@ -1192,7 +1195,7 @@ export function createGolf(env: GolfEnv) {
         bursts.emit(
           at,
           dir,
-          locale.id === 'moon' ? ['#a9a69f', '#8c8983', '#c4c0b8'] : res.lie === 'hardpan' || res.lie === 'path' ? ['#b39a72', '#8f7a58'] : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
+          locale.id === 'moon' ? ['#a9a69f', '#8c8983', '#c4c0b8'] : locale.id === 'trip' ? ['#ff7ac8', '#9b62d6', '#ffe66e', '#5fd38d'] : res.lie === 'hardpan' || res.lie === 'path' ? ['#b39a72', '#8f7a58'] : ['#6f8a40', '#5d7436', '#7a5c3a', '#86a24c'],
           Math.round(8 + 20 * pw + 14 * res.impact.q),
           3 + 4 * pw,
           3.4,
@@ -1209,7 +1212,7 @@ export function createGolf(env: GolfEnv) {
   }
   let teeOff = false;
   let lastStrike: { grade: 'perfect' | 'good' | 'miss'; late: boolean } | null = null;
-  const EVENT_TOAST: Record<string, string> = { holed: 'IN THE HOLE!', water: 'Splash! +1', ob: 'Out of bounds +1', tree: 'Timber!', buggy: 'Bonk! Moon buggy' };
+  const EVENT_TOAST: Record<string, string> = { holed: 'IN THE HOLE!', water: 'Splash! +1', ob: 'Out of bounds +1', tree: 'Timber!', buggy: 'Bonk! Moon buggy', post: 'Clang!', warp: 'Warp pipe!', pad: 'Boing!' };
   /** Holed out (or picked up): Birdie Dollars for birdies and better. */
   function finishHole() {
     const me = net.me();
@@ -1270,7 +1273,7 @@ export function createGolf(env: GolfEnv) {
           if (ev.t <= nowS - a.t0 && !(ev as any)._shown) {
             (ev as any)._shown = 1;
             if (ev.type === 'land') sfx.land(id === net.sessionId ? 0.5 : 0.2);
-            if (ev.type === 'buggy') sfx.bonk(id === net.sessionId ? 0.5 : 0.25);
+            if (ev.type === 'buggy' || ev.type === 'post' || ev.type === 'pad') sfx.bonk(id === net.sessionId ? 0.5 : 0.25);
             if (id === net.sessionId && EVENT_TOAST[ev.type]) toast(EVENT_TOAST[ev.type]);
           }
         if (id === net.sessionId) tracer.add(a.ballPos);
@@ -1626,7 +1629,7 @@ export function createGolf(env: GolfEnv) {
     light.sun.castShadow = opts.shadows;
     ambience.update(dt, {
       carts: [...remoteCarts.values()].map(c => ({ pos: c.root.position, speed: c.speed() })),
-      zone: locale.id === 'moon' ? 'moon' : 'course',
+      zone: locale.id === 'moon' || locale.id === 'haunt' || locale.id === 'trip' ? locale.id : 'course',
       cam: camera,
       cart:
         S.phase === 'drive' && roam.cart
@@ -1647,6 +1650,7 @@ export function createGolf(env: GolfEnv) {
       bugLag += Math.sign(bugLagTo - bugLag) * Math.min(Math.abs(bugLagTo - bugLag), k * dt);
       buggies.update(dt, Date.now() / 1000 - bugLag);
     }
+    tickDecor(performance.now() / 1000);
     const me = net.me();
     if (me && S.phase === 'aim' && !me.busy) {
       autoSetup();
@@ -2281,6 +2285,7 @@ export function createGolf(env: GolfEnv) {
     };
   }
   function stop() {
+    document.body.classList.remove('tripping');
     turns.hideUI();
     active = false;
     T?.view?.dispose();

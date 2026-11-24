@@ -202,7 +202,7 @@ export interface ShotState {
   /** when the ball is struck, in shared-clock seconds: places the moon buggies (no clock = no buggies) */
   t0?: number;
 }
-export type ShotEvent = { t: number; type: 'land' | 'tree' | 'lip' | 'water' | 'ob' | 'holed' | 'rest' | 'buggy' };
+export type ShotEvent = { t: number; type: 'land' | 'tree' | 'lip' | 'water' | 'ob' | 'holed' | 'rest' | 'buggy' | 'post' | 'warp' | 'pad' };
 export interface ShotResult {
   /** the strike time the moon buggies were placed by (from ShotState.t0) */
   t0?: number;

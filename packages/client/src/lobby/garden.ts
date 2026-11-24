@@ -7,7 +7,7 @@
 // and the owner's client applies them. Only the owner plants, fertilizes and harvests.
 import * as THREE from 'three';
 import {
-  STRAINS,
+  SEED_STRAINS,
   STRAIN,
   GEAR,
   QUALITY,
@@ -28,7 +28,7 @@ import {
 } from '@gh/shared';
 import { defOf, type Placed } from './build';
 import { SPIGOT, FERT_BIN, type Plot } from './world';
-import { progress, addCash, addProduct, useFert, slotsUsed, INV_SLOTS } from '../avatar/progress';
+import { progress, addCash, addProduct, useFert, useItem, slotsUsed, INV_SLOTS } from '../avatar/progress';
 import type { Golfer } from '../characters/golfer';
 
 export type Garden = Record<string, Plant>;
@@ -183,8 +183,18 @@ function plantModel(p: Plant) {
     const t = i / tiers,
       y = H * (0.15 + 0.85 * t),
       size = (0.09 + 0.28 * (1 - t) * Math.min(1, H / 0.45)) * (st === 0 ? 0.7 : 1);
+    const tierLeaf =
+      p.s === 'rb'
+        ? new THREE.MeshStandardMaterial({
+            map: leafTexture(),
+            color: new THREE.Color().setHSL((i / Math.max(1, tiers)) * 0.85, 0.75, 0.55),
+            alphaTest: 0.5,
+            side: THREE.DoubleSide,
+            roughness: 0.6,
+          })
+        : leaf;
     for (let k = 0; k < 4; k++) {
-      const m = new THREE.Mesh(LEAF_GEO, leaf);
+      const m = new THREE.Mesh(LEAF_GEO, tierLeaf);
       m.scale.setScalar(size);
       m.position.y = y;
       m.rotation.set(-1.0 + t * 0.4 - droop * 0.75, i * 1.1 + k * (Math.PI / 2), 0, 'YXZ');
@@ -802,7 +812,7 @@ export function createGarden(host: GardenHost) {
           p = g[key];
         if (!p)
           return r.mine
-            ? `<div class="grow-slot"><div class="gs-h"><b>Empty</b><span>Plant a seed:</span></div><div class="gs-btns">${STRAINS.map(s => `<button data-plant="${i}:${s.id}" ${cash >= s.seed ? '' : 'disabled'}>${esc(s.name)} <em>${money(s.seed)}</em></button>`).join('')}</div></div>`
+            ? `<div class="grow-slot"><div class="gs-h"><b>Empty</b><span>Plant a seed:</span></div><div class="gs-btns">${SEED_STRAINS.map(s => `<button data-plant="${i}:${s.id}" ${cash >= s.seed ? '' : 'disabled'}>${esc(s.name)} <em>${money(s.seed)}</em></button>`).join('')}${progress().items.hobo ? `<button class="rainbow" data-plant="${i}:rb">Hobo Rainbow <em>1 of your ${progress().items.hobo} seed${progress().items.hobo > 1 ? 's' : ''}</em></button>` : ''}</div></div>`
             : `<div class="grow-slot"><div class="gs-h"><b>Empty</b></div></div>`;
         const s = STRAIN.get(p.s)!,
           st = stageOf(p),
@@ -846,7 +856,12 @@ export function createGarden(host: GardenHost) {
     const s = STRAIN.get(sid)!,
       key = slotKey(r.item, i);
     if (!r.mine || mine[key]) return;
-    if (!(await addCash(-s.seed))) {
+    if (sid === 'rb') {
+      if (!(await useItem('hobo'))) {
+        host.toast('You need one of the hobo’s seeds for that.');
+        return;
+      }
+    } else if (!(await addCash(-s.seed))) {
       host.toast('Not enough cash for those seeds.');
       return;
     }

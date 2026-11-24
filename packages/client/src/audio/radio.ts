@@ -30,6 +30,8 @@ export interface RadioSource {
   /** how far from the listener, and where across the stereo field (-1 left … 1 right) */
   dist: number;
   pan: number;
+  /** how far it carries, if not the usual radio's 34 m (a jukebox plays to the whole block) */
+  reach?: number;
 }
 
 const REACH = 34, // metres at which someone else's radio fades to nothing
@@ -251,11 +253,11 @@ export function createRadio() {
       tick++;
       const mine = sources.filter(s => s.mine),
         others = sources
-          .filter(s => !s.mine && s.dist < REACH)
+          .filter(s => !s.mine && s.dist < (s.reach ?? REACH))
           .sort((a, b) => a.dist - b.dist)
           .slice(0, MAX_OTHERS);
       for (const s of [...mine, ...others]) {
-        const fall0 = s.mine ? 1 : Math.max(0, 1 - Math.max(0, s.dist - NEAR) / (REACH - NEAR)),
+        const fall0 = s.mine ? 1 : Math.max(0, 1 - Math.max(0, s.dist - NEAR) / ((s.reach ?? REACH) - NEAR)),
           level0 = s.mine ? s.vol : s.own ? s.vol * fall0 * fall0 : Math.min(CAP, s.vol) * fall0 * fall0 * opts.radioOthers;
         if (liveBand(s.band)) {
           if (players.has(s.id)) stop(s.id); // (a shipped track that was playing for this radio)
@@ -287,7 +289,7 @@ export function createRadio() {
           if (Math.abs(p.el.currentTime - n.at) > 1.5 && n.at < n.track.d - 1) p.el.currentTime = n.at;
           if (p.el.paused) p.el.play().catch(() => {});
         }
-        const fall = s.mine ? 1 : Math.max(0, 1 - Math.max(0, s.dist - NEAR) / (REACH - NEAR)),
+        const fall = s.mine ? 1 : Math.max(0, 1 - Math.max(0, s.dist - NEAR) / ((s.reach ?? REACH) - NEAR)),
           level = s.mine ? s.vol : s.own ? s.vol * fall * fall : Math.min(CAP, s.vol) * fall * fall * opts.radioOthers;
         p.gain.gain.setTargetAtTime(p.ready ? level : 0, c.currentTime, 0.12);
         p.pan.pan.setTargetAtTime(s.mine ? 0 : Math.max(-1, Math.min(1, s.pan)) * 0.8, c.currentTime, 0.1);

@@ -15,6 +15,7 @@ import { buildProShop, buildTeeBoard, buildBench } from './plaza';
 import { funSurface, puttFloor } from './funland';
 import { westSurface, westY } from './westside';
 import { buildStreets, streetAt, paveY, SIDEWALKS } from './roads';
+import { buildTrail, trailY, onTrail } from './trail';
 export { SIDEWALKS };
 
 export const CELL = 28,
@@ -210,6 +211,7 @@ export function buildLobby(scene: THREE.Scene) {
     walk = photoM('pavers', '#b9ad98'),
     paint = new THREE.MeshBasicMaterial({ color: '#e8d9a8' });
   scene.add(buildStreets(asphalt, walk)); // every street, its pavements and its paint (lobby/roads.ts)
+  buildTrail(scene, photoM('dirt', '#8a7558')); // the off-road loop through the south meadow (lobby/trail.ts)
   {
     // zebra crossings on every arm of the four intersections
     const zebra = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.45, 3.2).rotateX(-Math.PI / 2), paint, 4 * 4 * 7),
@@ -414,6 +416,7 @@ export function buildLobby(scene: THREE.Scene) {
       if (grove < 0.05 && r() < 0.75) continue; // trees bunch into groves, with open meadow between
       const tree = { x, y: 0, z, s: 0.8 + r() * 0.6, tint: r(), id: Math.floor(r() * 1000) };
       if (Math.abs(x) < BOUND + 3 && Math.abs(z) < BOUND + 3) continue; // (not in the town's own corners: one stood on Fairway Loop)
+      if (onTrail(x, z, 5)) continue; // (nor on the off-road trail)
       trees.push(tree);
       if (inWorld(x, z)) addCol(x - 0.4, x + 0.4, z - 0.4, z + 0.4, 'palm'); // a trunk you can't walk or drive through
     }
@@ -479,6 +482,8 @@ export function buildLobby(scene: THREE.Scene) {
 
 /** Height of the walkable surface (plaza slab, sidewalks, lot pads sit a few cm above the dirt). */
 export function groundY(x: number, z: number) {
+  const ty = trailY(x, z); // the off-road trail's jumps
+  if (ty) return ty;
   if (x > BOUND) return puttFloor(x, z);
   if (x < -BOUND) return westY(x, z) + (westSurface(x, z) === 'paved' ? 0.06 : 0);
   if (z < -BOUND) return shadySurface(x, z) === 'paved' ? 0.06 : 0;
@@ -493,6 +498,7 @@ export function groundY(x: number, z: number) {
 export function surfaceOf(x: number, z: number): 'concrete' | 'asphalt' | 'gravel' | 'grass' {
   const ws = westSurface(x, z) || shadySurface(x, z);
   if (ws) return ws === 'paved' ? 'concrete' : ws;
+  if (onTrail(x, z)) return 'gravel';
   const f = funSurface(x, z);
   if (f) return f === 'paved' ? 'concrete' : f === 'track' ? 'asphalt' : 'grass';
   const y = groundY(x, z);

@@ -6,7 +6,7 @@ import { createTeeBoard } from './teeBoard';
 import { createWardrobe } from './wardrobe';
 import { createLobbyCart, cartYaw, cleanVeh } from './cart';
 import { colorFor } from '../avatar/colors';
-import { createBuild, renderLot, cleanLayout, lotGroup, STARTER, type Placed } from './build';
+import { createBuild, renderLot, cleanLayout, lotGroup, placedOf, STARTER, type Placed } from './build';
 import { vehicleKind, insideVehicle, DRIVE_FX, type Vehicle, type VehState } from '../vehicles/vehicles';
 import { Golfer, stepLength, type Outfit, type GestureKind } from '../characters/golfer';
 import {
@@ -40,18 +40,23 @@ import { createBlackjack, type BJPres } from './blackjack';
 import { createGarden, type PlanterRef, type HeldPres } from './garden';
 import { createDealer, DEALER_POS } from './dealer';
 import { createAttendants } from './attendants';
+import { createHobo, hoboNow, HOBO_SEED_PRICE } from './hobo';
+import { createAttic, ATTIC, PUTTER_UNLOCK } from './attic';
+import { createTrailTimer, trailJumpMesh } from './trail';
+import { createLotGames, BAND_TAGS, type TossKind } from './lotGames';
 import { createTownLife } from './townLife';
 import { createStaticBatcher } from '../world/staticBatch';
 import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { setPlaced, ownAtLeast } from '../avatar/progress';
+import { setPlaced, ownAtLeast, addItem, findAttic } from '../avatar/progress';
 import type { Shop } from './wardrobe';
 import { speedo } from '../ui/speedo';
 import { tickWater } from '../world/water';
 import { playSample, wireUiSounds } from '../audio/samples';
-import { $, esc } from '../ui/dom';
+import { $, esc, money } from '../ui/dom';
+import { invIcon } from './invIcons';
 import { createShopMenus } from './shopMenus';
 import { createTownMap } from './townMap';
 import { patchCloudShadows } from '../world/sky';
@@ -79,7 +84,7 @@ interface LPres {
   say?: string;
   sayAt?: number;
   q?: number;
-  go?: { id: string; at: number; m: string[] } | null;
+  go?: { id: string; at: number; m: string[]; bb?: 1 } | null;
   g?: string;
   ed?: boolean;
   rg?: Rg;
@@ -91,6 +96,8 @@ interface LPres {
   sm?: SmokePres;
   /** cart radio, while the cart is out with it on (driven or parked): [band, volume] */
   rd?: [number, number];
+  /** a jukebox this player last set: [lot, item index, band (-1 = off), when (s)] */
+  jb?: [number, number, number, number];
   /** best go-kart lap, seconds */
   kb?: number;
   /** mini putt in progress: hole, strokes, ball x and z in centimetres */
@@ -151,6 +158,14 @@ const TOWN_KEYS: Record<string, [string, ControlRow[]]> = {
       ['Space', 'Hold to charge, let go to putt', true],
       ['R', 'Back to the tee (one stroke)'],
       ['Esc', 'Leave the course'],
+    ],
+  ],
+  toss: [
+    'Lot games',
+    [
+      [['A', 'D'], 'Aim (Shift: fine)'],
+      ['Space', 'Hold to charge, let go to throw', true],
+      ['Esc', 'Put them down'],
     ],
   ],
   range: [
@@ -356,14 +371,16 @@ export function createLobby(env: LobbyEnv) {
         w.box(x, 9, z, hx, 9, hz); // the edge of the world (carts)
       {
         // the rise the West Side stands on, for carts and ragdolls: the street's slope and the flat top
-        const hills = westRiseMesh();
+        const hills = westRiseMesh(),
+          jumps = trailJumpMesh();
         const R = rapier();
         if (R)
-          w.world.createCollider(
-            R.ColliderDesc.trimesh(hills.verts, hills.indices)
-              .setCollisionGroups(grp(G_STATIC, G_RAG | G_VEH))
-              .setFriction(0.8),
-          );
+          for (const m of [hills, jumps])
+            w.world.createCollider(
+              R.ColliderDesc.trimesh(m.verts, m.indices)
+                .setCollisionGroups(grp(G_STATIC, G_RAG | G_VEH))
+                .setFriction(0.8),
+            );
       }
       pw = w;
     })
@@ -404,7 +421,22 @@ export function createLobby(env: LobbyEnv) {
     aspd: 0,
     gw: undefined as undefined | { o: string; k: string; at: number; amt?: number },
     mode: 'walk' as
-      'walk' | 'wardrobe' | 'modal' | 'chat' | 'gacha' | 'bj' | 'vlt' | 'grow' | 'dealer' | 'mail' | 'build' | 'drive' | 'stash' | 'putt' | 'range',
+      | 'walk'
+      | 'wardrobe'
+      | 'modal'
+      | 'chat'
+      | 'gacha'
+      | 'bj'
+      | 'vlt'
+      | 'grow'
+      | 'dealer'
+      | 'mail'
+      | 'build'
+      | 'drive'
+      | 'stash'
+      | 'putt'
+      | 'range'
+      | 'toss',
     q: 0,
     go: null as LPres['go'],
     say: '',
@@ -655,6 +687,44 @@ export function createLobby(env: LobbyEnv) {
         best = s;
       }
     }
+    // lot games and jukeboxes, on anyone's lot
+    for (const kind of ['cornhole', 'horseshoes'] as const)
+      for (const p of placedOf(kind)) {
+        p.obj.updateMatrixWorld();
+        for (const sz of [-1, 1]) {
+          const w = p.obj.localToWorld(tmpJ.set(0, 0, sz * (kind === 'cornhole' ? 3.4 : 3.9))),
+            d = Math.hypot(P.x - w.x, P.z - w.z);
+          if (d < 1.6 && d < bd) {
+            bd = d;
+            best = { id: 'toss:' + kind, label: kind === 'cornhole' ? 'Cornhole · four bags' : 'Horseshoes · four throws', obj: p.obj } as any;
+          }
+        }
+      }
+    for (const p of placedOf('jukebox')) {
+      const w = p.obj.getWorldPosition(tmpJ),
+        d = Math.hypot(P.x - w.x, P.z - w.z);
+      if (d < 1.7 && d < bd) {
+        bd = d;
+        best = { id: 'jukebox', label: 'Jukebox · pick a band', lot: p.lot, idx: p.idx } as any;
+      }
+    }
+    {
+      const a = attic.near(P.x, P.z);
+      if (a) {
+        const d = Math.hypot(P.x - a.x, P.z - a.z);
+        if (d < bd) {
+          bd = d;
+          best = { id: 'attic:' + a.id, label: 'Pick up: ' + a.name };
+        }
+      }
+    }
+    if (hoboAt) {
+      const d = Math.hypot(P.x - hoboAt.x, P.z - hoboAt.z);
+      if (d < 2.4 && d < bd) {
+        bd = d;
+        best = { id: 'hobo', label: 'The hobo · seeds' };
+      }
+    }
     {
       const st = garden.station(P.x, P.z);
       if (st) {
@@ -699,7 +769,7 @@ export function createLobby(env: LobbyEnv) {
         d = Math.hypot(P.x - x, P.z - z);
       if (d < 2.2 && d < bd) {
         bd = d;
-        best = { id: 'rv', label: 'Your RV · ball collection' };
+        best = { id: 'rv', label: 'Your RV · balls, putters, Mom’s Attic' };
       }
     }
     for (const p of plots) {
@@ -717,6 +787,11 @@ export function createLobby(env: LobbyEnv) {
     if (!n) return;
     if (n.id === 'tee') tee.open();
     else if (n.id === 'rocket') tee.open('moon');
+    else if (n.id === 'estate') tee.open('haunt');
+    else if (n.id === 'hobo') openHobo();
+    else if (n.id.startsWith('toss:')) games.start(n.id.slice(5) as TossKind, (n as any).obj);
+    else if (n.id.startsWith('attic:')) void pickUpAttic(n.id.slice(6));
+    else if (n.id === 'jukebox') openJukebox((n as any).lot, (n as any).idx);
     else if (n.id === 'shop') toast('The pro shop has moved to the West Side: clothes, a barber, tattoos and golf gear are all up the hill.', 4200);
     else if (n.id === 'store:pro') void openProShop();
     else if (n.id === 'store:home') void openFurniture();
@@ -937,11 +1012,91 @@ export function createLobby(env: LobbyEnv) {
       look: { shirt: '#3d3226', top: 'button', pants: '#2a2a2e', hairStyle: 'bald', stubble: true, glasses: 'round', chain: true, watch: true },
     },
   ]);
+  // the off-road trail's lap clock and its ghost (lobby/trail.ts)
+  const trail = createTrailTimer(),
+    trailHud = document.createElement('div'),
+    ghost = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8, 1.3, 3.8).translate(0, 0.9, 0),
+      new THREE.MeshBasicMaterial({ color: '#9fe0ff', transparent: true, opacity: 0.28, depthWrite: false }),
+    );
+  trailHud.style.cssText =
+    'position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:12;display:none;padding:8px 16px;border-radius:14px;background:rgba(22,16,10,.84);border:1px solid rgba(255,232,190,.2);color:#f6ecd8;font:800 18px "Barlow Condensed",Inter,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none';
+  document.body.appendChild(trailHud);
+  ghost.visible = false;
+  scene.add(ghost);
+  function trailFrame(dt: number, driving: boolean, x: number, z: number, yaw: number) {
+    if (!driving) {
+      trail.reset();
+      trailHud.style.display = 'none';
+      ghost.visible = false;
+      return;
+    }
+    const now = performance.now() / 1000,
+      say = trail.update(dt, now, x, z, yaw);
+    trailHud.style.display = say ? 'block' : 'none';
+    if (say) trailHud.textContent = say;
+    const g = trail.ghost(now);
+    ghost.visible = !!g;
+    if (g) {
+      ghost.position.set(g.x, groundY(g.x, g.z), g.z);
+      ghost.rotation.y = g.yaw;
+    }
+  }
+  // Mom's Attic: twelve of your old things lost round the map (lobby/attic.ts)
+  const attic = createAttic(scene);
+  void loadProgress().then(p => attic.sync(p.attic));
+  onProgress(p => attic.sync(p.attic));
+  async function pickUpAttic(id: string) {
+    const a = ATTIC.find(x => x.id === id);
+    if (!a || !(await findAttic(id))) return;
+    attic.hide(id);
+    playSample('win', 0.5);
+    const n = progress().attic.length,
+      un = PUTTER_UNLOCK.find(u => u.need === n);
+    toast(
+      `Found <b>${esc(a.name)}</b>! (${n} of ${ATTIC.length}) It's in the display case in your RV.${un ? `<br>Unlocked a putter: <b>${un.name}</b>. Pick it at your RV.` : ''}`,
+      un ? 5000 : 3200,
+    );
+  }
+  function setPutterSkin(id: string) {
+    look = { ...look, putter: id || undefined };
+    rebuildMe();
+    saveLocalLook(look);
+    sendPres(true);
+    if (pf?.db && pf.canWrite)
+      pf.db
+        .doc(`data/users/${pf.uid}/look`)
+        .set({ look, at: Date.now() })
+        .catch(() => {});
+  }
+  // the hobo: turns up somewhere in town now and then, selling seeds (lobby/hobo.ts)
+  const hobo = createHobo(scene);
+  let hoboAt: ReturnType<typeof hobo.update> = null;
+  function openHobo() {
+    const said = hobo.line(),
+      render = () => {
+        const n = progress().items.hobo || 0;
+        $('lm-body').innerHTML = `<p class="muted" style="font-style:italic">“${esc(said)}”</p>
+        <div class="hobocard">${invIcon('seeds')}<div><b>Hobo seeds</b><p class="muted">Plant one in a grow pot or bed. It grows a rainbow plant. ${n ? `You have <b>${n}</b>.` : ''}</p></div>
+        <button id="hb-buy" class="primary">Buy one · ${money(HOBO_SEED_PRICE)}</button></div>
+        <p class="muted">He'll be gone ${hoboAt ? 'in about ' + Math.max(1, Math.round((hoboAt.until - Date.now()) / 60000)) + ' min' : 'soon'}.</p>`;
+        $('hb-buy').onclick = async () => {
+          const r = await addItem('hobo', 1, HOBO_SEED_PRICE);
+          if (r === 'cash') toast(`That's ${money(HOBO_SEED_PRICE)} and you have ${money(progress().cash)}.`);
+          else if (r === 'full') toast('Your inventory is full (32 slots).');
+          else toast('He presses a grubby paper packet into your hand. <i>“Don’t plant it near the gnomes.”</i>', 3200);
+          render();
+        };
+      };
+    openModal('The hobo', '');
+    render();
+  }
   // ---------------- the cart radio: ten bands of shipped music on a shared clock (audio/radio.ts)
   const { radio, RS } = cartRadio,
     radioSrc: RadioSource[] = [],
     radioKey = (e: KeyboardEvent) => cartRadio.key(e, toast);
   function radioFrame(dt: number) {
+    jukeFrame();
     const driving = P.mode === 'drive' && !!cart.car;
     if (driving && RS.on) radioSrc.push({ id: 'me', band: RS.band, vol: RS.vol, mine: true, dist: 0, pan: 0 });
     else if (cart.car && RS.on) {
@@ -988,6 +1143,15 @@ export function createLobby(env: LobbyEnv) {
       }`;
     },
     putAwayOthers: () => garden.putAway(),
+    // a rainbow joint passed to a gnome: everyone standing close (up to three more) is pulled into the Bad Batch
+    badBatch() {
+      const near = [...remotes.values()]
+        .filter(r => !r.pres?.g && r.golfer.root.visible && Math.hypot(r.x - P.x, r.z - P.z) < 15)
+        .sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))
+        .slice(0, 3)
+        .map(r => r.by);
+      tee.startBatch([pf?.uid || 'me', ...near]);
+    },
     nearestPeer(x, z, maxD) {
       let best: { uid: string; d: number } | null = null;
       for (const r of remotes.values()) {
@@ -1135,7 +1299,7 @@ export function createLobby(env: LobbyEnv) {
   }
   // ---------------- your RV: the ball collection (pick the one you play) ----------------
   async function openCollection() {
-    openModal('Ball collection', '<div id="coll-body"><p class="muted">Loading…</p></div>');
+    openModal('Your RV: balls, putters and Mom’s Attic', '<div id="coll-body"><p class="muted">Loading…</p></div>');
     await loadProgress();
     renderCollection();
   }
@@ -1145,8 +1309,21 @@ export function createLobby(env: LobbyEnv) {
     if (!body) return;
     const pr = progress(),
       mine = look.ball || DEFAULT_BALL;
-    const sets = [...new Set(BALLS.map(b => b.set))];
-    body.innerHTML = `<div class="gacha-top"><div class="bd"><b>${pr.bd}</b> Birdie Dollar${pr.bd === 1 ? '' : 's'}</div><div class="muted">${pr.owned.length} of ${BALLS.length} collected · spin for more at the plaza machine</div></div>
+    const sets = [...new Set(BALLS.map(b => b.set))],
+      found = pr.attic.length,
+      atticHTML = `<h3>Mom's Attic · ${found} of ${ATTIC.length} found</h3><div class="attic">${ATTIC.map(a =>
+        pr.attic.includes(a.id) ? `<div class="at got"><b>${esc(a.name)}</b></div>` : `<div class="at"><b>?</b><small>${esc(a.hint)}</small></div>`,
+      ).join('')}</div>
+      <h3>Putters</h3><div class="tg">${[{ id: '', name: 'Plain blade', need: 0 }, ...PUTTER_UNLOCK]
+        .map(u =>
+          found >= u.need
+            ? `<button class="t${(look.putter || '') === u.id ? ' on' : ''}" data-putter="${u.id}">${u.name}</button>`
+            : `<button class="t" disabled>${u.name} · find ${u.need}</button>`,
+        )
+        .join('')}</div>`;
+    body.innerHTML =
+      atticHTML +
+      `<div class="gacha-top"><div class="bd"><b>${pr.bd}</b> Birdie Dollar${pr.bd === 1 ? '' : 's'}</div><div class="muted">${pr.owned.length} of ${BALLS.length} collected · spin for more at the plaza machine</div></div>
       ${sets
         .map(
           set =>
@@ -1162,6 +1339,19 @@ export function createLobby(env: LobbyEnv) {
       const id = el.dataset.prev;
       if (id) el.appendChild(ballPreview(id, 54));
     });
+    body.querySelectorAll<HTMLButtonElement>('[data-putter]').forEach(
+      b =>
+        (b.onclick = () => {
+          setPutterSkin(b.dataset.putter || '');
+          toast(
+            b.dataset.putter
+              ? `Your putter is now the <b>${PUTTER_UNLOCK.find(u => u.id === b.dataset.putter)!.name}</b>.`
+              : 'Back to the plain putter.',
+            2000,
+          );
+          renderCollection();
+        }),
+    );
     body.querySelectorAll<HTMLButtonElement>('button.gball').forEach(
       b =>
         (b.onclick = () => {
@@ -1394,6 +1584,67 @@ export function createLobby(env: LobbyEnv) {
     _cs = new THREE.Sphere();
   const putt = createPutt({ scene, camera, pw: () => pw, course: () => fun.puttCourse(), ballSkin: () => look.ball, P, toast });
   const range = createRange({ scene, camera, ballSkin: () => look.ball, P, toast, info: () => fun.range });
+  // ---------------- lot games: cornhole, horseshoes and the jukebox (lobby/lotGames.ts), at anyone's lot
+  const games = createLotGames({ scene, camera, P, toast, ground: (x, z) => groundY(x, z) });
+  /** the jukebox I last set (published, so everyone hears it): lot, item, band (-1 off), when */
+  let myJuke: [number, number, number, number] | null = null;
+  function openJukebox(lot: number, idx: number) {
+    const cur = [...jukeboxes()].find(j => j.lot === lot && j.idx === idx)?.band ?? -1;
+    openModal(
+      'Jukebox',
+      `<p class="muted">Pick a band: it plays to the whole block, for as long as you're in town.</p><div class="tg">${BAND_TAGS.map(
+        (t, i) => `<button class="t${cur === i ? ' on' : ''}" data-jb="${i}">${t}</button>`,
+      ).join('')}<button class="t${cur < 0 ? ' on' : ''}" data-jb="-1">Off</button></div>`,
+    );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-jb]')
+      .forEach(
+        b =>
+          (b.onclick = () => {
+            myJuke = [lot, idx, +b.dataset.jb!, Math.floor(Date.now() / 1000)];
+            sendPres(true);
+            closeModal();
+            toast(+b.dataset.jb! < 0 ? 'The jukebox goes quiet.' : `The jukebox drops a record: <b>${BAND_TAGS[+b.dataset.jb!]}</b>.`, 2200);
+          }),
+      );
+  }
+  /** Every jukebox someone has set: the most recent setting of each wins. */
+  function jukeboxes() {
+    const best = new Map<string, { lot: number; idx: number; band: number; at: number }>();
+    const add = (j: unknown) => {
+      if (!Array.isArray(j) || j.length !== 4 || !j.every(v => Number.isFinite(+v))) return;
+      const [lot, idx, band, at] = j.map(v => Math.floor(+v));
+      if (band < -1 || band > 9) return;
+      const k = lot + ':' + idx,
+        o = best.get(k);
+      if (!o || at > o.at) best.set(k, { lot, idx, band, at });
+    };
+    add(myJuke);
+    for (const r of remotes.values()) if (!r.pres?.g) add(r.pres?.jb);
+    return best.values();
+  }
+  function jukeFrame() {
+    const placed = placedOf('jukebox');
+    for (const j of jukeboxes()) {
+      if (j.band < 0) continue;
+      const o = placed.find(p => p.lot === j.lot && p.idx === j.idx);
+      if (!o) continue;
+      const w = o.obj.getWorldPosition(tmpJ),
+        dx = w.x - camera.position.x,
+        dz = w.z - camera.position.z,
+        e = camera.matrixWorld.elements;
+      radioSrc.push({
+        id: 'jb' + j.lot + ':' + j.idx,
+        band: j.band,
+        vol: 0.8,
+        mine: false,
+        dist: Math.hypot(w.x - P.x, w.z - P.z),
+        pan: (dx * e[0] + dz * e[2]) / (Math.hypot(dx, dz) + 4),
+        reach: 60,
+      });
+    }
+  }
+  const tmpJ = new THREE.Vector3();
   const cart = createLobbyCart({
     scene,
     plots,
@@ -1828,6 +2079,7 @@ export function createLobby(env: LobbyEnv) {
       mp: putt.pres(),
       ge: gest && clock - gest.t0 < 3 ? [gest.i, gest.n] : undefined,
       rd: cart.car && RS.on && radio.ready ? [RS.band, Math.round(RS.vol * 10) / 10] : undefined,
+      jb: myJuke || undefined,
       bj: bjGame.pres(),
       vm: vlt.pres(),
       sm: smoke.pres(),
@@ -2071,6 +2323,7 @@ export function createLobby(env: LobbyEnv) {
         P.vx = P.vz = 0;
         P.y = 0;
       }
+      trailFrame(dt, driving, cp.x, cp.z, cartYaw(cart.car));
       const up = _cv.set(0, 1, 0).applyQuaternion(cart.car.root.quaternion).y;
       cart.stuck = up < 0.45 && sp < 1.5 ? 'flip' : '';
       if (cp.y < -20) {
@@ -2353,6 +2606,8 @@ export function createLobby(env: LobbyEnv) {
     }
     dealer.update(dt, clock, camera);
     staff.update(clock, P.x, P.z);
+    hoboAt = hobo.update(clock, P.x, P.z);
+    attic.update(clock);
     strollers.update(clock, camera);
     {
       // everyone the town's walkers and drivers should give way to: me (or my car), the other players, the van
@@ -2398,6 +2653,7 @@ export function createLobby(env: LobbyEnv) {
     }
     putt.update(dt);
     range.update(dt);
+    games.update(dt);
     // Draw distance. From Fun Land or the hills the whole town is in view at once: about 1,400 separate objects, each
     // drawn twice (once more for shadows). Small things can't be seen from that far, so each top-level object under
     // 12 m across stops being drawn once it's farther than 55 m plus three times its size
@@ -2468,7 +2724,7 @@ export function createLobby(env: LobbyEnv) {
       duck: P.mode === 'bj' || P.mode === 'stash' ? 0.5 : 0,
       carts: [...remotes.values()].filter(r => r.cart).map(r => ({ pos: r.cart!.root.position, speed: r.cart!.speed() })),
     });
-    me.root.visible = P.mode !== 'gacha' && P.mode !== 'putt' && P.mode !== 'range'; // the close-up camera stands where the golfer is: hide them while using the machine
+    me.root.visible = P.mode !== 'gacha' && P.mode !== 'putt' && P.mode !== 'range' && P.mode !== 'toss'; // the close-up camera stands where the golfer is: hide them while using the machine
     snapSun(light.sun, light.SUN_DIR, camLook, 150);
     light.sky.position.copy(camera.position);
     light.sunDisc.position.copy(camera.position).addScaledVector(light.SUN_DIR, 1200);
@@ -2549,6 +2805,9 @@ export function createLobby(env: LobbyEnv) {
       },
       openWardrobe,
       openTee: tee.open,
+      startBatch: tee.startBatch,
+      games,
+      hoboNow,
       get pf() {
         return pf;
       },
@@ -2566,6 +2825,7 @@ export function createLobby(env: LobbyEnv) {
     }
     radio.stopAll(); // the cart radio stays in town
     if (range.active) range.stop();
+    if (games.active) games.stop();
     if (putt.active) putt.stop(); // and a mini putt round ends: its ball, aim line, meter and card all go
     cart.dispose(); // heading to the course: the cart goes home
     active = false;

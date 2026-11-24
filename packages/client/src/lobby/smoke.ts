@@ -59,6 +59,8 @@ export interface SmokeHost {
   seedCloset?(): Promise<void>;
   nearestPeer(x: number, z: number, maxD: number): { uid: string; d: number } | null;
   putAwayOthers(): void;
+  /** A rainbow joint was passed to a gnome: the Bad Batch begins (lobby.ts starts the round). */
+  badBatch?(): void;
 }
 
 /** A peer's published smoke state, made safe (never trust shapes or numbers from the network). */
@@ -764,6 +766,14 @@ export function createSmoke(host: SmokeHost) {
     );
     if (pr.papers)
       slots.push({ key: 'papers', icon: invIcon('papers'), n: pr.papers, name: 'Rolling papers', sub: 'One per joint. Grow Supply sells them.' });
+    if (pr.items.hobo)
+      slots.push({
+        key: 'hobo',
+        icon: invIcon('seeds'),
+        n: pr.items.hobo,
+        name: 'Hobo seeds',
+        sub: 'From the hobo. Plant one in a grow pot or bed: it grows a rainbow plant. The Street Dealer pays a fortune for the bud… or you could share it with a gnome.',
+      });
     if (pr.grinder)
       slots.push({ key: 'grinder', icon: invIcon('grinder'), name: 'Grinder', sub: 'Makes the grinding step of a roll quicker and cleaner.' });
     if (pr.fert)
@@ -1000,7 +1010,8 @@ export function createSmoke(host: SmokeHost) {
     }
     if (gnome && (!peer || gnome.d < peer.d)) {
       // 🔥🧙
-      const i = held;
+      const rainbow = j.s === 'rb',
+        i = held;
       held = -1;
       lit = false;
       setJointLeft(i, 0);
@@ -1009,6 +1020,11 @@ export function createSmoke(host: SmokeHost) {
       setTimeout(() => {
         gnOut = undefined;
       }, 30000);
+      if (rainbow) {
+        // the hobo's rainbow: the gnome takes a long pull… and the world melts
+        setTimeout(() => host.toast('The gnome takes a long, long pull. The colours start to <i>melt</i>…', 3200), 1500);
+        setTimeout(() => host.badBatch?.(), 6000);
+      }
       return;
     }
     if (!peer) {

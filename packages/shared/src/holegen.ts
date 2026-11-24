@@ -893,7 +893,15 @@ export function useHole(seed: number, locale = 'hills') {
     return HOLE1;
   }
   const h = generateHole(seed);
-  return locale === 'peak' ? peakHole(h, seed) : locale === 'moon' ? moonHole(h, seed) : h;
+  return locale === 'peak'
+    ? peakHole(h, seed)
+    : locale === 'moon'
+      ? moonHole(h, seed)
+      : locale === 'haunt'
+        ? hauntHole(h, seed)
+        : locale === 'trip'
+          ? tripHole(h, seed)
+          : h;
 }
 
 // ---------------------------------------------------------------- Boulder Peak
@@ -1127,6 +1135,177 @@ export function moonHole(base: HoleDef, seed: number): HoleDef {
     i++;
   }
   for (const b of d.buggies) delete (b as any)._a;
+  setHole(d);
+  if (classify(d.pin.x, d.pin.z).s !== 'green') d.pin = { x: d.green.x, z: d.green.z };
+  return d;
+}
+
+// ---------------------------------------------------------------- shared helpers for the dressed-up courses
+function walker(d: HoleDef, r: () => number) {
+  const U = (a: number, b: number) => a + r() * (b - a),
+    at = (along: number) => {
+      const i = Math.max(0, Math.min(CENTER_PTS.length - 2, Math.round(along))),
+        p = CENTER_PTS[i],
+        q = CENTER_PTS[i + 1],
+        L = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+      return { x: p.x, z: p.z, tx: (q.x - p.x) / L, tz: (q.z - p.z) / L };
+    },
+    /** a spot `off` metres out from the fairway's edge at `along`, on one side */
+    beside = (along: number, off: number, side: number) => {
+      const c = at(along),
+        o = fairwayHW(along) + off;
+      return { x: c.x - c.tz * o * side, z: c.z + c.tx * o * side };
+    },
+    clearOf = (x: number, z: number, rr: number) =>
+      greenEd(x, z) > 2.2 &&
+      Math.hypot(x, z) > 24 &&
+      pondPd(x, z) > 1.4 &&
+      !d.bunkers.some(b => Math.hypot(b.x - x, b.z - z) < b.r + rr + 2);
+  return { U, at, beside, clearOf };
+}
+
+// ---------------------------------------------------------------- the Old Estate
+// The same hole, played across the grounds of a crumbling Gothic manor up past the water tower. Its owner vanished
+// owing Lucky Pawn money. Always a blood-orange sunset in thick fog (the client draws the fog: the pin is lost in it
+// from far off, the bird's-eye view finds it). The rules:
+//   · the cart paths are old cobbles: a ball landing on them leaps and kicks up to 40° off line
+//   · gargoyles on plinths stand in the near rough, and a pair of gate piers flanks the fairway where drives land:
+//     a ball that meets one bounces off
+//   · par 3s, and some longer holes, have a moat round the green: carry it, or land short and putt across the drawbridge
+// Dead trees instead of oaks and palms; the pond stays (a black lake).
+const HAUNT_NAMES = [
+  "The Widow's Walk",
+  'Crypt Keeper',
+  'Moat House',
+  'Gargoyle Gate',
+  'The Drawbridge',
+  'Raven Rise',
+  'Ghost Lantern',
+  'The Long Gallery',
+  'Mourning Lawn',
+  'Bell Tower',
+  'Hedge Maze',
+  'The Unpaid Debt',
+  'Cobblestone Lane',
+  'The Last Heir',
+  'Candle Row',
+  'Weeping Yew',
+  'Grave Error',
+  'The Butler Did It',
+  'Shroud Bend',
+  'Lucky Pawn Ticket',
+];
+export function hauntHole(base: HoleDef, seed: number): HoleDef {
+  const d: HoleDef = JSON.parse(JSON.stringify(base)),
+    r = mulberry32((seed ^ 0x2545f491) >>> 0);
+  d.locale = 'haunt';
+  d.name = HAUNT_NAMES[Math.floor(r() * HAUNT_NAMES.length)];
+  d.trees.gap = 8;
+  d.pillars = [];
+  d.moat = null;
+  setHole(d);
+  const { U, at, beside, clearOf } = walker(d, r);
+  // the moat: every par 3, and about four longer holes in ten
+  if (d.par === 3 || r() < 0.4) {
+    const g = d.green,
+      r0 = Math.max(g.rx, g.rz) * 1.16 + 1.5,
+      r1 = r0 + U(4, 5.5),
+      c = at(HOLE_LEN - 30),
+      ang = Math.atan2(c.x - g.x, c.z - g.z);
+    let lo = 1e9;
+    for (let k = 0; k < 36; k++) {
+      const a = (k / 36) * Math.PI * 2;
+      for (const rr of [r0 - 0.8, (r0 + r1) / 2, r1 + 0.8]) lo = Math.min(lo, heightAt(g.x + Math.sin(a) * rr, g.z + Math.cos(a) * rr));
+    }
+    d.moat = { x: g.x, z: g.z, r0: +r0.toFixed(2), r1: +r1.toFixed(2), ang: +ang.toFixed(3), bw: 3.2, level: +(lo - 0.45).toFixed(2) };
+    d.bunkers = d.bunkers.filter(b => {
+      const dd = Math.hypot(b.x - g.x, b.z - g.z);
+      return dd + b.r < r0 - 0.5 || dd - b.r > r1 + 1;
+    });
+    if (d.plan) d.plan.tip = 'A moat rings the green: carry it, or lay up and putt across the drawbridge.';
+  }
+  setHole(d);
+  // the gate: two piers just off the fairway's edges where drives come down
+  const lz = d.plan?.lz?.[0] && d.plan.lz[0] < HOLE_LEN - 60 ? d.plan.lz[0] : HOLE_LEN * 0.55;
+  if (d.par > 3 && lz > 80)
+    for (const side of [-1, 1]) {
+      const p = beside(lz, 1.4, side);
+      d.pillars.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), r: 0.65, h: 3.6, kind: 'gate' });
+    }
+  // gargoyles on plinths in the near rough
+  for (let tries = 0; tries < 200 && d.pillars.filter(p => p.kind === 'gargoyle').length < 3 + Math.floor(r() * 3); tries++) {
+    const along = U(60, HOLE_LEN - 25),
+      p = beside(along, U(2.5, 9), r() < 0.5 ? -1 : 1);
+    if (classify(p.x, p.z).s !== 'rough' || !clearOf(p.x, p.z, 1) || d.pillars.some(q => Math.hypot(q.x - p.x, q.z - p.z) < 14)) continue;
+    if (d.moat && Math.hypot(p.x - d.moat.x, p.z - d.moat.z) < d.moat.r1 + 3) continue;
+    d.pillars.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), r: 0.75, h: 3.1, kind: 'gargoyle' });
+  }
+  setHole(d);
+  if (classify(d.pin.x, d.pin.z).s !== 'green') d.pin = { x: d.green.x, z: d.green.z };
+  return d;
+}
+
+// ---------------------------------------------------------------- the Bad Batch
+// Golden Hills as seen after a rainbow joint from the hobo's seeds, passed to the gnome. Reached only that way (the tee
+// board doesn't list it). Checkered fairways over a sea of cloud, giant flamingos drifting by, a pink sky. The rules:
+//   · bounce pads (giant mushrooms and lawn gnomes) in the rough: land on one and the ball is thrown high and on
+//   · warp pipes: rusty culverts beside the fairway; roll or drop into one and it comes out near the green
+//   · the wind turns round every stroke
+// No trees: the scenery doesn't touch the ball.
+const TRIP_NAMES = [
+  'Flamingo Drift',
+  'The Gnome Zone',
+  'Rainbow Road (Rough)',
+  'Mushroom Kingdom-ish',
+  'Cloud Nine',
+  'Culvert Dreams',
+  'Checkmate',
+  'Lava Lamp',
+  'Pink Elephant',
+  'Groovy Gravy',
+  'The Munchies',
+  'Far Out',
+  'Hobo Heaven',
+  'Bad Batch',
+  'Whoa Dude',
+  'Couch Lock',
+  'Vapor Trail',
+  'Spaced Out',
+  'Inner Space',
+  'Totally Tubular',
+];
+export function tripHole(base: HoleDef, seed: number): HoleDef {
+  const d: HoleDef = JSON.parse(JSON.stringify(base)),
+    r = mulberry32((seed ^ 0x1b873593) >>> 0);
+  d.locale = 'trip';
+  d.name = TRIP_NAMES[Math.floor(r() * TRIP_NAMES.length)];
+  d.flip = true;
+  d.gust = 1.3;
+  d.trees = { ...d.trees, count: 0, density: 0, clusters: [] };
+  d.pads = [];
+  d.pipes = [];
+  setHole(d);
+  const { U, at, beside, clearOf } = walker(d, r);
+  // bounce pads, mostly where a missed drive or approach comes down
+  for (let tries = 0; tries < 300 && d.pads.length < 5 + Math.floor(r() * 3); tries++) {
+    const along = U(50, HOLE_LEN - 15),
+      p = beside(along, U(2, 12), r() < 0.5 ? -1 : 1),
+      rr = U(2.2, 3.2);
+    const k = classify(p.x, p.z).s;
+    if ((k !== 'rough' && k !== 'heavy') || !clearOf(p.x, p.z, rr) || d.pads.some(q => Math.hypot(q.x - p.x, q.z - p.z) < q.r + rr + 8)) continue;
+    d.pads.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), r: +rr.toFixed(2) });
+  }
+  // warp pipes: a mouth out in the rough partway down, its other end on the fairway short of the green
+  const exitAt = HOLE_LEN - U(45, 65),
+    ex = at(exitAt);
+  if (HOLE_LEN > 140 && classify(ex.x, ex.z).s === 'fairway')
+    for (let tries = 0, n = HOLE_LEN > 300 ? 2 : 1, side = r() < 0.5 ? -1 : 1; tries < 80 && d.pipes.length < n; tries++) {
+      const along = U(HOLE_LEN * 0.3, HOLE_LEN * 0.62),
+        p = beside(along, U(3, 9), d.pipes.length ? -side : side);
+      if (classify(p.x, p.z).s !== 'rough' || !clearOf(p.x, p.z, 2) || d.pads.some(q => Math.hypot(q.x - p.x, q.z - p.z) < q.r + 4)) continue;
+      d.pipes.push({ ax: +p.x.toFixed(2), az: +p.z.toFixed(2), bx: +ex.x.toFixed(2), bz: +ex.z.toFixed(2), r: 1.6 });
+    }
+  if (d.plan) d.plan.tip = 'The wind flips every stroke. Pads throw you, pipes take you closer.';
   setHole(d);
   if (classify(d.pin.x, d.pin.z).s !== 'green') d.pin = { x: d.green.x, z: d.green.z };
   return d;

@@ -22,7 +22,8 @@ const WEST_OFF: { readonly x: number; readonly y: number; readonly z?: number } 
 
 export const ST = { z0: 10.5, z1: 17.5 }, // the street (it carries on from the town's south-west street)
   X0 = -44, // the gate: the town's west edge (-BOUND; written out because world.ts imports this file)
-  XW = -116; // the turning circle at the far end
+  XW = -116, // the turning circle at the far end
+  ESTATE_X = -132; // the Old Estate's gate, on a dirt track west of the turning circle
 // Everything below is laid out in the district's own frame (as if it began at the town's edge, on the flat); the
 // whole group is then moved west and lifted onto its rise (WEST_OFF). World positions go through these two.
 const RAMP_X1 = -68, // where the street reaches the top (= WEST.x1; written out for the same reason as X0)
@@ -496,6 +497,28 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
     G.add(t);
     col(-114, -110, -3, 1, 'sign');
   }
+  // 6 · the way to the Old Estate: a dirt track on from the turning circle to a pair of stone piers and a shut iron
+  //     gate, with a sign. E at the gate opens the tee times on the Old Estate course.
+  {
+    const stoneM = M('#5d5752', 0.95),
+      iron = M('#1c1a1a', 0.6, 0.7);
+    G.add(tile(flat(14, 4.2, photoM('dirt', '#8a7558'), ESTATE_X + 9, 14, 0.03), 2));
+    for (const z of [11.6, 16.4]) {
+      G.add(box(1.1, 3.4, 1.1, stoneM, ESTATE_X, 1.7, z), cyl(0.42, 0.42, 0.5, 10, stoneM, ESTATE_X, 3.6, z));
+      col(ESTATE_X - 0.6, ESTATE_X + 0.6, z - 0.6, z + 0.6);
+    }
+    for (let i = 0; i < 13; i++) {
+      const z = 12.3 + i * 0.3,
+        h = 2.5 + Math.sin((i / 12) * Math.PI) * 0.7;
+      G.add(box(0.05, h, 0.05, iron, ESTATE_X, h / 2, z));
+    }
+    for (const y of [0.4, 2.2]) G.add(box(0.06, 0.06, 4, iron, ESTATE_X, y, 14));
+    col(ESTATE_X - 0.15, ESTATE_X + 0.15, 12.2, 15.8);
+    const sg = sign([{ t: 'THE OLD ESTATE', s: 96, c: '#e9d9b6', b: true, y: 150 }], 3.2, 0.8, '#2a1a1a', 0.3);
+    sg.position.set(ESTATE_X + 0.62, 3.9, 14);
+    sg.rotation.y = Math.PI / 2;
+    G.add(sg);
+  }
   // street lights and a bus stop bench
   for (let x = -50; x > -110; x -= 15) {
     const lamp = new THREE.Mesh(
@@ -549,6 +572,7 @@ export function buildWestSide(scene: THREE.Scene, colliders: Collider[]) {
       { id: 'store:tattoo', x: shopRow.rooms.tattoo!.spot[0], z: shopRow.rooms.tattoo!.spot[1], r: 1.6, label: 'Ink Spot · tattoos' },
       { id: 'store:pro', x: shopRow.rooms.pro!.spot[0], z: shopRow.rooms.pro!.spot[1], r: 1.6, label: 'Pro Shop · ball trails' },
       { id: 'pawn', x: -120.8, z: 0.7, r: 2.1, label: 'Lucky Pawn · sell trophies' },
+      { id: 'estate', x: ESTATE_X + 2.2, z: 14, r: 2.4, label: 'The Old Estate · tee times' },
       { id: 'store:home', x: shopRow.rooms.home!.spot[0], z: shopRow.rooms.home!.spot[1], r: 1.5, label: 'Homestead · furniture for your lot' },
       { id: 'store:auto', x: shopRow.rooms.auto!.spot[0], z: shopRow.rooms.auto!.spot[1], r: 1.5, label: 'Wrench & Ride · cars, paint and parts' },
       ...vltSpots,

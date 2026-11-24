@@ -316,7 +316,11 @@ export interface Outfit {
   tatArmR?: string;
   tatCalf?: string;
   tatInk?: string;
+  /** the putter skin (Mom's Attic rewards, PUTTERS); none = the plain blade */
+  putter?: string;
 }
+/** Putter skins: unlocked by finding Mom's lost things (lobby/attic.ts). */
+export const PUTTERS = ['hockey', 'broom', 'wrench', 'flamingo'] as const;
 /** Tattoo designs, in the order they sit on public/golfer/tattoos.png (6 across). colour = keeps its own colours. */
 export const TATTOOS: { id: string; name: string; colour?: boolean }[] = [
   { id: 'dragon', name: 'Dragon' },
@@ -840,7 +844,7 @@ export type ClubKind = 'driver' | 'wood' | 'iron' | 'wedge' | 'putter';
 /** A golf club (asset-audit.md: no usable CC0 club models, so these are built in code). Stepped steel shaft, tapered
  *  rubber grip, a ferrule and hosel, and a head per club: a pear-shaped wood with a bright face and sole plate, a
  *  cavity-back iron or wedge with grooves, or a blade putter with a plumber's neck and a sight line. */
-function buildClub(kind: ClubKind, L: number, lie: number) {
+function buildClub(kind: ClubKind, L: number, lie: number, skin = '') {
   const g = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: '#c3c7cc', metalness: 0.5, roughness: 0.32 }); // no environment map to reflect, so keep it part-diffuse or it renders black
   const satin = new THREE.MeshStandardMaterial({ color: '#aeb3b9', metalness: 0.45, roughness: 0.5 });
@@ -902,6 +906,39 @@ function buildClub(kind: ClubKind, L: number, lie: number) {
     );
     // hosel up into the shaft
     add(g, new THREE.CylinderGeometry(0.0062, 0.0078, 0.05 * s, 8).translate(0, -L + 0.022 * s, 0), crown);
+  } else if (kind === 'putter' && skin) {
+    // the Attic putters: the shaft and grip above stay; the head is the joke
+    const M = (c: string, m = 0, r = 0.6) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r });
+    if (skin === 'hockey') {
+      // a hockey stick's blade, taped
+      const wood = M('#b07a45');
+      add(head, new THREE.BoxGeometry(0.008, 0.03, 0.13), wood, 0, 0.015, 0.055).rotation.x = 0.08;
+      add(head, new THREE.BoxGeometry(0.009, 0.026, 0.07), M('#1a1a1c', 0, 0.9), 0, 0.015, 0.07);
+      add(g, new THREE.BoxGeometry(0.016, 0.3, 0.01).translate(0, -L + 0.15, 0), wood);
+    } else if (skin === 'broom') {
+      // a kitchen broom: a bound bundle of straw
+      const straw = M('#d8b860', 0, 0.95);
+      add(head, new THREE.BoxGeometry(0.03, 0.05, 0.14), straw, -0.004, 0.025, 0.05);
+      add(head, new THREE.BoxGeometry(0.034, 0.008, 0.144), M('#c8452f'), -0.004, 0.046, 0.05);
+      add(head, new THREE.BoxGeometry(0.034, 0.006, 0.144), M('#c8452f'), -0.004, 0.034, 0.05);
+      add(g, new THREE.CylinderGeometry(0.008, 0.008, 0.4, 8).translate(0, -L + 0.22, 0), M('#9a6a3a'));
+    } else if (skin === 'wrench') {
+      // a golden adjustable wrench, jaw down
+      const gold = M('#e0b040', 0.9, 0.25);
+      add(head, new THREE.BoxGeometry(0.018, 0.016, 0.11), gold, -0.004, 0.008, 0.05);
+      const jaw = add(head, new THREE.TorusGeometry(0.022, 0.008, 8, 14, Math.PI * 1.3), gold, -0.004, 0.022, 0.1);
+      jaw.rotation.y = Math.PI / 2;
+      add(g, new THREE.BoxGeometry(0.014, 0.35, 0.006).translate(0, -L + 0.17, 0), gold);
+    } else {
+      // a pink lawn flamingo on the end, looking at the ball
+      const pink = M('#ff6fae', 0.1, 0.4);
+      add(head, new THREE.SphereGeometry(0.03, 12, 8).scale(1, 0.6, 1.6), pink, -0.006, 0.02, 0.05);
+      const neck = add(head, new THREE.TorusGeometry(0.03, 0.006, 6, 10, Math.PI), pink, 0.004, 0.035, 0.09);
+      neck.rotation.y = Math.PI / 2;
+      add(head, new THREE.SphereGeometry(0.009, 8, 6), pink, 0.012, 0.038, 0.12);
+      add(head, new THREE.ConeGeometry(0.004, 0.016, 6), M('#1a1a1c'), 0.02, 0.034, 0.12).rotation.z = -1.6;
+      add(g, new THREE.CylinderGeometry(0.0046, 0.0046, 0.04, 8).translate(0, -L + 0.02, 0), pink);
+    }
   } else if (kind === 'putter') {
     // blade: a low bar with heel and toe weights, a cavity, a white sight line, and an offset plumber's neck
     add(head, new THREE.BoxGeometry(0.02, 0.024, 0.11), satin, -0.004, 0.012, 0.05);
@@ -1217,7 +1254,10 @@ export class Golfer {
 
   /** This golfer's own joint positions when its body type isn't the default one. */
   private bind: Record<string, THREE.Vector3> | null = null;
+  /** this golfer's putter skin ('' = the plain blade) */
+  putterSkin = '';
   constructor(outfit: Outfit = DEFAULT_OUTFIT) {
+    this.putterSkin = outfit.putter || '';
     const own = mhBindFor(outfit.body);
     if (own) {
       this.bind = {};
@@ -1410,7 +1450,7 @@ export class Golfer {
     this.clubKind = kind;
     if (!this.clubs[kind]) {
       const sp = CLUB_SPEC[kind];
-      const c = buildClub(kind, sp.L, Math.PI / 2 - sp.plane);
+      const c = buildClub(kind, sp.L, Math.PI / 2 - sp.plane, kind === 'putter' ? this.putterSkin : '');
       c.visible = false;
       this.root.add(c);
       this.clubs[kind] = c;

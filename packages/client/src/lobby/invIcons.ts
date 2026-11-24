@@ -79,6 +79,40 @@ function bud(x: Ctx, color: string, seed = 7) {
 }
 const DRAW: Record<string, (x: Ctx, color: string) => void> = {
   bud,
+  // a hand-folded paper packet of seeds with a rainbow scribbled on it and a few seeds spilling out
+  seeds(x) {
+    x.save();
+    x.translate(48, 50);
+    x.rotate(-0.12);
+    x.fillStyle = '#d8c7a0';
+    x.fillRect(-24, -30, 48, 58);
+    x.fillStyle = '#c4b088';
+    x.beginPath();
+    x.moveTo(-24, -30);
+    x.lineTo(0, -16);
+    x.lineTo(24, -30);
+    x.fill();
+    const cols = ['#e8344a', '#f39a2b', '#f6d43a', '#4fbf5a', '#3a8fe0', '#8a4fd0'];
+    cols.forEach((c, i) => {
+      x.strokeStyle = c;
+      x.lineWidth = 3;
+      x.beginPath();
+      x.arc(0, 22, 26 - i * 3.4, Math.PI * 1.12, Math.PI * 1.88);
+      x.stroke();
+    });
+    x.restore();
+    x.fillStyle = '#5a3e22';
+    for (const [sx, sy] of [
+      [24, 84],
+      [34, 88],
+      [70, 86],
+      [62, 90],
+    ]) {
+      x.beginPath();
+      x.ellipse(sx, sy, 3.2, 2.2, 0.6, 0, 7);
+      x.fill();
+    }
+  },
   // a booklet of papers: a card cover folded back, one leaf pulled out
   papers(x) {
     x.translate(48, 50);

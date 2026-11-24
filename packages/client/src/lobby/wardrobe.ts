@@ -461,7 +461,14 @@ export function createWardrobe(host: WardrobeHost) {
           // down to shorts and bare feet so every tattoo shows (the female bodies keep a tee: the wardrobe never takes theirs off)
           const o = host.look() as any,
             fem = o.body === 'female' || o.body === 'fmuscle',
-            off: Record<string, unknown> = { top: fem ? 'tee' : 'none', jacket: 'none', pantsStyle: 'shorts', shoeStyle: 'bare', capStyle: 'none', glasses: 'none' };
+            off: Record<string, unknown> = {
+              top: fem ? 'tee' : 'none',
+              jacket: 'none',
+              pantsStyle: 'shorts',
+              shoeStyle: 'bare',
+              capStyle: 'none',
+              glasses: 'none',
+            };
           dressed = {};
           for (const k of CLOTHES) if (k in o) dressed[k] = o[k];
           host.setLook(sanitizeLook({ ...o, ...Object.fromEntries(Object.entries(off).filter(([k]) => k in o || k === 'top')) }));

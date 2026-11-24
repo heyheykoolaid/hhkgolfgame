@@ -11,6 +11,7 @@ import { buildCity } from './city';
 import { locale } from './locale';
 import { buildMountains } from './mountains';
 import { rustyRocket } from './rocket';
+import { hauntSky, tripSky, hauntDressing, tripDressing, resetDecor } from './locales';
 
 export const SKY_TOP = new THREE.Color('#d9925a'),
   HAZE = new THREE.Color('#f0c99a');
@@ -99,7 +100,36 @@ const TURF_MOON: Record<string, string> = {
   water: '#555',
   ob: '#6a6863',
 };
-const turf = () => (locale.id === 'peak' ? TURF_PEAK : locale.id === 'moon' ? TURF_MOON : TURF);
+/** The Old Estate: dark, overgrown, sodden lawns. */
+const TURF_HAUNT: Record<string, string> = {
+  tee: '#55623a',
+  fairway: '#4f5f36',
+  fringe: '#56663a',
+  green: '#5a6b3c',
+  rough: '#3c4528',
+  heavy: '#323820',
+  bunker: '#9c907a',
+  path: '#6e6a62',
+  hardpan: '#5e5446',
+  water: '#22302a',
+  ob: '#2e3320',
+};
+/** The Bad Batch: mint fairways (checkered, see buildTerrain), purple rough. */
+const TURF_TRIP: Record<string, string> = {
+  tee: '#6fe0a0',
+  fairway: '#5fd38d',
+  fringe: '#7ee6a6',
+  green: '#7ee6a6',
+  rough: '#9b62d6',
+  heavy: '#7c45b8',
+  bunker: '#ffd27a',
+  path: '#ff9ad0',
+  hardpan: '#ffb0d8',
+  water: '#ff7ac8',
+  ob: '#6e3aa8',
+};
+const turf = () =>
+  locale.id === 'peak' ? TURF_PEAK : locale.id === 'moon' ? TURF_MOON : locale.id === 'haunt' ? TURF_HAUNT : locale.id === 'trip' ? TURF_TRIP : TURF;
 const TURF: Record<string, string> = {
   tee: '#86a24c',
   fairway: '#7f9c47',
@@ -153,7 +183,8 @@ export function buildTerrain(scene: THREE.Object3D) {
     c = new THREE.Color(),
     TU = turf(),
     peakL = locale.id === 'peak',
-    moonL = locale.id === 'moon';
+    moonL = locale.id === 'moon',
+    tripL = locale.id === 'trip';
   for (let j = 0; j < nz; j++)
     for (let i = 0; i < nx; i++) {
       const x = B.x0 + (i * W) / (nx - 1),
@@ -169,12 +200,13 @@ export function buildTerrain(scene: THREE.Object3D) {
       uvs[(j * nx + i) * 2 + 1] = z * 0.35;
       dirt[j * nx + i] = k.s === 'path' || k.s === 'hardpan' ? 1 : 0;
       c.set(TU[ks] || TU.rough);
-      if (k.s === 'fairway') c.multiplyScalar(Math.floor(k.along / 9) & 1 ? 1.06 : 0.95);
+      if (k.s === 'fairway')
+        c.multiplyScalar(tripL ? ((Math.floor(x / 6) + Math.floor(z / 6)) & 1 ? 1.22 : 0.78) : Math.floor(k.along / 9) & 1 ? 1.06 : 0.95);
       if (k.s === 'rough' && k.d < fairwayHW(k.along) + 1.8 && k.along > 40) c.lerp(new THREE.Color(TU.fairway), 0.4);
       const n = 1 + (hash(i, j) - 0.5) * 0.06;
       // dry, sun-bleached patches in the rough (the reference's patchy turf)
       if ((k.s === 'rough' || k.s === 'heavy' || k.s === 'ob') && hash(i >> 3, j >> 3) > 0.72)
-        c.lerp(new THREE.Color(peakL ? '#5f8f70' : moonL ? '#8a8780' : '#9a8a55'), peakL ? 0.3 : moonL ? 0.35 : 0.45);
+        c.lerp(new THREE.Color(peakL ? '#5f8f70' : moonL ? '#8a8780' : tripL ? '#d07ae0' : '#9a8a55'), peakL ? 0.3 : moonL ? 0.35 : 0.45);
       col[o] = c.r * n;
       col[o + 1] = c.g * n;
       col[o + 2] = c.b * n;
@@ -205,7 +237,7 @@ export function buildTerrain(scene: THREE.Object3D) {
   m.receiveShadow = true;
   scene.add(m);
   // endless ground just under the terrain's faded edge (per hole: hilly holes sit lower)
-  const far = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: moonL ? '#5c5a56' : '#6b6a3a' }));
+  const far = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: moonL ? '#5c5a56' : tripL ? '#ffd9ef' : locale.id === 'haunt' ? '#2e3320' : '#6b6a3a' }));
   far.position.y = FLOOR - 0.05;
   scene.add(far);
   if (!COURSE.pond) return;
@@ -250,13 +282,22 @@ export function buildTerrain(scene: THREE.Object3D) {
   wg.setAttribute('aDepth', new THREE.Float32BufferAttribute(wdepth, 1));
   wg.setIndex(widx);
   wg.computeVertexNormals();
-  const water = new THREE.Mesh(wg, waterMaterial('#2a6f80', 0, 1, 0.9, true));
+  const water = new THREE.Mesh(wg, waterMaterial(locale.id === 'haunt' ? '#1f2a26' : tripL ? '#ff7ac8' : '#2a6f80', 0, 1, 0.9, true));
   water.position.set(pd.x, WATER_Y, pd.z);
   scene.add(water);
 }
 
 /** Vegetation: course trees become a mix of tall palms and scrubby oaks; instanced greybox until the kit lands. */
 export function buildVegetation(scene: THREE.Object3D) {
+  resetDecor();
+  if (locale.id === 'haunt') {
+    hauntDressing(scene);
+    return;
+  }
+  if (locale.id === 'trip') {
+    tripDressing(scene);
+    return;
+  }
   if (locale.id === 'moon') {
     buildBoulders(scene, 'moon');
     buildMoonBase(scene);
@@ -270,7 +311,11 @@ export function setBackdrop(scene: THREE.Object3D) {
   const city = scene.getObjectByName('city'),
     L = locale.id,
     peak = L === 'peak',
-    moon = L === 'moon';
+    moon = L === 'moon',
+    haunt = L === 'haunt',
+    trip = L === 'trip',
+    /** the strange courses: no city, clouds, birds in the sky or clubhouse */
+    odd = moon || haunt || trip;
   let mts = scene.getObjectByName('mountains');
   if (peak && !mts) scene.add((mts = buildMountains([20, 220], SUN_AZ)));
   if (city) city.visible = L === 'hills';
@@ -310,12 +355,18 @@ export function setBackdrop(scene: THREE.Object3D) {
     root.add(dome);
   }
   if (moon && !space) root.add((space = moonSky()));
+  let hs = root.getObjectByName('hauntSky'),
+    ts = root.getObjectByName('tripSky');
+  if (haunt && !hs) root.add((hs = hauntSky(SUN_AZ)));
+  if (trip && !ts) root.add((ts = tripSky(SUN_AZ)));
+  if (hs) hs.visible = haunt;
+  if (ts) ts.visible = trip;
   if (dome) dome.visible = peak;
   if (space) space.visible = moon;
   if (sky) sky.visible = L === 'hills';
   for (const n of ['clouds', 'skylife']) {
     const o = root.getObjectByName(n);
-    if (o) o.visible = !moon;
+    if (o) o.visible = !odd;
   }
   const disc = root.getObjectByName('sunDisc');
   if (disc) {
@@ -324,21 +375,31 @@ export function setBackdrop(scene: THREE.Object3D) {
     disc.lookAt(0, 0, 0);
   }
   const dress = root.getObjectByName('dressing');
-  if (dress) dress.visible = !moon;
+  if (dress) dress.visible = !odd;
+  // per course: [hemi sky, hemi ground, hemi strength, sun colour, sun strength, fog colour, fog near, fog far]
+  const LOOK: Record<string, [string, string, number, string, number, string | THREE.Color, number, number]> = {
+    hills: ['#f6d3a4', '#4a3c26', 0.9, '#ffbf78', 4.0, HAZE, 90, 520],
+    peak: ['#dce8f4', '#56624e', 1.05, '#fff0d6', 3.5, '#cfd8de', 140, 760],
+    moon: ['#8e96a8', '#3a3a3e', 0.75, '#ffd8a0', 4.4, '#2a2b30', 260, 1100],
+    // the Old Estate's fog is thick: the flag is lost in it from about 140 m (the bird's-eye view finds it)
+    haunt: ['#d08a6a', '#2a2018', 0.7, '#ff8a4a', 3.2, '#a04a32', 18, 160],
+    trip: ['#ffc6ee', '#6a3aa0', 1.1, '#ffe0a0', 3.6, '#f3a6d8', 140, 620],
+  };
+  const lk = LOOK[L] || LOOK.hills;
   if (hemi) {
-    hemi.color.set(peak ? '#dce8f4' : moon ? '#8e96a8' : '#f6d3a4');
-    hemi.groundColor.set(peak ? '#56624e' : moon ? '#3a3a3e' : '#4a3c26');
-    hemi.intensity = peak ? 1.05 : moon ? 0.75 : 0.9;
+    hemi.color.set(lk[0]);
+    hemi.groundColor.set(lk[1]);
+    hemi.intensity = lk[2];
   }
   if (sun) {
-    sun.color.set(peak ? '#fff0d6' : moon ? '#ffd8a0' : '#ffbf78');
-    sun.intensity = peak ? 3.5 : moon ? 4.4 : 4.0;
+    sun.color.set(lk[3]);
+    sun.intensity = lk[4];
   }
   if (root.fog) {
     const f = root.fog as THREE.Fog;
-    f.color.set(peak ? '#cfd8de' : moon ? '#2a2b30' : HAZE);
-    f.near = peak ? 140 : moon ? 260 : 90;
-    f.far = peak ? 760 : moon ? 1100 : 520;
+    f.color.set(lk[5] as any);
+    f.near = lk[6];
+    f.far = lk[7];
   }
 }
 

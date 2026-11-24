@@ -43,7 +43,13 @@ export const MOON_SURF = {
   hardpan: { e: 0.2, f: 0.3, mu: 0.6, grip: 0.4 },
   bunker: { e: 0.02, f: 0.08, mu: 2.6, grip: 0.1 },
 };
-export const surfP = (s: string) => (COURSE.locale === 'moon' && MOON_SURF[s]) || SURF[s];
+// The Old Estate: its cart paths are old cobbles, and a ball landing on them leaps and kicks off line (groundContact)
+export const HAUNT_SURF = {
+  path: { e: 0.62, f: 0.8, mu: 0.08, grip: 0.2 },
+  hardpan: { e: 0.55, f: 0.75, mu: 0.09, grip: 0.25 },
+};
+export const surfP = (s: string) =>
+  (COURSE.locale === 'moon' && MOON_SURF[s]) || (COURSE.locale === 'haunt' && HAUNT_SURF[s]) || SURF[s];
 /** gravity in flight on the current hole */
 export const gFlight = () => G * (COURSE.grav ?? 1);
 /** a moon buggy's body, for a ball: a short upright cylinder round its middle */
@@ -244,7 +250,69 @@ export function buggyHit(b, t) {
   return hit;
 }
 
+/** Pillars (gargoyle plinths, gate piers): a ball below the top bounces off the side. */
+export function pillarHit(b) {
+  const L = COURSE.pillars;
+  if (!L) return false;
+  let hit = false;
+  for (const p of L) {
+    const dx = b.x - p.x,
+      dz = b.z - p.z,
+      dh = Math.hypot(dx, dz);
+    if (dh >= p.r + BALL_R || b.y > heightAt(p.x, p.z) + p.h) continue;
+    const nx = dx / (dh || 1),
+      nz = dz / (dh || 1),
+      vn = b.vx * nx + b.vz * nz;
+    if (vn < 0) {
+      b.vx -= 1.55 * vn * nx;
+      b.vz -= 1.55 * vn * nz;
+      b.vx *= 0.75;
+      b.vz *= 0.75;
+      b.sb *= 0.4;
+      hit = true;
+    }
+    b.x = p.x + nx * (p.r + BALL_R);
+    b.z = p.z + nz * (p.r + BALL_R);
+  }
+  return hit;
+}
+/** Warp pipes: into a mouth and out of its other end, rolling toward the green. Once a shot. */
+export function pipeHit(b) {
+  const L = COURSE.pipes;
+  if (!L || b.warped) return false;
+  for (const p of L) {
+    if (Math.hypot(b.x - p.ax, b.z - p.az) > p.r || b.y > heightAt(p.ax, p.az) + 1.2) continue;
+    const gx = COURSE.pin.x - p.bx,
+      gz = COURSE.pin.z - p.bz,
+      L2 = Math.hypot(gx, gz) || 1,
+      sp = clamp(Math.hypot(b.vx, b.vz), 4, 9);
+    b.x = p.bx + (gx / L2) * (p.r + 0.6);
+    b.z = p.bz + (gz / L2) * (p.r + 0.6);
+    b.y = heightAt(b.x, b.z) + BALL_R;
+    b.vx = (gx / L2) * sp;
+    b.vz = (gz / L2) * sp;
+    b.vy = 0;
+    b.sb = b.ss = 0;
+    b.state = 'roll';
+    b.warped = true;
+    return true;
+  }
+  return false;
+}
+/** a pad under the ball, if it still has a bounce in it (three a shot, so a ball can't bounce on one for ever) */
+const padFor = (b) => ((b.pads || 0) < 3 ? COURSE.pads?.find(p => Math.hypot(b.x - p.x, b.z - p.z) < p.r) : undefined);
+
 export function stepBall(b, dt, env) {
+  if (COURSE.pillars && b.state !== 'rest' && pillarHit(b)) return 'post';
+  if (COURSE.pipes && b.state !== 'rest' && pipeHit(b)) return 'warp';
+  if (COURSE.pads && b.state === 'roll' && padFor(b)) {
+    b.pads = (b.pads || 0) + 1;
+    // rolling onto a pad: it pops the ball up and on
+    b.state = 'air';
+    b.vy = 7;
+    b.y += 0.05;
+    return 'pad';
+  }
   if (env.t != null && buggyHit(b, env.t)) {
     if (b.state === 'rest') b.state = 'roll';
     return 'buggy';
@@ -338,6 +406,15 @@ export function groundContact(b, gh) {
   b.y = gh + BALL_R;
   const vn = b.vx * nx + b.vy * ny + b.vz * nz;
   if (vn >= 0) return ev;
+  if (COURSE.pads && padFor(b)) {
+    b.pads = (b.pads || 0) + 1;
+    // a bounce pad throws the ball high, keeping most of its way forward
+    b.vy = Math.max(-vn * 1.2, 13);
+    b.vx *= 0.85;
+    b.vz *= 0.85;
+    b.sb *= 0.3;
+    return 'pad';
+  }
   // ball dropping straight into the cup
   if (surf === 'green' && Math.hypot(b.x - COURSE.pin.x, b.z - COURSE.pin.z) < CUP_R && -vn < 7) {
     b.state = 'holed';
@@ -358,7 +435,7 @@ export function groundContact(b, gh) {
     b.vx = tx * k + nvn * nx;
     b.vy = ty * k + nvn * ny;
     b.vz = tz * k + nvn * nz;
-    if (surf === 'rock') {
+    if (surf === 'rock' || (surf === 'path' && COURSE.locale === 'haunt')) {
       // granite is never flat where the ball meets it: the bounce leaves up to 40° off line, either way
       const a = (rand() - 0.5) * 1.4,
         c = Math.cos(a),

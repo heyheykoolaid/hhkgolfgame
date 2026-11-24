@@ -404,6 +404,106 @@ export const ITEMS: ItemDef[] = [
     make: c => g(flat(2.4, 1.6, new THREE.MeshStandardMaterial({ map: stripes(c, '#e9d8b0', 12), roughness: 1 }))),
   },
 
+  // ---------------- lot games (lobby/lotGames.ts): anyone on the lot can press E at them
+  {
+    id: 'jukebox',
+    name: 'Jukebox (plays a radio band to the whole block)',
+    cat: 'decor',
+    price: 1200,
+    w: 0.9,
+    d: 0.6,
+    make: () => {
+      const wood = M('#6a2a22', 0.55),
+        chrome = M('#d8dade', 0.25, 0.85),
+        glow = (c: string) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.4, roughness: 0.4 });
+      const r = g(box(0.8, 1.05, 0.5, wood, 0, 0.525, 0));
+      // the arched top, two lit tubes up its sides, a glass window with the record stack, a grille and buttons
+      const arch = cyl(0.4, 0.4, 0.5, 20, wood, 0, 1.05, 0);
+      arch.rotation.x = Math.PI / 2;
+      r.add(arch);
+      for (const x of [-0.36, 0.36]) {
+        const tube = cyl(0.045, 0.045, 1.0, 8, glow(x < 0 ? '#ff5a8a' : '#ffd24a'), x, 0.62, 0.24);
+        r.add(tube);
+      }
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.04, 8, 24, Math.PI), glow('#7ad0ff'));
+      ring.position.set(0, 1.05, 0.25);
+      r.add(ring);
+      r.add(
+        box(
+          0.5,
+          0.32,
+          0.02,
+          new THREE.MeshStandardMaterial({ color: '#2a1e2a', emissive: '#ffb050', emissiveIntensity: 0.35, roughness: 0.2 }),
+          0,
+          1.05,
+          0.255,
+        ),
+      );
+      r.add(box(0.56, 0.3, 0.02, chrome, 0, 0.3, 0.255));
+      for (let i = 0; i < 6; i++) r.add(box(0.05, 0.03, 0.02, M(i % 2 ? '#f1eee6' : '#e2574c', 0.4), -0.15 + i * 0.06, 0.72, 0.26));
+      return r;
+    },
+  },
+  {
+    id: 'cornhole',
+    name: 'Cornhole boards (a pair, 5 m apart)',
+    cat: 'decor',
+    price: 450,
+    w: 0.8,
+    d: 6.6,
+    posts: [
+      [0, -2.65],
+      [0, 2.65],
+    ],
+    make: () => {
+      const r = g(),
+        wood = M('#c8a26a', 0.7),
+        paint = M('#f1eee6', 0.6),
+        hole = M('#141010', 0.9);
+      for (const sz of [-1, 1]) {
+        // each board rises toward its far end (away from the other board), with the hole near the top
+        const b = g(box(0.6, 0.04, 1.2, paint, 0, 0, 0), box(0.62, 0.02, 0.18, M(sz < 0 ? '#2f6fb0' : '#c8452f', 0.6), 0, 0.025, -0.25));
+        const h = cyl(0.076, 0.076, 0.045, 18, hole, 0, 0.005, 0.3);
+        b.add(h);
+        b.position.set(0, 0.2, sz * 2.65);
+        b.rotation.set(-0.165 * sz, sz < 0 ? Math.PI : 0, 0);
+        b.userData.board = sz; // (lotGames.ts finds the boards and their holes by these)
+        h.userData.hole = sz;
+        // the legs at the high end
+        r.add(b, box(0.05, 0.3, 0.05, wood, -0.27, 0.15, sz * 3.15), box(0.05, 0.3, 0.05, wood, 0.27, 0.15, sz * 3.15));
+      }
+      return r;
+    },
+  },
+  {
+    id: 'horseshoes',
+    name: 'Horseshoe pits (a pair, 6 m apart)',
+    cat: 'decor',
+    price: 300,
+    w: 1.0,
+    d: 7.6,
+    solid: false,
+    make: () => {
+      const r = g(),
+        sand = M('#d9c08e', 1),
+        wood = M('#7a5432', 0.8),
+        iron = M('#5a5a5e', 0.5, 0.6);
+      for (const sz of [-1, 1]) {
+        r.add(box(0.9, 0.04, 1.4, sand, 0, 0.02, sz * 3.1));
+        for (const [w, d, x, z] of [
+          [1.0, 0.08, 0, 0.74],
+          [1.0, 0.08, 0, -0.74],
+          [0.08, 1.4, 0.48, 0],
+          [0.08, 1.4, -0.48, 0],
+        ] as const)
+          r.add(box(w, 0.1, d, wood, x, 0.05, sz * 3.1 + z));
+        const stake = cyl(0.015, 0.015, 0.38, 6, iron, 0, 0.19, sz * 3.1);
+        stake.userData.stake = sz;
+        r.add(stake);
+      }
+      return r;
+    },
+  },
   // ---------------- decoration & personality
   ph('gnome', 'garden_gnome', 'Garden gnome', 'decor', 60, { solid: false }),
   ph('catstatue', 'concrete_cat_statue', 'Concrete cat statue', 'decor', 150, { solid: false }),

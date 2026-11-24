@@ -11,13 +11,19 @@ export interface Strain {
   yield: [number, number];
   seed: number;
   color: string;
+  /** not sold as seed at the planter (the rainbow strain only grows from the hobo's seeds) and never the dealer's pick */
+  hidden?: boolean;
 }
 /** Grow times are minutes of play: seedling, vegetative, flowering. */
 export const STRAINS: Strain[] = [
   { id: 'gc', name: 'Green Crack', tier: 'common', mins: [2, 6, 8], yield: [9, 12], seed: 120, color: '#6fae3c' },
   { id: 'dp', name: 'Durban Poison', tier: 'common', mins: [3, 7, 9], yield: [11, 15], seed: 140, color: '#7fb04a' },
   { id: 'bd', name: 'Blue Dream', tier: 'mid', mins: [3, 9, 11], yield: [10, 14], seed: 420, color: '#5f9a6e' },
+  // the hobo's seeds: they grow a rainbow plant. Worth a fortune to the dealer, or give a joint of it to a gnome…
+  { id: 'rb', name: 'Hobo Rainbow', tier: 'exotic', mins: [3, 8, 10], yield: [6, 9], seed: 0, color: '#d070e0', hidden: true },
 ];
+/** What the planter offers as seed (the rainbow strain grows only from a hobo seed in your pocket). */
+export const SEED_STRAINS = STRAINS.filter(s => !s.hidden);
 export const STRAIN = new Map(STRAINS.map(s => [s.id, s]));
 export const FEED_COST = 25;
 export const QUALITY = ['Poor', 'Average', 'Good', 'Excellent', 'Perfect'] as const;
@@ -136,7 +142,7 @@ export function yieldOf(p: Plant, gear: string) {
 // ---------------- the Street Dealer's prices (Option B: the clamp only applies to the market part) ----------------
 export const DAY_MS = 86400000;
 /** Today's preferred strain: rotates daily, the same for everyone (no server needed). */
-export const preferredStrain = (now = Date.now()) => STRAINS[Math.floor(now / DAY_MS) % STRAINS.length].id;
+export const preferredStrain = (now = Date.now()) => SEED_STRAINS[Math.floor(now / DAY_MS) % SEED_STRAINS.length].id;
 export const bulkBonus = (n: number) => (n >= 50 ? 1.14 : n >= 30 ? 1.1 : n >= 15 ? 1.06 : 1);
 export function unitPrice(strain: string, q: number, qty: number, now = Date.now(), supply = 1) {
   const s = STRAIN.get(strain)!,

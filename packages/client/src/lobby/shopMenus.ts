@@ -300,7 +300,7 @@ export function createShopMenus(ctx: ShopCtx) {
     ['Tables and desks', /table|desk/i],
     ['Bedroom and storage', /bed|wardrobe|cupboard|bookcase|shelves|coat|crate|box|basket/i],
     ['Kitchen and appliances', /fridge|stove|washing|grill|cooler|television|fish tank|fan|bin|propane/i],
-    ['Yard fun', /pool|umbrella|fire pit|windmill|bird bath|flamingo|gnome|flag|statue|guitar|sign/i],
+    ['Yard fun', /jukebox|cornhole|horseshoe|pool|umbrella|fire pit|windmill|bird bath|flamingo|gnome|flag|statue|guitar|sign/i],
   ];
   const AISLE_ORDER = [
     'Seating',

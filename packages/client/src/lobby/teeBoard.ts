@@ -23,7 +23,7 @@ export interface TeePeer {
   by: string;
   q?: number;
   away: boolean;
-  go?: { id: string; at: number; m: string[] } | null;
+  go?: { id: string; at: number; m: string[]; bb?: 1 } | null;
 }
 export interface TeeHost {
   uid(): string;
@@ -31,7 +31,7 @@ export interface TeeHost {
   nameOf(uid: string, fallback?: string): string;
   q(): number;
   setQ(at: number): void; // my place in the queue (0 = not queued); publishes it
-  setGo(go: { id: string; at: number; m: string[] }): void; // host: announce the start to the group
+  setGo(go: { id: string; at: number; m: string[]; bb?: 1 }): void; // host: announce the start to the group (bb: the Bad Batch)
   peers(): TeePeer[];
   openModal(title: string, html: string): void;
   closeModal(): void;
@@ -123,6 +123,84 @@ function moonPic(c: HTMLCanvasElement, x: CanvasRenderingContext2D) {
   x.fill();
   return c.toDataURL('image/jpeg', 0.85);
 }
+/** The Old Estate's postcard: a blood-orange sky, the manor on its rise, dead trees, fog over the moat. */
+function hauntPic(c: HTMLCanvasElement, x: CanvasRenderingContext2D) {
+  const sky = x.createLinearGradient(0, 0, 0, 130);
+  sky.addColorStop(0, '#2a1630');
+  sky.addColorStop(0.6, '#7a2a2a');
+  sky.addColorStop(1, '#d0602e');
+  x.fillStyle = sky;
+  x.fillRect(0, 0, 320, 180);
+  x.fillStyle = '#ff8a40';
+  x.beginPath();
+  x.arc(240, 104, 22, 0, 7);
+  x.fill();
+  // the manor
+  x.fillStyle = '#1c1418';
+  x.fillRect(110, 62, 100, 52);
+  x.fillRect(92, 50, 22, 64);
+  x.fillRect(206, 56, 22, 58);
+  for (const [tx, h] of [
+    [103, 38],
+    [217, 44],
+    [160, 30],
+  ]) {
+    x.beginPath();
+    x.moveTo(tx - 9, h + 14);
+    x.lineTo(tx, h - 10);
+    x.lineTo(tx + 9, h + 14);
+    x.fill();
+  }
+  x.beginPath();
+  x.moveTo(106, 62);
+  x.lineTo(160, 36);
+  x.lineTo(214, 62);
+  x.fill();
+  x.fillStyle = '#ffb35a';
+  for (const [wx, wy] of [
+    [124, 74],
+    [150, 90],
+    [186, 74],
+    [100, 66],
+  ])
+    x.fillRect(wx, wy, 5, 10);
+  // the lawn and the moat
+  x.fillStyle = '#323820';
+  x.fillRect(0, 114, 320, 66);
+  x.fillStyle = '#1f2a26';
+  x.beginPath();
+  x.ellipse(170, 146, 70, 14, 0, 0, 7);
+  x.fill();
+  x.fillStyle = '#4f5f36';
+  x.beginPath();
+  x.ellipse(170, 146, 52, 9, 0, 0, 7);
+  x.fill();
+  x.fillStyle = '#5a3e28';
+  x.fillRect(164, 152, 12, 18);
+  // dead trees
+  x.strokeStyle = '#140e10';
+  for (const tx of [26, 56, 280, 300]) {
+    x.lineWidth = 4;
+    x.beginPath();
+    x.moveTo(tx, 170);
+    x.lineTo(tx + 2, 112);
+    x.stroke();
+    x.lineWidth = 2;
+    for (let k = 0; k < 4; k++) {
+      x.beginPath();
+      x.moveTo(tx + 1, 140 - k * 7);
+      x.lineTo(tx + (k % 2 ? 16 : -16), 126 - k * 9);
+      x.stroke();
+    }
+  }
+  // fog
+  const fog = x.createLinearGradient(0, 110, 0, 180);
+  fog.addColorStop(0, 'rgba(200,110,80,0.0)');
+  fog.addColorStop(1, 'rgba(200,110,80,0.45)');
+  x.fillStyle = fog;
+  x.fillRect(0, 100, 320, 80);
+  return c.toDataURL('image/jpeg', 0.85);
+}
 /** A small painted postcard of each course, for the tee board's cards. */
 const pics = new Map<string, string>();
 function localePic(id: LocaleId) {
@@ -136,6 +214,10 @@ function localePic(id: LocaleId) {
     peak = id === 'peak';
   if (id === 'moon') {
     pics.set(id, (u = moonPic(c, x)));
+    return u;
+  }
+  if (id === 'haunt' || id === 'trip') {
+    pics.set(id, (u = id === 'haunt' ? hauntPic(c, x) : moonPic(c, x)));
     return u;
   }
   sky.addColorStop(0, peak ? '#8fb0c8' : '#c9a98c');
@@ -404,12 +486,14 @@ export function createTeeBoard(host: TeeHost) {
     // 1 · where: a picture card per course
     // 1 · where: a picture card per course of ours, and one for playing a real course's card
     const sel = homeOn ? 'real' : teeLoc,
-      where = `<h3 style="margin-top:0">Course</h3><div class="tlocs">${LOCALES.map(
-        l =>
-          `<button class="tloc${sel === l.id ? ' on' : ''}" data-loc="${l.id}"><img src="${localePic(l.id)}" alt=""><b>${l.name}</b><small>${l.blurb}</small></button>`,
-      ).join(
-        '',
-      )}<button class="tloc${sel === 'real' ? ' on' : ''}" data-loc="real"><img src="${realPic()}" alt=""><b>A real course</b><small>Play the scorecard of one of 10,000 US courses.</small></button></div>`;
+      where = `<h3 style="margin-top:0">Course</h3><div class="tlocs">${LOCALES.filter(l => !('hidden' in l))
+        .map(
+          l =>
+            `<button class="tloc${sel === l.id ? ' on' : ''}" data-loc="${l.id}"><img src="${localePic(l.id)}" alt=""><b>${l.name}</b><small>${l.blurb}</small></button>`,
+        )
+        .join(
+          '',
+        )}<button class="tloc${sel === 'real' ? ' on' : ''}" data-loc="real"><img src="${realPic()}" alt=""><b>A real course</b><small>Play the scorecard of one of 10,000 US courses.</small></button></div>`;
     // 2 · what: for our own courses, one random hole (or one by its code) or a tournament; for a real course, which
     //     one, how much of it, and which of our landscapes to play it across
     const pick = teeFmt === 'one' ? teeHole : String(teeFmt),
@@ -436,7 +520,9 @@ export function createTeeBoard(host: TeeHost) {
                  <p style="margin:6px 0 0;font-variant-numeric:tabular-nums">Par ${pars.join(' · ')} <span class="muted">= ${pars.reduce((a, b) => a + b, 0)}</span></p>
                  <p class="muted" style="margin:6px 0 0">Its pars in order, and its hardest holes get our hardest ideas. The holes themselves are ours.</p></div></div>
                  <h3>How much of it</h3><div class="tg"><button class="t${homeN === 3 ? ' on' : ''}" data-homen="3">First 3 holes</button><button class="t${homeN === 9 ? ' on' : ''}" data-homen="9">Front nine</button></div>
-                 <h3>Played across</h3><div class="tg">${LOCALES.map(l => `<button class="t${teeLoc === l.id ? ' on' : ''}" data-scn="${l.id}">${l.name}</button>`).join('')}</div>`
+                 <h3>Played across</h3><div class="tg">${LOCALES.filter(l => !('hidden' in l))
+                   .map(l => `<button class="t${teeLoc === l.id ? ' on' : ''}" data-scn="${l.id}">${l.name}</button>`)
+                   .join('')}</div>`
               : ''
           }<p class="muted" style="font-size:11px;margin-top:8px">Course names and scorecards: OpenGolfAPI, Open Database License.</p>`;
       },
@@ -610,16 +696,21 @@ export function createTeeBoard(host: TeeHost) {
   }
   const goSeen = new Map<string, number>();
   function checkGroupStart() {
-    // somebody (the host) started a round that includes me
-    if (!host.q() || !host.online()) return;
+    // somebody (the host) started a round that includes me: one I queued for, or a Bad Batch I was standing near
+    if (!host.online()) return;
     /* freshness is judged by when WE first saw the start, never by the host's clock (clocks differ between machines) */
     for (const r of host.peers()) {
       const g = r.go;
-      if (!g || typeof g !== 'object') continue;
+      if (!g || typeof g !== 'object' || (!host.q() && !g.bb)) continue;
       const gk = r.by + ':' + g.id;
       if (!goSeen.has(gk)) goSeen.set(gk, performance.now());
       if (performance.now() - goSeen.get(gk)! < 30000 && Array.isArray(g.m) && g.m.includes(host.uid())) {
-        host.toast(`${esc(host.nameOf(r.by, 'The host'))} is starting the round…`, 1500);
+        host.toast(
+          g.bb
+            ? `${esc(host.nameOf(r.by, 'Somebody'))} shared a rainbow joint with a gnome. The colours start to <i>melt</i>…`
+            : `${esc(host.nameOf(r.by, 'The host'))} is starting the round…`,
+          g.bb ? 3500 : 1500,
+        );
         host.closeModal();
         go(
           String(g.id)
@@ -633,8 +724,17 @@ export function createTeeBoard(host: TeeHost) {
     }
   }
 
+  /** The Bad Batch: a three-hole cup on the trip course for me and whoever was standing close (lobby.ts picks them). */
+  function startBatch(members: string[]) {
+    const id = withLocale(tournamentIdFor(3, randomTourSeed(), newId()), 'trip');
+    host.setGo({ id, at: Date.now(), m: members, bb: 1 });
+    host.closeModal();
+    setTimeout(() => go(id, members.length > 1, members), 2500);
+  }
+
   return {
     open: openTee,
+    startBatch,
     render: renderTee,
     checkGroupStart,
     trophyPic,

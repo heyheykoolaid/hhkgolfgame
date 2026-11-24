@@ -70,6 +70,18 @@ export interface HoleDef {
   craters?: { x: number; z: number; r: number; dep: number; rim: number }[];
   /** moon buggies: each drives back and forth along a line across the hole, on the shared clock (see buggyAt) */
   buggies?: { x: number; z: number; tx: number; tz: number; half: number; v: number; ph: number }[];
+  /** upright things a ball bounces off (the Old Estate's gargoyle plinths and gate piers): cylinders standing h high */
+  pillars?: { x: number; z: number; r: number; h: number; kind?: string }[];
+  /** a moat round the green (the Old Estate): water from r0 to r1 out from (x, z), except a drawbridge `bw` wide
+   *  running out from the green toward angle `ang` (atan2(dx, dz)); the water stands at `level` */
+  moat?: { x: number; z: number; r0: number; r1: number; ang: number; bw: number; level: number } | null;
+  /** bounce pads (the Bad Batch): land on one and the ball is thrown high */
+  pads?: { x: number; z: number; r: number }[];
+  /** warp pipes (the Bad Batch): a ball that rolls or drops into a mouth at (ax, az) comes out of (bx, bz), rolling
+   *  toward the green */
+  pipes?: { ax: number; az: number; bx: number; bz: number; r: number }[];
+  /** the wind turns round every stroke (the Bad Batch): odd strokes play it the other way */
+  flip?: boolean;
   /** a second fairway (split fairway, lay-up area): polyline + half width */
   alt?: { pts: number[][]; hw: number } | null;
   /** shaped ground on top of the base terrain: mounds/ridges (h > 0) and hollows/valleys (h < 0), rotated ellipses */
@@ -330,6 +342,15 @@ export function heightAt(x, z) {
       if (u < 1) h -= c.dep * (1 - u * u);
       h += c.rim * Math.exp(-(((u - 1) / 0.32) ** 2));
     }
+  // the moat: a ditch of water round the green, except under the drawbridge
+  const mo = COURSE.moat;
+  if (mo) {
+    const d = Math.hypot(x - mo.x, z - mo.z);
+    if (d > mo.r0 - 0.5 && d < mo.r1 + 0.5 && !onBridge(x, z)) {
+      const w = smoothstep(mo.r0 - 0.5, mo.r0 + 0.7, d) * (1 - smoothstep(mo.r1 - 0.7, mo.r1 + 0.5, d));
+      h = lerp(h, mo.level - 1.1, w);
+    }
+  }
   // pond basin
   const pd = pondPd(x, z);
   if (pd < 1.3) h = lerp(h, WATER_Y - 1.1, smoothstep(1.25, 0.9, pd));
@@ -351,9 +372,31 @@ export function normalAt(x, z) {
 }
 
 // Surface classification. Returns {s, d, along}
+/** on the moat's drawbridge (the bridge plays as fringe: you can putt across it) */
+export function onBridge(x, z) {
+  const mo = COURSE.moat;
+  if (!mo) return false;
+  const dx = x - mo.x,
+    dz = z - mo.z,
+    ux = Math.sin(mo.ang),
+    uz = Math.cos(mo.ang),
+    along = dx * ux + dz * uz,
+    side = Math.abs(dx * uz - dz * ux);
+  return along > mo.r0 - 2 && along < mo.r1 + 2 && side < mo.bw / 2;
+}
+export function inMoat(x, z) {
+  const mo = COURSE.moat;
+  if (!mo) return false;
+  const d = Math.hypot(x - mo.x, z - mo.z);
+  return d > mo.r0 && d < mo.r1 && !onBridge(x, z);
+}
 export function classify(x, z) {
   const ge = greenEd(x, z);
   if (ge < 1) return { s: 'green', d: 0, along: HOLE_LEN };
+  if (COURSE.moat) {
+    if (inMoat(x, z)) return { s: 'water', d: 0, along: HOLE_LEN - 10 };
+    if (onBridge(x, z)) return { s: 'fringe', d: 0, along: HOLE_LEN - 10 };
+  }
   for (const b of COURSE.bunkers) if (Math.hypot(x - b.x, z - b.z) < b.r) return { s: 'bunker', d: 0, along: 0 };
   if (ge < 1.3) return { s: 'fringe', d: 0, along: HOLE_LEN - 10 };
   if (pondPd(x, z) < 1) return { s: 'water', d: 0, along: 0 };

@@ -77,6 +77,12 @@ export interface Progress {
   carLook: Record<string, string>;
   /** Bolt-on parts per car you own: three digits, engine · tyres · brakes, each 0 to 3 (vehicles.ts CAR_PARTS). */
   carParts: Record<string, string>;
+  /** Odds and ends by kind, counted: hobo (the hobo's rainbow seeds). */
+  items: Record<string, number>;
+  /** Mom's Attic: the lost things you've found (lobby/attic.ts ids). */
+  attic: string[];
+  /** The putter skin you play with ('' = the plain one; lobby/attic.ts PUTTERS). */
+  putter: string;
   at?: number; /* when this copy was last saved (ms): the newer copy wins between devices */
 }
 const cleanTrophy = (t: any): TrophyRec | null =>
@@ -106,7 +112,22 @@ const clean0 = (
   p: any,
 ): Omit<
   Progress,
-  'papers' | 'grinder' | 'joints' | 'fert' | 'gear' | 'closet' | 'closetInit' | 'trails' | 'trail' | 'cars' | 'car' | 'carLook' | 'carParts'
+  | 'papers'
+  | 'grinder'
+  | 'joints'
+  | 'fert'
+  | 'gear'
+  | 'closet'
+  | 'closetInit'
+  | 'trails'
+  | 'trail'
+  | 'cars'
+  | 'car'
+  | 'carLook'
+  | 'carParts'
+  | 'items'
+  | 'attic'
+  | 'putter'
 > => {
   const owned = Array.isArray(p?.owned) ? ([...new Set(p.owned.filter((id: any) => BALL.has(id)))] as string[]) : [];
   if (!owned.includes(DEFAULT_BALL)) owned.unshift(DEFAULT_BALL);
@@ -172,6 +193,14 @@ const clean = (p: any): Progress => ({
       .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && typeof v === 'string' && /^[0-3]{3}$/.test(v))
       .slice(0, 40),
   ) as Record<string, string>,
+  items: Object.fromEntries(
+    Object.entries(p?.items && typeof p.items === 'object' ? p.items : {})
+      .filter(([k, v]) => /^[a-z]{2,12}$/.test(k) && +(v as any) > 0)
+      .slice(0, 40)
+      .map(([k, v]) => [k, Math.min(999, Math.floor(+(v as any)))]),
+  ),
+  attic: Array.isArray(p?.attic) ? [...new Set<string>(p.attic.filter((s: any) => typeof s === 'string' && /^[a-z0-9]{2,16}$/.test(s)))].slice(0, 60) : [],
+  putter: typeof p?.putter === 'string' && /^[a-z0-9]{0,16}$/.test(p.putter) ? p.putter : '',
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
       .filter(([k, v]) => /^[a-z0-9_]{2,24}$/.test(k) && +(v as any) > 0)
@@ -443,6 +472,7 @@ export function slotsUsed(p: Progress = cur) {
     (p.papers > 0 ? 1 : 0) +
     (p.grinder ? 1 : 0) +
     (p.fert > 0 ? 1 : 0) +
+    (p.items.hobo > 0 ? 1 : 0) +
     CARRIED.filter(id => spareGear(p, id) > 0).length +
     p.trophies.filter(t => !placedKeys.includes('trophy:' + t.id)).length
   );
@@ -527,6 +557,39 @@ export async function setTrail(id: string, price: number) {
   cur.trail = id;
   await save();
   return true;
+}
+/** Buy (or be given, price 0) n of an item kind; it takes an inventory slot the first time. */
+export async function addItem(kind: string, n: number, price: number): Promise<BuyResult> {
+  await loadProgress();
+  if (cur.cash < price) return 'cash';
+  if (!cur.items[kind] && slotsUsed() >= INV_SLOTS) return 'full';
+  cur.cash -= price;
+  cur.items[kind] = (cur.items[kind] || 0) + n;
+  await save();
+  return 'ok';
+}
+/** Use one of an item kind (false if there's none). */
+export async function useItem(kind: string) {
+  await loadProgress();
+  if (!(cur.items[kind] > 0)) return false;
+  cur.items[kind]--;
+  if (!cur.items[kind]) delete cur.items[kind];
+  await save();
+  return true;
+}
+/** Mom's Attic: found one (false if it was already found). */
+export async function findAttic(id: string) {
+  await loadProgress();
+  if (cur.attic.includes(id)) return false;
+  cur.attic.push(id);
+  await save();
+  return true;
+}
+/** Pick the putter skin to play with ('' = the plain putter). */
+export async function setPutter(id: string) {
+  await loadProgress();
+  cur.putter = id;
+  await save();
 }
 /** Use one dose of fertilizer. */
 export function useFert() {

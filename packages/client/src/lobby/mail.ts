@@ -1,6 +1,7 @@
 // The mailbox at your lot's entrance (design/mailbox.md). Letters live in your progress (avatar/progress.ts); each one
 // is delivered once ever, by id. Uses: news about unlocks, and later random gifts (cash, seeds, Birdie Balls).
 // The flag on your mailbox goes up and the wallet pill shows ✉ when there's something unread.
+import { ATTIC } from './attic';
 import { progress, loadProgress, deliverMail, markRead, claimMail, deleteMail, onProgress, type Mail } from '../avatar/progress';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
@@ -26,6 +27,16 @@ export const LETTERS: { id: string; when: () => boolean; mail: () => Omit<Mail, 
       subject: 'Cleaned out your old room…',
       cash: 5000,
       body: `Hi sweetie,\n\nI finally cleaned out your old room. I found a shoebox of those little monster cards you were always so careful with. A nice young man at the flea market said one of them was a "first edition shiny" something and gave me a very good price for the whole box!\n\nI know you always said never to touch them, but they were just sitting there, and you're a grown man living in an RV now. I hope you're eating properly.\n\nHere's the money. Don't spend it all on golf.\n\nLove,\nMom\n\nP.S. Your father says hi. He also says the RV park website is "a bit much."`,
+    }),
+  },
+  // Mom's Attic (lobby/attic.ts): the hints where she lost your things
+  {
+    id: 'mom-attic-1',
+    when: () => true,
+    mail: () => ({
+      from: 'Mom',
+      subject: 'Oh dear. About the rest of the box…',
+      body: `Hi sweetie,\n\nSo I may have dropped a few more of your old things on the way back from the flea market. Your father drove with the trunk open. Here's what I remember, roughly:\n\n${ATTIC.map(a => '• ' + a.name + ': ' + a.hint).join('\n')}\n\nIf you find them, put them in that display case in your RV. Your father says he'll make you a "special putter" for every three. I don't know what that means either.\n\nLove,\nMom`,
     }),
   },
 ];
