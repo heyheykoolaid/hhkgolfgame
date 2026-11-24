@@ -71,7 +71,17 @@ describe('Moon holes', () => {
       // rolling straight at the buggy's side, from 1.6 m away along the hole
       nx = -g.tz,
       nz = g.tx,
-      ball: any = { x: p.x - nx * 1.52, z: p.z - nz * 1.52, y: heightAt(p.x, p.z) + 0.02, vx: nx * 6, vy: 0, vz: nz * 6, sb: 0, ss: 0, state: 'roll' };
+      ball: any = {
+        x: p.x - nx * 1.52,
+        z: p.z - nz * 1.52,
+        y: heightAt(p.x, p.z) + 0.02,
+        vx: nx * 6,
+        vy: 0,
+        vz: nz * 6,
+        sb: 0,
+        ss: 0,
+        state: 'roll',
+      };
     expect(buggyHit(ball, t)).toBe(true);
     expect(ball.vx * nx + ball.vz * nz).toBeLessThan(0); // sent back the way it came
     // and a ball high above it flies over

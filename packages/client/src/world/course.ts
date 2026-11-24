@@ -237,7 +237,10 @@ export function buildTerrain(scene: THREE.Object3D) {
   m.receiveShadow = true;
   scene.add(m);
   // endless ground just under the terrain's faded edge (per hole: hilly holes sit lower)
-  const far = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: moonL ? '#5c5a56' : tripL ? '#ffd9ef' : locale.id === 'haunt' ? '#2e3320' : '#6b6a3a' }));
+  const far = new THREE.Mesh(
+    new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: moonL ? '#5c5a56' : tripL ? '#ffd9ef' : locale.id === 'haunt' ? '#2e3320' : '#6b6a3a' }),
+  );
   far.position.y = FLOOR - 0.05;
   scene.add(far);
   if (!COURSE.pond) return;
@@ -435,7 +438,10 @@ function moonSky() {
   const sg = new THREE.BufferGeometry();
   sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   sg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: 2.2, sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false }));
+  const stars = new THREE.Points(
+    sg,
+    new THREE.PointsMaterial({ size: 2.2, sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false }),
+  );
   stars.renderOrder = -9;
   g.add(stars);
   // the Earth: a painted ball, high in the south-east (away from the low sun), lit by the sun

@@ -14,12 +14,15 @@ import {
   LOTS,
   setPlotOwner,
   setPlotAway,
+  setPlotDwelling,
   toWorld,
   groundY,
   surfaceOf,
   HALF,
   BOUND,
   SHADY_OFF,
+  HR_BUYIN,
+  HR_LIMITS,
   inWorld,
   EDGE,
   type Plot,
@@ -53,7 +56,9 @@ import { type RadioSource } from '../audio/radio';
 import { cartRadio } from '../audio/cartRadio';
 import { createRange } from './range';
 import { buildWestSide, westRiseMesh } from './westside';
-import { setPlaced, ownAtLeast, addItem, findAttic, awardTrophy } from '../avatar/progress';
+import { createSinks, BAR_SPOT } from './sinks';
+import { DWELLINGS, dwellingItem } from './dwellings';
+import { setPlaced, ownAtLeast, addItem, findAttic, awardTrophy, addCash } from '../avatar/progress';
 import { MINIGOLF_SEED } from '../world/trophy';
 import type { Shop } from './wardrobe';
 import { speedo } from '../ui/speedo';
@@ -95,6 +100,10 @@ interface LPres {
   car?: VehState | null;
   dr?: 1;
   bj?: BJPres;
+  /** a seat at the high-roller table */
+  bh?: BJPres;
+  /** a round for the room I just bought at the lounge's bar: [when, which] (lobby/sinks.ts) */
+  rr?: [number, number];
   /** the lounge machine this player is sitting at (0–3) */
   vm?: number;
   sm?: SmokePres;
@@ -544,7 +553,7 @@ export function createLobby(env: LobbyEnv) {
       return;
     }
     if (P.mode === 'bj') {
-      bjGame.key(e);
+      bjCur.key(e);
       return;
     }
     if (P.mode === 'vlt') {
@@ -706,6 +715,8 @@ export function createLobby(env: LobbyEnv) {
     { id: 'dealer', x: DEALER_POS.x - 0.3, z: DEALER_POS.z + 0.9, r: 2.1, label: 'Sell to the Street Dealer' },
     ...fun.spots,
     ...west.spots,
+    { id: 'bar', x: BAR_SPOT.x, z: BAR_SPOT.z, r: 1.6, label: 'The bar · buy a round for the room' },
+    { id: 'sponsor', x: 155.8, z: 12.7, r: 2.2, label: 'Ticket booth · sponsor fireworks or free rides' },
   ];
   function nearest() {
     let best: { id: string; label: string; plot?: Plot } | null = null,
@@ -776,15 +787,25 @@ export function createLobby(env: LobbyEnv) {
         best = { id: 'grow', label: garden.labelFor(gr), ref: gr } as any;
       }
     }
-    for (let i = 0; i < 5; i++) {
-      const w = bjGame.seatWorld(i),
-        d = Math.hypot(P.x - w.x, P.z - w.z);
-      if (d < 0.85 && d < bd) {
-        const o = bjGame.seatOwner(i);
-        bd = d;
-        best = { id: o ? 'bjtaken' : 'bjseat', seat: i, label: o ? `${pf?.names.get(o) || 'Someone'} is sitting here` : 'Sit · Min bet $10' } as any;
+    for (const [t, game] of [bjGame, bjHR].entries())
+      for (let i = 0; i < 5; i++) {
+        const w = game.seatWorld(i),
+          d = Math.hypot(P.x - w.x, P.z - w.z);
+        if (d < 0.85 && d < bd) {
+          const o = game.seatOwner(i);
+          bd = d;
+          best = {
+            id: o ? 'bjtaken' : 'bjseat',
+            seat: i,
+            table: t,
+            label: o
+              ? `${pf?.names.get(o) || 'Someone'} is sitting here`
+              : t
+                ? `High rollers · ${money(HR_BUYIN)} to sit · bets ${money(HR_LIMITS.min)}–${money(HR_LIMITS.max)}`
+                : 'Sit · Min bet $10',
+          } as any;
+        }
       }
-    }
     if (MY) {
       const [x, z] = toWorld(MY, 3, HALF - 0.4),
         d = Math.hypot(P.x - x, P.z - z),
@@ -830,12 +851,15 @@ export function createLobby(env: LobbyEnv) {
     else if (n.id.startsWith('store:')) void openWardrobe(n.id.slice(6) as Shop);
     else if (n.id === 'gacha') openGacha();
     else if (n.id === 'rv') openCollection();
-    else if (n.id === 'bjseat') openBJ((n as any).seat);
+    else if (n.id === 'bjseat') void openBJ((n as any).seat, (n as any).table || 0);
     else if (n.id === 'grow') openPanel('grow', () => garden.open((n as any).ref as PlanterRef));
     else if (n.id === 'dealer') openPanel('dealer', () => dealer.open());
-    else if (n.id === 'putt') putt.start();
-    else if (n.id === 'range') range.start();
-    else if (n.id === 'karts') cart.rent(fun.kartSpawn[0], fun.kartSpawn[1], fun.kartSpawn[2]);
+    else if (n.id === 'putt') void sinks.payRide('putt', 'A round of mini putt').then(ok => ok && putt.start());
+    else if (n.id === 'range') void sinks.payRide('range', 'A bucket of balls').then(ok => ok && range.start());
+    else if (n.id === 'karts')
+      void sinks.payRide('karts', 'A go-kart').then(ok => ok && cart.rent(fun.kartSpawn[0], fun.kartSpawn[1], fun.kartSpawn[2]));
+    else if (n.id === 'bar') sinks.openBar();
+    else if (n.id === 'sponsor') sinks.openSponsor();
     else if (n.id.startsWith('fun:') || n.id.startsWith('west:')) toast((n as any).say || n.label);
     else if (n.id === 'growshop') openGrowShop();
     else if (n.id === 'club') openClubhouse();
@@ -927,6 +951,24 @@ export function createLobby(env: LobbyEnv) {
     nameOf: uid => pf?.names.get(uid) || 'Golfer',
     myGolfer: () => me,
   });
+  // the high-roller table in the back of the lounge: a sitting fee and bigger limits (world.ts HR_AT)
+  const bjHR = createBlackjack(scene.getObjectByName('bjTableHR') as THREE.Group, {
+    limits: { ...HR_LIMITS, chips: [500, 1000, 5000, 10000, 25000] },
+    toast: h => toast(h, 2200),
+    onClose: () => {
+      if (P.mode === 'bj') {
+        P.mode = 'walk';
+        camEase = 0.8;
+      }
+      sendPres(true);
+    },
+    sendPres: () => sendPres(true),
+    me: () => pf?.uid || 'me',
+    nameOf: uid => pf?.names.get(uid) || 'Golfer',
+    myGolfer: () => me,
+  });
+  /** the table you're sitting at */
+  let bjCur = bjGame;
   // the lounge's slot machines and video poker: sit down and play in first person (lobby/vlt.ts)
   const vlt = createVlt({
     toast: h => toast(h, 2200),
@@ -954,18 +996,29 @@ export function createLobby(env: LobbyEnv) {
     garden.putAway();
     void vlt.sit(i);
   }
-  function openBJ(seat: number) {
-    if (!bjGame.sit(seat)) return;
+  async function openBJ(seat: number, table = 0) {
+    const game = table ? bjHR : bjGame;
+    if (table) {
+      // the high-roller table: a sitting fee, paid every time you sit down
+      if (progress().cash < HR_BUYIN + HR_LIMITS.min) {
+        toast(`The high-roller table takes ${money(HR_BUYIN)} to sit, plus your bets (from ${money(HR_LIMITS.min)}).`, 3200);
+        return;
+      }
+      if (!(await addCash(-HR_BUYIN))) return;
+      toast(`${money(HR_BUYIN)} to sit. "Good evening. Bets from ${money(HR_LIMITS.min)}."`, 2600);
+    }
+    if (!game.sit(seat)) return;
+    bjCur = game;
     if (document.pointerLockElement) document.exitPointerLock();
     P.mode = 'bj';
     P.vx = P.vz = 0;
     for (const k in keys) keys[k] = false;
-    const w = bjGame.seatWorld(seat),
-      t = scene.getObjectByName('bjTable')!.position;
+    const w = game.seatWorld(seat),
+      t = scene.getObjectByName(table ? 'bjTableHR' : 'bjTable')!.position;
     P.x = w.x;
     P.z = w.z;
     P.yaw = Math.atan2(t.x - w.x, t.z - w.z); // stand at your seat, facing the dealer
-    bjGame.camTargets(bjCam, bjLook);
+    game.camTargets(bjCam, bjLook);
   }
   // ---------------- growing + the Street Dealer ----------------
   function openPanel(m: 'grow' | 'dealer' | 'mail', f: () => void) {
@@ -1089,7 +1142,11 @@ export function createLobby(env: LobbyEnv) {
     );
   }
   function setPutterSkin(id: string) {
-    look = { ...look, putter: id || undefined };
+    patchLook({ putter: id || undefined });
+  }
+  /** Change part of what you wear and play with, and tell everyone (putter skins, vanity club sets). */
+  function patchLook(patch: Partial<Outfit>) {
+    look = { ...look, ...patch };
     rebuildMe();
     saveLocalLook(look);
     sendPres(true);
@@ -1148,7 +1205,27 @@ export function createLobby(env: LobbyEnv) {
     cartRadio.frame(dt, radioSrc, driving);
     radioSrc.length = 0;
   }
-  const dealer = createDealer(scene, { toast: (h, ms) => toast(h, ms), onClose: panelClosed });
+  const dealer = createDealer(scene, {
+    toast: (h, ms) => toast(h, ms),
+    onClose: panelClosed,
+    bribe: () => {
+      dealer.close();
+      sinks.openBribe();
+    },
+  });
+  // money sinks round town: a round at the bar, fireworks, free rides, ride tickets, the dealer's bribe (lobby/sinks.ts)
+  const sinks = createSinks({
+    scene,
+    toast: (h, ms) => toast(h, ms),
+    openModal: (t, h) => openModal(t, h),
+    closeModal: () => closeModal(),
+    plotDocs: () => plotDocs,
+    saveMyPlot: patch => saveMyPlot(patch, true),
+    me: () => pf?.uid || 'me',
+    nameOf: uid => (uid === (pf?.uid || 'me') ? pf?.names.get(uid) || 'You' : pf?.names.get(uid) || 'Somebody'),
+    at: () => ({ x: P.x, z: P.z }),
+    sendPres: () => sendPres(true),
+  });
   const smoke = createSmoke({
     scene,
     renderer,
@@ -1328,8 +1405,9 @@ export function createLobby(env: LobbyEnv) {
     }
   }
   // ---------------- your RV: the ball collection (pick the one you play) ----------------
+  let dwArmed = '';
   async function openCollection() {
-    openModal('Your RV: balls, putters and Mom’s Attic', '<div id="coll-body"><p class="muted">Loading…</p></div>');
+    openModal('Your RV: your home, balls, putters and Mom’s Attic', '<div id="coll-body"><p class="muted">Loading…</p></div>');
     await loadProgress();
     renderCollection();
   }
@@ -1351,7 +1429,16 @@ export function createLobby(env: LobbyEnv) {
             : `<button class="t" disabled>${u.name} · find ${u.need}</button>`,
         )
         .join('')}</div>`;
+    // trailer upgrades: buy once, live in any you own; everyone sees it (plots/{uid}.dw)
+    const myDw = (pf?.uid && plotDocs.get(pf.uid)?.dw) || '',
+      homeHTML = `<h3>Your home</h3><div class="goods">${DWELLINGS.map(d => {
+        const own = !d.id || (pr.items[dwellingItem(d.id)] || 0) > 0,
+          on = myDw === d.id;
+        return `<div class="good"><div class="gi" style="font-size:30px">${['🚐', '🏠', '🥫', '🏛️'][DWELLINGS.indexOf(d)]}</div><div class="gt"><b>${d.name}</b><p>${d.desc}</p><em>${on ? 'You live here' : own ? 'Owned' : ''}</em></div>
+          <button data-dw="${d.id}" ${on || (!own && pr.cash < d.price) ? 'disabled' : ''}>${on ? 'Home' : own ? 'Move in' : dwArmed === d.id ? `Buy for ${money(d.price)}?` : money(d.price)}</button></div>`;
+      }).join('')}</div>`;
     body.innerHTML =
+      homeHTML +
       atticHTML +
       `<div class="gacha-top"><div class="bd"><b>${pr.bd}</b> Birdie Dollar${pr.bd === 1 ? '' : 's'}</div><div class="muted">${pr.owned.length} of ${BALLS.length} collected · spin for more at the plaza machine</div></div>
       ${sets
@@ -1369,6 +1456,32 @@ export function createLobby(env: LobbyEnv) {
       const id = el.dataset.prev;
       if (id) el.appendChild(ballPreview(id, 54));
     });
+    body.querySelectorAll<HTMLButtonElement>('[data-dw]').forEach(
+      b =>
+        (b.onclick = async () => {
+          const id = b.dataset.dw || '',
+            d = DWELLINGS.find(x => x.id === id)!,
+            own = !id || (progress().items[dwellingItem(id)] || 0) > 0;
+          if (!own) {
+            if (dwArmed !== id) {
+              dwArmed = id; // (big money: click once to be asked, again to buy)
+              return renderCollection();
+            }
+            dwArmed = '';
+            const r = await addItem(dwellingItem(id), 1, d.price);
+            if (r !== 'ok') {
+              playSample('error', 0.5);
+              toast("You can't afford that.");
+              return renderCollection();
+            }
+            playSample('win', 0.55);
+          }
+          saveMyPlot({ dw: id }, true);
+          refreshPlots();
+          toast(id ? `Welcome home to your <b>${d.name.toLowerCase()}</b>.` : 'Back in the old travel trailer. Cosy.', 3000);
+          renderCollection();
+        }),
+    );
     body.querySelectorAll<HTMLButtonElement>('[data-putter]').forEach(
       b =>
         (b.onclick = () => {
@@ -1973,7 +2086,13 @@ export function createLobby(env: LobbyEnv) {
       );
   }
   // ---------------- the shops' counters (Grow Supply, the Pro Shop, Lucky Pawn, Wrench & Ride, Homestead): lobby/shopMenus.ts
-  const { openProShop, openPawn, openAuto, openFurniture, openGrowShop } = createShopMenus({ toast, openModal, trophyPic });
+  const { openProShop, openPawn, openAuto, openFurniture, openGrowShop } = createShopMenus({
+    toast,
+    openModal,
+    trophyPic,
+    look: () => look,
+    patchLook,
+  });
 
   // ---------------- ragdoll ----------------
   let flop: Flop | null = null,
@@ -2123,7 +2242,8 @@ export function createLobby(env: LobbyEnv) {
   };
   function onPeers(ch: any) {
     const live = new Set<string>(),
-      bjPeers: { uid: string; bj?: BJPres }[] = [];
+      bjPeers: { uid: string; bj?: BJPres }[] = [],
+      bhPeers: { uid: string; bj?: BJPres }[] = [];
     for (const pe of ch.peers || []) {
       try {
         /* one player's bad data must not stop us seeing everyone else */
@@ -2132,6 +2252,8 @@ export function createLobby(env: LobbyEnv) {
         if (!pr || pr.v !== 2 || typeof pr.x !== 'number') continue;
         live.add(pe.peer);
         bjPeers.push({ uid: pe.by || pe.peer, bj: pr.bj });
+        bhPeers.push({ uid: pe.by || pe.peer, bj: pr.bh });
+        sinks.peerRound(pe.by || pe.peer, pr.rr);
         garden.visitorWater(pe.by || pe.peer, pr.gw);
         const first = !remotes.has(pe.peer),
           r = remoteFor(pe.peer, pe.by || pe.peer, sanitizeLook(pr.o));
@@ -2181,6 +2303,7 @@ export function createLobby(env: LobbyEnv) {
     }
     for (const k of [...remotes.keys()]) if (!live.has(k)) dropRemote(k);
     bjGame.peers(bjPeers);
+    bjHR.peers(bhPeers);
     smoke.peers(
       (ch.peers || [])
         .filter((pe: any) => !pe.isMe && !pe.sameTab && pe.presence?.v === 2)
@@ -2240,6 +2363,8 @@ export function createLobby(env: LobbyEnv) {
             ]
           : undefined,
       bj: bjGame.pres(),
+      bh: bjHR.pres(),
+      rr: sinks.pres(),
       vm: vlt.pres(),
       sm: smoke.pres(),
       hd: garden.pres(),
@@ -2294,6 +2419,11 @@ export function createLobby(env: LobbyEnv) {
         name = owner ? (mine ? 'You' : pf?.names.get(owner) || 'A golfer') : '',
         color = owner ? colorFor(owner) : '#8a8f86';
       if (p.owner !== owner || p.ownerName !== name) setPlotOwner(p, owner, name, color, mine);
+      {
+        // their home: the travel trailer or an upgrade they bought (lobby/dwellings.ts), from their lot's record
+        const dw = owner ? plotDocs.get(owner)?.dw : '';
+        setPlotDwelling(p, typeof dw === 'string' && DWELLINGS.some(d => d.id === dw) ? dw : '');
+      }
       // a yard is out only while its owner is here (in town or on the course): it loads in when they join, with a
       // progress bar over the lot, and is packed away when they leave
       const here = !!owner && (mine || [...remotes.values()].some(r => r.by === owner)),
@@ -2480,6 +2610,7 @@ export function createLobby(env: LobbyEnv) {
   })();
 
   // ---------------- frame ----------------
+  let devLook: number[] | null = null;
   let last = performance.now(),
     clock = 0,
     landT = 0,
@@ -2671,7 +2802,7 @@ export function createLobby(env: LobbyEnv) {
       );
       if (!alive) flop = null;
     } else if (P.mode === 'skate' && skate) skate.pose(me, clock);
-    else if (P.mode === 'bj' && bjGame.isOpen()) bjGame.seatGolfer(me, bjGame.mySeat(), clock);
+    else if (P.mode === 'bj' && bjCur.isOpen()) bjCur.seatGolfer(me, bjCur.mySeat(), clock);
     else if (P.mode === 'vlt' && vlt.isOpen()) vlt.seatMe(me, clock);
     else {
       myPose();
@@ -2763,8 +2894,10 @@ export function createLobby(env: LobbyEnv) {
         )
           r.flop = null;
       } else if (!away && !riding) {
-        const bs = r.pres?.bj?.s;
+        const bs = r.pres?.bj?.s,
+          hs = r.pres?.bh?.s;
         if (typeof bs === 'number' && bs >= 0 && bs < 5) bjGame.seatGolfer(r.golfer, bs, clock);
+        else if (typeof hs === 'number' && hs >= 0 && hs < 5) bjHR.seatGolfer(r.golfer, hs, clock);
         else if (typeof r.pres?.vm === 'number') vlt.seatGolfer(r.golfer, r.pres.vm, clock);
         else if (Array.isArray(r.pres?.sk) && r.pres!.sk!.length === 8) {
           const sk = r.pres!.sk!,
@@ -2810,7 +2943,7 @@ export function createLobby(env: LobbyEnv) {
         vlt.camTargets(bjCam, bjLook);
         // on the way to your own eyes the camera passes through your head: you're drawn once it has arrived
         me.root.visible = vlt.fov() === 50 || camPos.distanceTo(bjCam) < 0.035;
-      } else bjGame.camTargets(bjCam, bjLook);
+      } else bjCur.camTargets(bjCam, bjLook);
       camPos.lerp(bjCam, 1 - Math.exp(-dt * 4));
       camLook.lerp(bjLook, 1 - Math.exp(-dt * 5));
       const wantFov = P.mode === 'vlt' ? vlt.fov() : 50;
@@ -2876,6 +3009,11 @@ export function createLobby(env: LobbyEnv) {
     }
     camera.position.copy(camPos);
     camera.lookAt(camLook);
+    if (devLook) {
+      // dev: hold the camera somewhere for a look (window.__lobby.look)
+      camera.position.set(devLook[0], devLook[1], devLook[2]);
+      camera.lookAt(devLook[3], devLook[4], devLook[5]);
+    }
     smoke.remotes(
       [...remotes].map(([id, r]) => ({
         id,
@@ -2887,10 +3025,12 @@ export function createLobby(env: LobbyEnv) {
     );
     smoke.update(dt, camera);
     if (P.mode !== 'bj' && P.mode !== 'vlt') smoke.sway(camera);
+    sinks.update(dt, camera);
     vlt.update(dt, clock);
     vlt.setTaken([...remotes.values()].map(r => (typeof r.pres?.vm === 'number' ? r.pres.vm : -1)));
     gacha.update(dt);
     bjGame.update(dt, camera);
+    bjHR.update(dt, camera);
     garden.update(dt);
     garden.remotes([...remotes].map(([id, r]) => ({ id, golfer: r.golfer, yaw: r.yaw, hd: r.pres?.hd })));
     if (MY?.mailFlag) {
@@ -3053,6 +3193,8 @@ export function createLobby(env: LobbyEnv) {
     sendPres(true);
     renderStatus();
     (window as any).__lobby = {
+      sinks,
+      devLook: (v: number[] | null) => (devLook = v),
       openProShop,
       get skate() {
         return skate;
@@ -3116,10 +3258,11 @@ export function createLobby(env: LobbyEnv) {
   }
   function stop() {
     if (vlt.isOpen()) vlt.leave();
-    if (bjGame.isOpen()) {
-      bjGame.leave(true);
-      if (P.mode === 'bj') P.mode = 'walk';
-    }
+    for (const g of [bjGame, bjHR])
+      if (g.isOpen()) {
+        g.leave(true);
+        if (P.mode === 'bj') P.mode = 'walk';
+      }
     if (P.mode === 'drive') {
       P.mode = 'walk';
       me.root.rotation.set(0, P.yaw, 0);
@@ -3142,6 +3285,7 @@ export function createLobby(env: LobbyEnv) {
     const pr: any = JSON.parse(lastPres || '{}');
     pr.v = 2;
     pr.bj = undefined;
+    pr.bh = undefined;
     pr.car = undefined;
     pr.dr = undefined;
     pr.g = matchId || undefined;

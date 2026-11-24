@@ -2,7 +2,7 @@
 // client ticks its own plants while they're in the game (no offline growth), saves them with the lot, and everyone
 // else just draws what was saved. Plants never die: neglect only lowers quality.
 
-export type Tier = 'common' | 'mid' | 'premium' | 'exotic';
+export type Tier = 'common' | 'mid' | 'premium' | 'exotic' | 'luxury';
 export interface Strain {
   id: string;
   name: string;
@@ -13,6 +13,8 @@ export interface Strain {
   color: string;
   /** not sold as seed at the planter (the rainbow strain only grows from the hobo's seeds) and never the dealer's pick */
   hidden?: boolean;
+  /** volatile: wilts and dies without a UV lamp beside it and premium nutrients (Grow Supply), see tickPlant */
+  volatile?: boolean;
 }
 /** Grow times are minutes of play: seedling, vegetative, flowering. */
 export const STRAINS: Strain[] = [
@@ -21,6 +23,19 @@ export const STRAINS: Strain[] = [
   { id: 'bd', name: 'Blue Dream', tier: 'mid', mins: [3, 9, 11], yield: [10, 14], seed: 420, color: '#5f9a6e' },
   // the hobo's seeds: they grow a rainbow plant. Worth a fortune to the dealer, or give a joint of it to a gnome…
   { id: 'rb', name: 'Hobo Rainbow', tier: 'exotic', mins: [3, 8, 10], yield: [6, 9], seed: 0, color: '#d070e0', hidden: true },
+  // Grow Supply's premium seed ($2,500 each, bought as seed and planted from your pocket): a fortune at the dealer, if
+  // it lives. It needs a UV lamp within reach and premium nutrients, or it wilts; wilt too long and it's dead.
+  {
+    id: 'gg',
+    name: 'Golden Hills Gold',
+    tier: 'luxury',
+    mins: [4, 10, 12],
+    yield: [8, 12],
+    seed: 2500,
+    color: '#d9b440',
+    hidden: true,
+    volatile: true,
+  },
 ];
 /** What the planter offers as seed (the rainbow strain grows only from a hobo seed in your pocket). */
 export const SEED_STRAINS = STRAINS.filter(s => !s.hidden);
@@ -28,7 +43,7 @@ export const STRAIN = new Map(STRAINS.map(s => [s.id, s]));
 export const FEED_COST = 25;
 export const QUALITY = ['Poor', 'Average', 'Good', 'Excellent', 'Perfect'] as const;
 export const QUALITY_MULT = [0.65, 1.0, 1.2, 1.4, 1.55];
-export const TIER_BASE: Record<Tier, number> = { common: 95, mid: 185, premium: 340, exotic: 520 };
+export const TIER_BASE: Record<Tier, number> = { common: 95, mid: 185, premium: 340, exotic: 520, luxury: 1500 };
 /** Grow equipment: how many plants, the best quality it allows, and a yield bonus. Better gear (tents, lights) comes later. */
 export const GEAR: Record<string, { slots: number; ceil: number; yield: number }> = {
   growpot: { slots: 1, ceil: 2, yield: 1.0 }, // cheap pot: up to Good
@@ -45,6 +60,10 @@ export interface Plant {
   ct: number;
   rot: number;
   pk: number;
+  /** volatile strains: premium nutrients left (0–1), how wilted it is (0–1), and 1 once it has died */
+  pn?: number;
+  wl?: number;
+  dead?: number;
 }
 export const STAGES = ['Seedling', 'Vegetative', 'Flowering', 'Ready', 'Overripe'] as const;
 export const PEAK_S = 300; // a ready plant stays at its best for 5 minutes of play, then slowly loses quality
@@ -67,14 +86,32 @@ export function stageOf(p: Plant) {
 export const progressOf = (p: Plant) => Math.min(1, p.g / growTotal(p));
 /** How well the plant is being looked after right now (0–1). */
 export function careNow(p: Plant) {
+  if (p.wl) return careNow0(p) * (1 - 0.6 * p.wl);
+  return careNow0(p);
+}
+function careNow0(p: Plant) {
   const st = stageOf(p),
     ws = p.w < 0.12 ? 0.3 : p.w < 0.3 ? 0.75 : 1,
     ns = st === 0 ? 1 : p.n < 0.12 ? 0.45 : p.n < 0.3 ? 0.8 : 1;
   return ws * ns;
 }
-/** Advance one plant by dt seconds of the owner's play time. */
-export function tickPlant(p: Plant, dt: number) {
+export const UV_R = 2.2; // a UV lamp keeps every volatile plant within this many metres alive
+const PN_S = 360, // a dose of premium nutrients lasts 6 minutes
+  WILT_S = 150, // without both, a volatile plant wilts through in 2½ minutes
+  MEND_S = 400;
+/** Advance one plant by dt seconds of the owner's play time. `lit`: a UV lamp is in reach (volatile strains). */
+export function tickPlant(p: Plant, dt: number, lit = false) {
+  if (p.dead) return p;
   const st = stageOf(p);
+  if (STRAIN.get(p.s)?.volatile && st < 3) {
+    p.pn = Math.max(0, (p.pn ?? 0.5) - dt / PN_S);
+    const ok = lit && p.pn > 0.12;
+    p.wl = Math.max(0, Math.min(1, (p.wl ?? 0) + (ok ? -dt / MEND_S : dt / WILT_S)));
+    if (p.wl >= 1) {
+      p.dead = 1;
+      return p;
+    }
+  }
   if (st >= 3) {
     p.pk += dt;
     return p;
@@ -133,7 +170,13 @@ const hash01 = (n: number) => {
   x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 };
+/** Premium nutrients (Grow Supply): a volatile plant's other lifeline. */
+export function nourish(p: Plant) {
+  p.pn = 1;
+  return p;
+}
 export function yieldOf(p: Plant, gear: string) {
+  if (p.dead) return 0;
   const s = STRAIN.get(p.s)!,
     base = s.yield[0] + (s.yield[1] - s.yield[0]) * hash01(p.id);
   return Math.max(1, Math.round(base * (0.75 + 0.25 * careScore(p)) * (GEAR[gear]?.yield ?? 1)));
@@ -142,9 +185,21 @@ export function yieldOf(p: Plant, gear: string) {
 // ---------------- the Street Dealer's prices (Option B: the clamp only applies to the market part) ----------------
 export const DAY_MS = 86400000;
 /** Today's preferred strain: rotates daily, the same for everyone (no server needed). */
-export const preferredStrain = (now = Date.now()) => SEED_STRAINS[Math.floor(now / DAY_MS) % SEED_STRAINS.length].id;
+/** A bribe paid to the Street Dealer (the lobby finds the newest one any player has paid that's still running):
+ *  `want` becomes the strain he wants today; `dump` is a strain he pays 30% less for. */
+export interface DealerBribe {
+  want?: string;
+  dump?: string;
+  until: number;
+}
+let bribe: DealerBribe | null = null;
+export const setDealerBribe = (b: DealerBribe | null) => void (bribe = b);
+export const dealerBribe = (now = Date.now()) => (bribe && now < bribe.until ? bribe : null);
+export const BRIBE_MS = 3 * 3600 * 1000;
+export const preferredStrain = (now = Date.now()) => dealerBribe(now)?.want || SEED_STRAINS[Math.floor(now / DAY_MS) % SEED_STRAINS.length].id;
 export const bulkBonus = (n: number) => (n >= 50 ? 1.14 : n >= 30 ? 1.1 : n >= 15 ? 1.06 : 1);
 export function unitPrice(strain: string, q: number, qty: number, now = Date.now(), supply = 1) {
+  if (dealerBribe(now)?.dump === strain) supply *= 0.7; // (someone paid him to lowball this one)
   const s = STRAIN.get(strain)!,
     base = TIER_BASE[s.tier],
     pref = preferredStrain(now) === strain ? 1.22 : 1,
@@ -186,6 +241,9 @@ export function cleanGarden(v: any): Record<string, Plant> {
       ct: n(p.ct, 0, 1e9),
       rot: n(p.rot, 0, 1e6),
       pk: n(p.pk, 0, 1e9),
+      ...(p.pn != null ? { pn: n(p.pn, 0, 1) } : {}),
+      ...(p.wl != null ? { wl: n(p.wl, 0, 1) } : {}),
+      ...(p.dead ? { dead: 1 } : {}),
     };
   }
   return out;

@@ -1,6 +1,7 @@
 // Vehicles. A small open framework: every vehicle is a model + (for its owner) a physics body, and a compact network
 // state everyone else interpolates. The golf cart is the first; low riders, jetpacks and segways slot in as more kinds.
 import * as THREE from 'three';
+import { audioCtx, whiteNoise, sfxOut } from '../audio/ctx';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { PhysWorld, rapier, G_STATIC, G_RAG, G_VEH, grp } from '../physics/ragdoll';
 import { loadProps, type PropPack } from '../world/propPacks';
@@ -36,6 +37,10 @@ export interface Vehicle {
   contacts?(): THREE.Vector3[];
   /** current steering (−1..1) for the rider's pose */
   steering(): number;
+  /** cars: wear from crashes, 0 (fresh) to 1 (a wreck): costs top speed and pull, and it backfires (vehicles/wear.ts) */
+  wear?: number;
+  /** cars (owner side): a crash just added wear; sev is the speed lost in it (m/s) */
+  onCrash?: (sev: number) => void;
   /** owner side: drive with physics */
   drive(dt: number, inp: DriveInput): void;
   /** 0 not drifting · 1–3 sliding, by charge */
@@ -1257,6 +1262,12 @@ class Cart implements Vehicle {
     null;
   /** what its bolt-on parts do (cars only; see partsTune) */
   private tune = partsTune('');
+  wear = 0;
+  onCrash?: (sev: number) => void;
+  private prevV = new THREE.Vector3();
+  private hadPrev = false;
+  private popT = 0;
+  private lastThrottle = 0;
   constructor(
     private pw: PhysWorld | null,
     scene: THREE.Object3D,
@@ -1337,8 +1348,9 @@ class Cart implements Vehicle {
         const v = this.vc!,
           sp = v.currentVehicleSpeed(),
           i = this.inp,
-          K = (this.spec?.power ?? 1) * this.tune.power,
-          S = (this.spec?.speed ?? 1) * this.tune.speed,
+          worn = this.spec ? 1 - 0.35 * Math.min(1, this.wear) : 1, // (a battered engine: less pull, a lower top end)
+          K = (this.spec?.power ?? 1) * this.tune.power * worn,
+          S = (this.spec?.speed ?? 1) * this.tune.speed * (this.spec ? 1 - 0.3 * Math.min(1, this.wear) : 1),
           car = this.spec,
           PF = this.prof,
           rough = car ? Math.max(0, this.terrain) * (1 - (car.offroad ?? 0.3)) : 0, // how much this ground costs this car
@@ -1583,6 +1595,7 @@ class Cart implements Vehicle {
   }
   placeAt(x: number, y: number, z: number, yaw: number) {
     const q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), yaw - Math.PI / 2); // yaw: heading like the golfer (0 = +Z); model forward is +X
+    this.hadPrev = false; // (a teleport isn't a crash)
     this.root.position.set(x, y, z);
     this.root.quaternion.copy(q);
     this.tp.set(x, y, z);
@@ -1642,6 +1655,23 @@ class Cart implements Vehicle {
     this.steerWheel.rotation.z = 0;
     this.steerWheel.rotateZ(-this.steer * 2.2);
     const vel = this.velocity(V());
+    // crashes (cars, owner side): a sudden change of velocity is a knock; the harder it is, the more wear
+    if (this.spec) {
+      if (this.hadPrev && dt > 0) {
+        const dv = _mk2.copy(vel).sub(this.prevV).length();
+        if (dv > 5.5) {
+          this.wear = Math.min(1, this.wear + Math.min(0.3, (dv - 5) * 0.03));
+          this.onCrash?.(dv);
+        }
+      }
+      this.prevV.copy(vel);
+      this.hadPrev = true;
+      // a worn engine backfires when you lift off at speed
+      const th = this.inp?.throttle ?? 0;
+      if (this.wear > 0.3 && this.lastThrottle > 0 && th <= 0 && Math.abs(sp) > 5 && Math.random() < this.wear) this.backfire();
+      this.lastThrottle = th;
+      this.popT = Math.max(0, this.popT - dt);
+    }
     this.swayStep(dt, vel);
     this.smokeStep(dt);
     // sliding: a held drift, or the tail simply stepping out (sideways speed in the car's own frame)
@@ -1650,6 +1680,25 @@ class Cart implements Vehicle {
     // the lens opens as the speed builds, and a little more on a boost
     const want = Math.min(9, Math.max(0, Math.abs(sp) - 7) * 0.5) + (this.boostT > 0 ? 3 : 0);
     DRIVE_FX.fov += (want - DRIVE_FX.fov) * Math.min(1, dt * 2.5);
+  }
+  /** BANG: a loud pop from the exhaust and a puff of black smoke */
+  private backfire() {
+    this.popT = 0.25;
+    const c = audioCtx();
+    if (!c) return;
+    const t = c.currentTime,
+      src = c.createBufferSource(),
+      f = c.createBiquadFilter(),
+      g = c.createGain();
+    src.buffer = whiteNoise(c);
+    f.type = 'lowpass';
+    f.frequency.value = 900;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.7, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    src.connect(f).connect(g).connect(sfxOut(c));
+    src.start(t, Math.random());
+    src.stop(t + 0.25);
   }
   /** 0 not drifting · 1 sliding · 2 charged (blue) · 3 fully charged (orange); also true for a moment while boosting */
   drifting() {
@@ -1680,9 +1729,21 @@ class Cart implements Vehicle {
       this.smoke = { pts, pos, col, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(9), i: 0, emit: 0 };
     }
     const S = this.smoke;
-    if (lvl || this.boostT > 0) {
-      S.emit += dt * 30;
-      const c = this.boostT > 0 ? [1, 0.75, 0.3] : lvl === 3 ? [1, 0.55, 0.2] : lvl === 2 ? [0.45, 0.7, 1] : [0.92, 0.9, 0.86];
+    const sick = this.popT > 0 || this.wear > 0.6;
+    if (lvl || this.boostT > 0 || sick) {
+      S.emit += dt * (lvl || this.boostT > 0 || this.popT > 0 ? 30 : 6);
+      const c =
+        this.popT > 0
+          ? [0.12, 0.12, 0.12]
+          : this.boostT > 0
+            ? [1, 0.75, 0.3]
+            : lvl === 3
+              ? [1, 0.55, 0.2]
+              : lvl === 2
+                ? [0.45, 0.7, 1]
+                : lvl
+                  ? [0.92, 0.9, 0.86]
+                  : [0.45, 0.45, 0.45];
       while (S.emit >= 1) {
         S.emit--;
         const k = (S.i = (S.i + 1) % N),

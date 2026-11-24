@@ -341,6 +341,20 @@ const DRAW: Record<string, (x: Ctx, color: string) => void> = {
       }
     }
   },
+  uvlamp(x) {
+    // a stand with a glowing purple bar on top
+    x.fillStyle = '#2a2a2c';
+    x.fillRect(30, 82, 36, 6);
+    x.fillStyle = '#9aa0a6';
+    x.fillRect(46, 24, 4, 60);
+    x.fillStyle = '#2a2a2c';
+    x.fillRect(36, 18, 50, 9);
+    x.shadowColor = '#b070ff';
+    x.shadowBlur = 14;
+    x.fillStyle = '#d6b0ff';
+    x.fillRect(39, 26, 44, 4);
+    x.shadowBlur = 0;
+  },
   sprinkler(x) {
     x.translate(48, 54);
     x.fillStyle = 'rgba(0,0,0,.3)';

@@ -14,6 +14,14 @@ export const KL = 0.011; // lift per unit backspin
 export const KS = 0.003; // side force per unit sidespin
 export const CHECK = 14; // how hard backspin bites on landing
 export const ZERO_WIND = { x: 0, z: 0 };
+/** Novelty balls (sold at the Pro Shop, one shot each): lead ignores the wind and dies where it lands; the
+ * rubber ball bounces like mad; smoke flies like a normal ball (the client draws its cloud). Set per shot by
+ * simulateShot, so every replay agrees. */
+export type BallKind = '' | 'lead' | 'bouncy' | 'smoke';
+let ballKind: BallKind = '';
+export function setBallKind(k: BallKind) {
+  ballKind = k;
+}
 
 // e: bounce restitution, f: tangential speed kept on impact, mu: rolling friction, grip: how much spin bites
 export const SURF = {
@@ -48,8 +56,7 @@ export const HAUNT_SURF = {
   path: { e: 0.62, f: 0.8, mu: 0.08, grip: 0.2 },
   hardpan: { e: 0.55, f: 0.75, mu: 0.09, grip: 0.25 },
 };
-export const surfP = (s: string) =>
-  (COURSE.locale === 'moon' && MOON_SURF[s]) || (COURSE.locale === 'haunt' && HAUNT_SURF[s]) || SURF[s];
+export const surfP = (s: string) => (COURSE.locale === 'moon' && MOON_SURF[s]) || (COURSE.locale === 'haunt' && HAUNT_SURF[s]) || SURF[s];
 /** gravity in flight on the current hole */
 export const gFlight = () => G * (COURSE.grav ?? 1);
 /** a moon buggy's body, for a ball: a short upright cylinder round its middle */
@@ -300,7 +307,7 @@ export function pipeHit(b) {
   return false;
 }
 /** a pad under the ball, if it still has a bounce in it (three a shot, so a ball can't bounce on one for ever) */
-const padFor = (b) => ((b.pads || 0) < 3 ? COURSE.pads?.find(p => Math.hypot(b.x - p.x, b.z - p.z) < p.r) : undefined);
+const padFor = b => ((b.pads || 0) < 3 ? COURSE.pads?.find(p => Math.hypot(b.x - p.x, b.z - p.z) < p.r) : undefined);
 
 export function stepBall(b, dt, env) {
   if (COURSE.pillars && b.state !== 'rest' && pillarHit(b)) return 'post';
@@ -318,7 +325,7 @@ export function stepBall(b, dt, env) {
     return 'buggy';
   }
   if (b.state === 'air') {
-    airStep(b, dt, env.wind || ZERO_WIND);
+    airStep(b, dt, ballKind === 'lead' ? ZERO_WIND : env.wind || ZERO_WIND);
     let ev = null;
     if (env.trees && treeHitsAir(b)) ev = 'tree';
     const gh = heightAt(b.x, b.z);
@@ -336,7 +343,7 @@ export function stepBall(b, dt, env) {
     b.vx += asx * dt;
     b.vz += asz * dt;
     let s = Math.hypot(b.vx, b.vz);
-    const dec = P.mu * G * dt;
+    const dec = P.mu * (ballKind === 'lead' ? 1.6 : 1) * G * dt;
     if (s <= dec) {
       b.vx = 0;
       b.vz = 0;
@@ -427,11 +434,20 @@ export function groundContact(b, gh) {
     ty = b.vy - vn * ny,
     tz = b.vz - vn * nz;
   const ts = Math.hypot(tx, ty, tz);
-  if (-vn > 1.3) {
-    let nt = ts * P.f - b.sb * P.grip * CHECK;
+  if (ballKind === 'lead') {
+    // lead: no bounce at all; it thuds in and creeps on a little
+    b.state = 'roll';
+    b.vx = tx * 0.15;
+    b.vz = tz * 0.15;
+    b.vy = 0;
+    b.sb = b.ss = 0;
+    return ev;
+  }
+  if (-vn > (ballKind === 'bouncy' ? 0.6 : 1.3)) {
+    let nt = ts * (ballKind === 'bouncy' ? Math.min(0.97, P.f + 0.15) : P.f) - b.sb * P.grip * CHECK;
     if (nt < 0) nt = Math.max(nt, -Math.min(2.2, ts * 0.35));
     const k = ts > 1e-6 ? nt / ts : 0,
-      nvn = -vn * P.e;
+      nvn = -vn * (ballKind === 'bouncy' ? Math.min(0.88, P.e * 1.9 + 0.3) : P.e);
     b.vx = tx * k + nvn * nx;
     b.vy = ty * k + nvn * ny;
     b.vz = tz * k + nvn * nz;

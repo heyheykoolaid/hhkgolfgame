@@ -1,7 +1,7 @@
 // Swing → shot pipeline: lie modifiers, timing windows, impact grading and the full authoritative shot simulation.
 // The client only sends *inputs* (club, power, timing offset, aim, spin); the server runs simulateShot().
 import { COURSE, YD_PER_M, FT_PER_M, surfaceAt, heightAt, gradAt, clamp, mulberry32 } from './course';
-import { CLUBS, SURF, G, DT, newBall, launchBall, stepBall, speedForCarry, setRng, type Ball } from './physics';
+import { CLUBS, SURF, G, DT, newBall, launchBall, stepBall, speedForCarry, setRng, setBallKind, type Ball, type BallKind } from './physics';
 
 export interface Golfer {
   power: number;
@@ -189,6 +189,8 @@ export interface ShotInput {
   aimYaw: number;
   spin?: Spin;
   puttRange?: number;
+  /** a novelty ball for this one shot (physics.ts BallKind) */
+  ball?: BallKind;
 }
 export interface BallLie {
   x: number;
@@ -231,6 +233,7 @@ export function sanitize(input: ShotInput): ShotInput {
     aimYaw: n(input.aimYaw, 0) % (Math.PI * 2),
     spin: { top: n(s.top, 0) ? 1 : 0, back: n(s.back, 0) ? 1 : 0, side: clamp(Math.round(n(s.side, 0)), -1, 1) },
     puttRange: clamp(Math.round(n(input.puttRange, 1)), 0, PUTT_FT.length - 1),
+    ...(input.ball === 'lead' || input.ball === 'bouncy' || input.ball === 'smoke' ? { ball: input.ball } : {}),
   };
 }
 
@@ -239,6 +242,7 @@ export function simulateShot(state: ShotState, rawInput: ShotInput, seed: number
     golfer = state.golfer || DEFAULT_GOLFER;
   const rng = mulberry32(seed >>> 0);
   setRng(rng);
+  setBallKind(CLUBS[input.club].putter ? '' : (input.ball ?? ''));
   const club = CLUBS[input.club],
     b: Ball = newBall(state.ball.x, state.ball.z, state.ball.teed);
   const lie = state.ball.teed ? 'tee' : surfaceAt(b.x, b.z);
@@ -297,6 +301,7 @@ export function simulateShot(state: ShotState, rawInput: ShotInput, seed: number
     }
   }
   frames.push([+t.toFixed(3), +b.x.toFixed(3), +b.y.toFixed(3), +b.z.toFixed(3)]);
+  setBallKind('');
   let end: BallLie = { x: b.x, z: b.z, teed: false },
     penalty = 0;
   if (outcome === 'water') {

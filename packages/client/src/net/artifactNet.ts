@@ -276,6 +276,7 @@ export class ArtifactNet implements GameNet {
       // the moon buggies run on the wall clock: everyone who replays this shot puts them where the shooter's computer did
       t0 = COURSE.buggies?.length ? +(Date.now() / 1000).toFixed(2) : undefined;
     const result = simulateShot({ ball: from, wind: this.wind(n), t0 }, input, seed);
+    this.mullOk = n === 0 && result.outcome !== 'holed'; // (only a tee shot can be taken back)
     p.strokes += 1 + result.penalty;
     p.ballX = result.end.x;
     p.ballZ = result.end.z;
@@ -307,8 +308,19 @@ export class ArtifactNet implements GameNet {
     p.z = p.ballZ;
     p.teed = true;
   }
+  private mullOk = false;
+  mulligan() {
+    const p = this.meP;
+    if (!this.mullOk || p.busy || p.done) return false;
+    this.mullOk = false;
+    p.strokes = 0;
+    this.teeSpot();
+    this.publish(true);
+    return true;
+  }
   nextHole(h: number) {
     const p = this.meP;
+    this.mullOk = false;
     if (p.done) p.card![p.h || 0] = p.strokes;
     p.h = h;
     p.strokes = 0;

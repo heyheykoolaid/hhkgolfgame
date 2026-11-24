@@ -1125,7 +1125,15 @@ export function moonHole(base: HoleDef, seed: number): HoleDef {
     if (d.buggies.some(b => Math.abs((b as any)._a - along) < 50)) continue;
     const c = at(along),
       half = Math.min(d.obDist - 6, 42),
-      g: any = { x: +c.x.toFixed(1), z: +c.z.toFixed(1), tx: +(-c.tz).toFixed(4), tz: +c.tx.toFixed(4), half, v: +U(3.5, 5).toFixed(2), ph: +U(0, 4 * half).toFixed(1) };
+      g: any = {
+        x: +c.x.toFixed(1),
+        z: +c.z.toFixed(1),
+        tx: +(-c.tz).toFixed(4),
+        tz: +c.tx.toFixed(4),
+        half,
+        v: +U(3.5, 5).toFixed(2),
+        ph: +U(0, 4 * half).toFixed(1),
+      };
     // never through the green
     let ok = true;
     for (let u = -half; u <= half; u += 2) if (greenEd(g.x + g.tx * u, g.z + g.tz * u) < 4) ok = false;
@@ -1157,10 +1165,7 @@ function walker(d: HoleDef, r: () => number) {
       return { x: c.x - c.tz * o * side, z: c.z + c.tx * o * side };
     },
     clearOf = (x: number, z: number, rr: number) =>
-      greenEd(x, z) > 2.2 &&
-      Math.hypot(x, z) > 24 &&
-      pondPd(x, z) > 1.4 &&
-      !d.bunkers.some(b => Math.hypot(b.x - x, b.z - z) < b.r + rr + 2);
+      greenEd(x, z) > 2.2 && Math.hypot(x, z) > 24 && pondPd(x, z) > 1.4 && !d.bunkers.some(b => Math.hypot(b.x - x, b.z - z) < b.r + rr + 2);
   return { U, at, beside, clearOf };
 }
 

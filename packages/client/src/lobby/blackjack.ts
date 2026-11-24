@@ -17,8 +17,8 @@ import {
   cardId,
   cleanSeatPres,
   cleanTableHost,
-  BJ_MIN,
-  BJ_MAX,
+  BJ_MIN as BJ_MIN0,
+  BJ_MAX as BJ_MAX0,
   BJ_SEATS,
   type TableHost,
   type SeatPres,
@@ -64,7 +64,7 @@ function dShape(grow = 0) {
   s.lineTo(-a, -z0);
   return s;
 }
-function feltTexture() {
+function feltTexture(base = '#1d6b3c') {
   const W = 1024,
     H = 512,
     c = document.createElement('canvas');
@@ -74,7 +74,7 @@ function feltTexture() {
   const px = (x: number) => ((x + 1.4) / 2.8) * W,
     py = (z: number) => ((z + 0.5) / 1.35) * H,
     S = W / 2.8;
-  g.fillStyle = '#1d6b3c';
+  g.fillStyle = base;
   g.fillRect(0, 0, W, H);
   for (let i = 0; i < 9000; i++) {
     g.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${Math.random() * 0.05})`;
@@ -141,9 +141,9 @@ function planarUV(geo: THREE.BufferGeometry) {
 }
 
 /** The plaza's blackjack table, under its umbrella, with two stools. Thick wooden apron, padded rail, real legs. */
-export function blackjackTable(umbrella = true) {
+export function blackjackTable(umbrella = true, felt0 = '#1d6b3c', name = 'bjTable') {
   const g = new THREE.Group();
-  g.name = 'bjTable';
+  g.name = name;
   const wood = new THREE.MeshStandardMaterial({ color: '#5b3a22', roughness: 0.55 }),
     darkWood = new THREE.MeshStandardMaterial({ color: '#3d2716', roughness: 0.6 });
   const leather = new THREE.MeshStandardMaterial({ color: '#2b1b14', roughness: 0.42 }),
@@ -168,7 +168,7 @@ export function blackjackTable(umbrella = true) {
   add(new THREE.Mesh(ap, wood));
   const felt = planarUV(new THREE.ShapeGeometry(dShape(0), 48).rotateX(-Math.PI / 2));
   felt.translate(0, FELT_Y + 0.002, 0);
-  add(new THREE.Mesh(felt, new THREE.MeshStandardMaterial({ map: feltTexture(), roughness: 0.95 })), false);
+  add(new THREE.Mesh(felt, new THREE.MeshStandardMaterial({ map: feltTexture(felt0), roughness: 0.95 })), false);
   // padded rail around the curve
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i <= 40; i++) {
@@ -318,7 +318,7 @@ function chipMat(d: number) {
     chipTex = tex.load(BASE + 'casino/chips.png');
     chipTex.colorSpace = THREE.SRGBColorSpace;
   }
-  const i = CHIP[d],
+  const i = CHIP[d] ?? 0,
     t = chipTex.clone();
   t.repeat.set(64 / 320, 64 / 102);
   t.offset.set((i * 64) / 320, 1 - 64 / 102);
@@ -418,6 +418,8 @@ const handText = (cards: number[], bj: boolean) => {
 };
 
 export interface BJHost {
+  /** the table's limits and chips (the high-roller table in the back: bigger everything) */
+  limits?: { min: number; max: number; chips: number[]; name?: string };
   toast(html: string): void;
   onClose(): void;
   sendPres(): void;
@@ -427,9 +429,12 @@ export interface BJHost {
 }
 
 export function createBlackjack(table: THREE.Group, host: BJHost) {
-  const sfx = new Sounds();
+  const sfx = new Sounds(),
+    BJ_MIN = host.limits?.min ?? BJ_MIN0,
+    BJ_MAX = host.limits?.max ?? BJ_MAX0,
+    CHIPS = host.limits?.chips ?? [10, 25, 100, 500, 1000];
   let mySeat = -1,
-    myBet = 50,
+    myBet = Math.max(50, BJ_MIN),
     myActs = '',
     myRound = -1,
     readyFor = 0,
@@ -615,7 +620,7 @@ export function createBlackjack(table: THREE.Group, host: BJHost) {
   panel.className = 'bjp';
   ui.appendChild(panel);
   const chipBtn = (d: number) =>
-    `<button class="chip" data-chip="${d}" style="background-image:url(${BASE}casino/chips.png);background-position:${-CHIP[d] * 52}px 0" title="${money(d)}"><b>${d >= 1000 ? d / 1000 + 'K' : d}</b></button>`;
+    `<button class="chip" data-chip="${d}" style="background-image:url(${BASE}casino/chips.png);background-position:${-(CHIP[d] ?? 0) * 52}px 0" title="${money(d)}"><b>${d >= 1000 ? d / 1000 + 'K' : d}</b></button>`;
   function render(rv: RoundView | null) {
     const cash = progress().cash,
       busy = clock < busyUntil,
@@ -646,7 +651,7 @@ export function createBlackjack(table: THREE.Group, host: BJHost) {
         <button data-a="p" ${opts.split && cash >= opts.hand.bet ? '' : 'disabled'}>Split <kbd>P</kbd></button></div>`;
     } else if (ph === 'bet') {
       const ready = readyFor === (T?.r ?? 0) + 1;
-      h += `<div class="bjrow chips">${[10, 25, 100, 500, 1000].map(chipBtn).join('')}</div>
+      h += `<div class="bjrow chips">${CHIPS.map(chipBtn).join('')}</div>
         <div class="bjrow"><button data-a="clear" ${myBet ? '' : 'disabled'}>${myBet ? 'Clear' : 'Sitting out'}</button>
         <button data-a="ready" class="primary" ${myBet >= BJ_MIN && myBet <= cash && !ready ? '' : 'disabled'}>${ready ? 'Ready ✓' : 'Ready'} <kbd>Space</kbd></button>
         <button data-a="leave">Leave table <kbd>Esc</kbd></button></div>`;
@@ -761,7 +766,7 @@ export function createBlackjack(table: THREE.Group, host: BJHost) {
     else if (k === 'KeyD') act('d');
     else if (k === 'KeyP') act('p');
     else if (k === 'Backspace') act('clear');
-    else if (/^Digit[1-5]$/.test(k)) addChip([10, 25, 100, 500, 1000][+k.slice(5) - 1]);
+    else if (/^Digit[1-5]$/.test(k) && CHIPS[+k.slice(5) - 1]) addChip(CHIPS[+k.slice(5) - 1]);
   }
 
   // ---- the felt: cards and chips

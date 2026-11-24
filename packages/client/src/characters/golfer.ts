@@ -318,7 +318,11 @@ export interface Outfit {
   tatInk?: string;
   /** the putter skin (Mom's Attic rewards, PUTTERS); none = the plain blade */
   putter?: string;
+  /** a vanity club set from the Pro Shop (CLUB_SETS); none = steel */
+  clubs?: string;
 }
+/** Vanity club sets (Pro Shop): every club's metal is gold, or diamond. */
+export const CLUB_SETS = ['gold', 'diamond'] as const;
 /** Putter skins: unlocked by finding Mom's lost things (lobby/attic.ts). */
 export const PUTTERS = ['hockey', 'broom', 'wrench', 'flamingo'] as const;
 /** Tattoo designs, in the order they sit on public/golfer/tattoos.png (6 across). colour = keeps its own colours. */
@@ -844,10 +848,16 @@ export type ClubKind = 'driver' | 'wood' | 'iron' | 'wedge' | 'putter';
 /** A golf club (asset-audit.md: no usable CC0 club models, so these are built in code). Stepped steel shaft, tapered
  *  rubber grip, a ferrule and hosel, and a head per club: a pear-shaped wood with a bright face and sole plate, a
  *  cavity-back iron or wedge with grooves, or a blade putter with a plumber's neck and a sight line. */
-function buildClub(kind: ClubKind, L: number, lie: number, skin = '') {
+function buildClub(kind: ClubKind, L: number, lie: number, skin = '', set = '') {
   const g = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: '#c3c7cc', metalness: 0.5, roughness: 0.32 }); // no environment map to reflect, so keep it part-diffuse or it renders black
-  const satin = new THREE.MeshStandardMaterial({ color: '#aeb3b9', metalness: 0.45, roughness: 0.5 });
+  // (a vanity set swaps the metal: polished gold, or diamond that catches the low sun)
+  const steel =
+      set === 'gold'
+        ? new THREE.MeshStandardMaterial({ color: '#e7b84a', metalness: 0.75, roughness: 0.22, emissive: '#5a3a00', emissiveIntensity: 0.25 })
+        : set === 'diamond'
+          ? new THREE.MeshStandardMaterial({ color: '#e9f8ff', metalness: 0.25, roughness: 0.04, emissive: '#7fc8ff', emissiveIntensity: 0.35 })
+          : new THREE.MeshStandardMaterial({ color: '#c3c7cc', metalness: 0.5, roughness: 0.32 }), // no environment map to reflect, so keep it part-diffuse or it renders black
+    satin = set ? steel : new THREE.MeshStandardMaterial({ color: '#aeb3b9', metalness: 0.45, roughness: 0.5 });
   const dark = new THREE.MeshStandardMaterial({ color: '#17181a', roughness: 0.6 });
   const grip = new THREE.MeshStandardMaterial({ color: '#1d1d1d', roughness: 0.9 });
   const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => {
@@ -872,7 +882,7 @@ function buildClub(kind: ClubKind, L: number, lie: number, skin = '') {
   g.add(head); // tilt by the shaft's angle from vertical so the sole sits flat at address
   if (kind === 'driver' || kind === 'wood') {
     const s = kind === 'driver' ? 1 : 0.76;
-    const crown = new THREE.MeshStandardMaterial({ color: kind === 'driver' ? '#2c3138' : '#4a3328', metalness: 0.2, roughness: 0.3 });
+    const crown = set ? steel : new THREE.MeshStandardMaterial({ color: kind === 'driver' ? '#2c3138' : '#4a3328', metalness: 0.2, roughness: 0.3 });
     // pear-shaped body: a squashed sphere with a flat face, a flatter sole and a tail that tapers away from the face
     const geo = new THREE.SphereGeometry(1, 22, 14),
       pos = geo.attributes.position;
@@ -1256,8 +1266,11 @@ export class Golfer {
   private bind: Record<string, THREE.Vector3> | null = null;
   /** this golfer's putter skin ('' = the plain blade) */
   putterSkin = '';
+  /** this golfer's vanity club set ('' = steel) */
+  clubSet = '';
   constructor(outfit: Outfit = DEFAULT_OUTFIT) {
     this.putterSkin = outfit.putter || '';
+    this.clubSet = outfit.clubs || '';
     const own = mhBindFor(outfit.body);
     if (own) {
       this.bind = {};
@@ -1450,7 +1463,7 @@ export class Golfer {
     this.clubKind = kind;
     if (!this.clubs[kind]) {
       const sp = CLUB_SPEC[kind];
-      const c = buildClub(kind, sp.L, Math.PI / 2 - sp.plane, kind === 'putter' ? this.putterSkin : '');
+      const c = buildClub(kind, sp.L, Math.PI / 2 - sp.plane, kind === 'putter' ? this.putterSkin : '', this.clubSet);
       c.visible = false;
       this.root.add(c);
       this.clubs[kind] = c;

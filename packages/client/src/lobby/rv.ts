@@ -19,7 +19,7 @@ let shared: {
   awnTex: THREE.Texture;
 } | null = null;
 
-function windowTex() {
+export function windowTex() {
   const c = document.createElement('canvas');
   c.width = 160;
   c.height = 112;
@@ -75,7 +75,7 @@ function windowTex() {
   t.anisotropy = 4;
   return t;
 }
-function stripeTex() {
+export function stripeTex() {
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 8;
@@ -89,7 +89,7 @@ function stripeTex() {
   t.wrapS = THREE.RepeatWrapping;
   return t;
 }
-function mats() {
+export function mats() {
   if (shared) return shared;
   const w = windowTex();
   shared = {
@@ -108,7 +108,7 @@ function mats() {
 }
 
 /** Collects geometry per material, then merges each pile into one mesh. */
-class Pile {
+export class Pile {
   private parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   private m4 = new THREE.Matrix4();
   private e = new THREE.Euler();
@@ -140,7 +140,7 @@ class Pile {
 }
 
 /** Rounded side profile (x along the trailer, y up), extruded across the width. */
-function shell(len: number, y0: number, y1: number, width: number, rTop: number, rBot: number, bevel: number) {
+export function shell(len: number, y0: number, y1: number, width: number, rTop: number, rBot: number, bevel: number) {
   const h = len / 2,
     s = new THREE.Shape();
   s.moveTo(-h + rBot, y0);

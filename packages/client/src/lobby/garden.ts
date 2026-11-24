@@ -23,6 +23,8 @@ import {
   qualityOf,
   yieldOf,
   SPRINKLER_R,
+  UV_R,
+  nourish,
   type Plant,
   cleanGarden,
 } from '@gh/shared';
@@ -159,7 +161,7 @@ const BUD_GEO = new THREE.IcosahedronGeometry(1, 0);
 const SOIL_GEO = new THREE.CircleGeometry(0.2, 18).rotateX(-Math.PI / 2);
 const WET = new THREE.Color('#24170d'),
   DRY = new THREE.Color('#9c8462');
-const droopOf = (p: Plant) => Math.max(0, Math.min(1, (0.3 - p.w) / 0.3));
+const droopOf = (p: Plant) => (p.dead ? 1 : Math.max(0, Math.min(1, (0.3 - p.w) / 0.3), p.wl ?? 0));
 /** A plant at its stage: stem, tiers of fan leaves (drooping when thirsty), buds while flowering, soil that dries out. */
 function plantModel(p: Plant) {
   const s = STRAIN.get(p.s)!,
@@ -171,6 +173,7 @@ function plantModel(p: Plant) {
   const col = new THREE.Color(s.color);
   if (droop > 0) col.lerp(new THREE.Color('#a6a35a'), 0.5 * droop);
   if (st === 4) col.lerp(new THREE.Color('#b59a45'), 0.55);
+  if (p.wl || p.dead) col.lerp(new THREE.Color('#6a4a2a'), p.dead ? 0.85 : 0.6 * (p.wl || 0)); // wilting: browning
   const leaf = new THREE.MeshStandardMaterial({ map: leafTexture(), color: col, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
   const soil = new THREE.Mesh(SOIL_GEO, new THREE.MeshStandardMaterial({ color: WET.clone().lerp(DRY, 1 - Math.min(1, p.w / 0.6)), roughness: 1 }));
   soil.position.y = 0.006;
@@ -379,16 +382,28 @@ export function createGarden(host: GardenHost) {
     const lay = host.layoutOf(host.me()),
       keep = new Map<string, THREE.Vector3>();
     for (const p of lay) if (GEAR[p.k]) for (let i = 0; i < GEAR[p.k].slots; i++) keep.set(slotKey(p, i), slotLocal(p, i));
-    const sprinklers = lay.filter(p => p.k === 'sprinkler');
+    const sprinklers = lay.filter(p => p.k === 'sprinkler'),
+      lamps = lay.filter(p => p.k === 'uvlamp');
     for (const k of Object.keys(mine))
       if (!keep.has(k)) {
         delete mine[k];
         dirty = true;
       } // its pot was removed
     for (const [k, pl] of Object.entries(mine)) {
-      tickPlant(pl, 1);
-      dirty = true;
       const at = keep.get(k)!;
+      tickPlant(
+        pl,
+        1,
+        lamps.some(s => Math.hypot(s.x - at.x, s.z - at.z) <= UV_R),
+      );
+      dirty = true;
+      if (pl.dead === 1 && !(pl as any)._told) {
+        (pl as any)._told = 1;
+        host.toast(
+          `Your <b>${esc(STRAIN.get(pl.s)?.name || 'plant')}</b> has wilted and died. It needed a UV lamp beside it and premium nutrients.`,
+          5000,
+        );
+      }
       if (pl.w < 0.45 && sprinklers.some(s => Math.hypot(s.x - at.x, s.z - at.z) <= SPRINKLER_R)) {
         pl.w = 1;
         sprayUntil = clock + 3;
@@ -812,28 +827,38 @@ export function createGarden(host: GardenHost) {
           p = g[key];
         if (!p)
           return r.mine
-            ? `<div class="grow-slot"><div class="gs-h"><b>Empty</b><span>Plant a seed:</span></div><div class="gs-btns">${SEED_STRAINS.map(s => `<button data-plant="${i}:${s.id}" ${cash >= s.seed ? '' : 'disabled'}>${esc(s.name)} <em>${money(s.seed)}</em></button>`).join('')}${progress().items.hobo ? `<button class="rainbow" data-plant="${i}:rb">Hobo Rainbow <em>1 of your ${progress().items.hobo} seed${progress().items.hobo > 1 ? 's' : ''}</em></button>` : ''}</div></div>`
+            ? `<div class="grow-slot"><div class="gs-h"><b>Empty</b><span>Plant a seed:</span></div><div class="gs-btns">${SEED_STRAINS.map(s => `<button data-plant="${i}:${s.id}" ${cash >= s.seed ? '' : 'disabled'}>${esc(s.name)} <em>${money(s.seed)}</em></button>`).join('')}${progress().items.hobo ? `<button class="rainbow" data-plant="${i}:rb">Hobo Rainbow <em>1 of your ${progress().items.hobo} seed${progress().items.hobo > 1 ? 's' : ''}</em></button>` : ''}${progress().items.ggseed ? `<button class="gold" data-plant="${i}:gg">Golden Hills Gold <em>1 of your ${progress().items.ggseed}</em></button>` : ''}</div></div>`
             : `<div class="grow-slot"><div class="gs-h"><b>Empty</b></div></div>`;
         const s = STRAIN.get(p.s)!,
           st = stageOf(p),
           q = qualityOf(p, r.item.k);
+        const vol = !!s.volatile && st < 3;
+        if (p.dead)
+          return `<div class="grow-slot"><div class="gs-h"><b>${esc(s.name)}</b><span>Wilted</span></div><div class="gs-foot"><span class="hint warn">Dead. It needed a UV lamp and premium nutrients.</span><div class="gs-btns">${r.mine ? `<button data-clear="${i}">Clear it away</button>` : ''}</div></div></div>`;
         const hint =
-          st >= 3
-            ? st === 4
-              ? 'Overripe: losing quality, harvest soon'
-              : 'Ready to harvest!'
-            : p.w <= 0
-              ? 'Bone dry: growth paused. Water it!'
-              : p.w < 0.25
-                ? 'Thirsty: grab the watering can'
-                : st > 0 && p.n < 0.15
-                  ? 'Hungry: spread some fertilizer'
-                  : st > 0 && p.n < 0.35
-                    ? 'Could use fertilizer'
-                    : 'Happy';
-        const btns = st >= 3 && r.mine ? `<button class="primary" data-harvest="${i}">Harvest <kbd>E</kbd></button>` : '';
+          vol && (p.wl ?? 0) > 0.02
+            ? `Wilting! ${(p.pn ?? 0) <= 0.12 ? 'Give it premium nutrients' : 'It needs a UV lamp within 2.2 m'}`
+            : st >= 3
+              ? st === 4
+                ? 'Overripe: losing quality, harvest soon'
+                : 'Ready to harvest!'
+              : p.w <= 0
+                ? 'Bone dry: growth paused. Water it!'
+                : p.w < 0.25
+                  ? 'Thirsty: grab the watering can'
+                  : st > 0 && p.n < 0.15
+                    ? 'Hungry: spread some fertilizer'
+                    : st > 0 && p.n < 0.35
+                      ? 'Could use fertilizer'
+                      : 'Happy';
+        const btns =
+          st >= 3 && r.mine
+            ? `<button class="primary" data-harvest="${i}">Harvest <kbd>E</kbd></button>`
+            : vol && r.mine
+              ? `<button data-nourish="${i}" ${progress().items.nutri ? '' : 'disabled'}>Premium nutrients <em>${progress().items.nutri || 0} left</em></button>`
+              : '';
         return `<div class="grow-slot"><div class="gs-h"><b>${esc(s.name)}</b><span>${STAGES[st]}${st < 3 ? ' · ' + minsLeft(p) : ''}</span><span class="q q${q}">${st >= 3 ? '' : 'heading for '}${QUALITY[q]}</span></div>
-        <div class="gs-bars"><label>Growth ${bar(progressOf(p), 'g')}</label><label>Water ${bar(p.w, p.w < 0.25 ? 'w low' : 'w')}</label>${st < 3 ? `<label>Fertilizer ${bar(p.n, p.n < 0.15 ? 'n low' : 'n')}</label>` : ''}</div>
+        <div class="gs-bars"><label>Growth ${bar(progressOf(p), 'g')}</label><label>Water ${bar(p.w, p.w < 0.25 ? 'w low' : 'w')}</label>${st < 3 ? `<label>Fertilizer ${bar(p.n, p.n < 0.15 ? 'n low' : 'n')}</label>` : ''}${vol ? `<label>Nutrients ${bar(p.pn ?? 0, (p.pn ?? 0) < 0.2 ? 'n low' : 'n')}</label><label>Wilt ${bar(p.wl ?? 0, 'w low')}</label>` : ''}</div>
         <div class="gs-foot"><span class="hint${hint === 'Happy' ? '' : ' warn'}">${hint}</span><div class="gs-btns">${btns}</div></div></div>`;
       })
       .join('');
@@ -851,6 +876,27 @@ export function createGarden(host: GardenHost) {
         }),
     );
     ui.querySelectorAll<HTMLButtonElement>('[data-harvest]').forEach(b => (b.onclick = () => harvest(r, +b.dataset.harvest!)));
+    ui.querySelectorAll<HTMLButtonElement>('[data-nourish]').forEach(
+      b =>
+        (b.onclick = async () => {
+          const p = mine[slotKey(r.item, +b.dataset.nourish!)];
+          if (!p || !(await useItem('nutri'))) return host.toast('Grow Supply sells premium nutrients.');
+          nourish(p);
+          dirty = true;
+          persist(true);
+          host.toast('🧪 Premium nutrients: good for six minutes.', 2000);
+        }),
+    );
+    ui.querySelectorAll<HTMLButtonElement>('[data-clear]').forEach(
+      b =>
+        (b.onclick = () => {
+          const k = slotKey(r.item, +b.dataset.clear!);
+          if (!mine[k]?.dead) return;
+          delete mine[k];
+          dirty = true;
+          persist(true);
+        }),
+    );
   }
   async function plant(r: PlanterRef, i: number, sid: string) {
     const s = STRAIN.get(sid)!,
@@ -861,6 +907,11 @@ export function createGarden(host: GardenHost) {
         host.toast('You need one of the hobo’s seeds for that.');
         return;
       }
+    } else if (sid === 'gg') {
+      if (!(await useItem('ggseed'))) {
+        host.toast('Grow Supply sells Golden Hills Gold seeds.');
+        return;
+      }
     } else if (!(await addCash(-s.seed))) {
       host.toast('Not enough cash for those seeds.');
       return;
@@ -868,7 +919,12 @@ export function createGarden(host: GardenHost) {
     mine[key] = newPlant(sid, Math.floor(Math.random() * 1e9));
     dirty = true;
     persist(true);
-    host.toast(`Planted <b>${esc(s.name)}</b>. Keep it watered: the can is at your spigot.`, 2600);
+    host.toast(
+      s.volatile
+        ? `Planted <b>${esc(s.name)}</b>. It needs a UV lamp within 2.2 m and premium nutrients every six minutes, or it wilts.`
+        : `Planted <b>${esc(s.name)}</b>. Keep it watered: the can is at your spigot.`,
+      s.volatile ? 5000 : 2600,
+    );
   }
   async function harvest(r: PlanterRef, i: number) {
     const key = slotKey(r.item, i),

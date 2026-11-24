@@ -524,3 +524,4 @@ body.tripping canvas{animation:gh-trip 18s ease-in-out infinite}
 .trickpop.big{background:#2eaa8a;font-size:24px;max-width:70vw}
 .trickpop b{display:block;font-size:40px;color:#ffe27a}
 .tg button .sw{display:inline-block;width:14px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+#h-ball{font-size:12px;color:#ffd27a;margin-top:2px}#h-ball:empty{display:none}

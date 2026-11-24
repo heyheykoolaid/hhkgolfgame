@@ -3,7 +3,7 @@
 // hold-to-confirm sale. Prices are shared/src/grow.ts (Option B: the 55–175% clamp applies to the market part only;
 // quality multiplies on top). Supply pressure is fixed at "normal" until the lobby has shared market state.
 import * as THREE from 'three';
-import { STRAIN, QUALITY, unitPrice, preferredStrain } from '@gh/shared';
+import { STRAIN, QUALITY, unitPrice, preferredStrain, dealerBribe } from '@gh/shared';
 import { Golfer } from '../characters/golfer';
 import { sanitizeLook } from '../avatar/outfit';
 import { progress, sellProduct, loadProgress, buySupply } from '../avatar/progress';
@@ -18,7 +18,10 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 export const DEALER_POS = new THREE.Vector3(-88.5 + 110, 0, 6.2 - 82.5), // in the alley beside Grow Supply on Shady Lane (the buildings' frame + SHADY_OFF)
   DEALER_YAW = 0.25;
 
-export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?: number): void; onClose(): void; sfx?: (n: string) => void }) {
+export function createDealer(
+  scene: THREE.Scene,
+  host: { toast(html: string, ms?: number): void; onClose(): void; sfx?: (n: string) => void; bribe?(): void },
+) {
   // the man himself: hoodie, dark cap, leaning by a crate
   const look = sanitizeLook({
     skin: '#7a4e32',
@@ -69,7 +72,11 @@ export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?
     if (sel >= list.length) sel = 0;
     const st = list[sel];
     if (st) qty = Math.max(1, Math.min(st.n, qty || st.n));
-    let h = `<div class="card"><button class="x" data-close>✕</button><h2>Street Dealer</h2><div class="sub">"What you got for me?" · Today he wants <b>${esc(pn)}</b> <span class="pref">+22%</span></div>`;
+    let h = `<div class="card"><button class="x" data-close>✕</button><h2>Street Dealer</h2><div class="sub">"What you got for me?" · Today he wants <b>${esc(pn)}</b> <span class="pref">+22%</span>${
+      dealerBribe()?.dump
+        ? ` · lowballing <b>${esc(STRAIN.get(dealerBribe()!.dump!)?.name || '')}</b> <span class="pref" style="background:#a33">−30%</span>`
+        : ''
+    }</div>`;
     if (!list.length)
       h += `<div class="dl-empty">"Nothing? Come back when you've harvested something."<br><span>Grow gear is in Build Mode (<kbd>B</kbd> on your lot) under <b>Grow</b>.</span></div>`;
     else {
@@ -90,13 +97,14 @@ export function createDealer(scene: THREE.Scene, host: { toast(html: string, ms?
         <button class="primary dl-sell" data-hold><i></i><span>Hold to sell for ${money(total)}</span> <kbd>E</kbd></button>`;
     }
     {
-      h += `<div class="dl-sup"><span>Papers and grinders are at Grow Supply, next door.</span></div>`;
+      h += `<div class="dl-sup"><span>Papers and grinders are at Grow Supply, next door.</span>${host.bribe ? '<button class="sm" data-bribe>Slip him something…</button>' : ''}</div>`;
     }
     h += `<div class="gfoot">Cash ${money(progress().cash)}<span>Close <kbd>Esc</kbd></span></div></div>`;
     if (h === html) return;
     html = h;
     ui.innerHTML = h;
     ui.querySelector('[data-close]')?.addEventListener('click', close);
+    ui.querySelector('[data-bribe]')?.addEventListener('click', () => host.bribe?.());
     ui.querySelectorAll<HTMLButtonElement>('[data-sel]').forEach(
       b =>
         (b.onclick = () => {

@@ -49,7 +49,7 @@ import type { GameNet, NetPlayer } from '../net/types';
 import type { Outfit } from '../characters/golfer';
 import { sanitizeLook } from '../avatar/outfit';
 import { ballMaterial, DEFAULT_BALL } from '../avatar/balls';
-import { awardHole, awardTrophy, progress, addCash } from '../avatar/progress';
+import { awardHole, awardTrophy, progress, addCash, useItem } from '../avatar/progress';
 import { createBets } from './bets';
 import { createTurns } from './turns';
 import { createRoaming, cartYaw } from './roaming';
@@ -64,6 +64,8 @@ import { loadPhysics, physicsReady, PhysWorld, Flop } from '../physics/ragdoll';
 import { vehicleKind, cleanKind, DRIVE_FX, type Vehicle } from '../vehicles/vehicles';
 import { Grass, type GrassKind } from '../world/grass';
 import { buildBuggies } from '../world/buggies';
+import { createSmokeTrail, SMOKE_COLOURS } from '../world/smokeTrail';
+import { NOVELTY, noveltyOf, mulliganPrice, clubPing } from './novelty';
 import { tickDecor } from '../world/locales';
 import { stepLength } from '../characters/golfer';
 
@@ -81,7 +83,8 @@ export interface GolfEnv {
   renderer: THREE.WebGLRenderer;
   onExit(): void;
 }
-const _stepAt = new THREE.Vector3();
+const _stepAt = new THREE.Vector3(),
+  _puffAt = new THREE.Vector3();
 /** What the keys do at each point in a shot, for the controls panel (ui/controls.ts). */
 const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
   aim: [
@@ -92,6 +95,8 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       [['W', 'S'], 'Power'],
       ['Space', 'Start the swing', true],
       ['Shift', 'Hold: view from above'],
+      ['X', 'Novelty ball (if you have any)'],
+      ['U', 'Mulligan (your tee shot)'],
       ['M', 'Map'],
       ['B', 'Bets'],
       ['R', 'Step away and walk'],
@@ -132,6 +137,7 @@ const COURSE_KEYS: Record<string, [string, ControlRow[]]> = {
       ['E', 'Address the ball · get in the cart', true],
       ['K', 'Skateboard (if you have one)'],
       ['T', 'Address your ball from anywhere'],
+      ['U', 'Mulligan (your tee shot, before you hit again)'],
       ['M', 'Map'],
       ['B', 'Bets'],
     ],
@@ -605,6 +611,44 @@ export function createGolf(env: GolfEnv) {
     return clamp(d / c, 0, MAX_POWER);
   }
 
+  // ---- extras you pay for: a novelty ball picked for the next shot (X), and a mulligan on a bad tee shot (U)
+  let ballPick = '' as '' | 'lead' | 'bouncy' | 'smoke',
+    mullAsk = 0;
+  function cycleBall() {
+    const owned = NOVELTY.filter(n => (progress().items[n.item] || 0) > 0);
+    if (!owned.length) {
+      ballPick = '';
+      toast('No novelty balls: the Pro Shop in town sells them.', 2200);
+      return;
+    }
+    const i = owned.findIndex(n => n.k === ballPick);
+    ballPick = i + 1 < owned.length ? owned[i + 1].k : '';
+    playSample('select', 0.35);
+  }
+  async function tryMulligan() {
+    const me = net.me();
+    if (!net.mulligan || !me || me.done || me.busy || me.strokes < 1) return;
+    const price = mulliganPrice(progress().cash);
+    if (clock - mullAsk > 4) {
+      mullAsk = clock;
+      toast(`Mulligan: take that tee shot back for <b>${money(price)}</b>? Press <kbd>U</kbd> again.`, 3800);
+      return;
+    }
+    mullAsk = 0;
+    if (progress().cash < price) {
+      toast("You can't afford a mulligan.", 2000);
+      return;
+    }
+    if (!net.mulligan()) {
+      toast('Only your tee shot can be taken back, and only before you hit again.', 2600);
+      return;
+    }
+    await addCash(-price);
+    playSample('confirm', 0.45);
+    toast(`Mulligan! Back on the tee (${money(price)}).`, 2200);
+    S.phase = 'aim';
+    S.autoFor = '';
+  }
   function press() {
     sfx.ensure();
     if (endShown) return;
@@ -659,8 +703,16 @@ export function createGolf(env: GolfEnv) {
       const im = evaluateImpact(S.u, S.win, isPutt());
       lastStrike = { grade: im.grade, late: im.dev > 0 };
       playSample(im.grade === 'perfect' ? 'confirm' : im.grade === 'good' ? 'select' : 'back', im.grade === 'perfect' ? 0.55 : 0.4);
+      if (im.grade === 'perfect') clubPing(cur.look.clubs || '');
     }
     const shot: ShotInput = { club: S.club, power: S.p0, u: S.u, aimYaw: S.aimYaw, puttRange: S.puttRange, spin: { top: 0, back: 0, side: 0 } };
+    const nb = !isPutt() && ballPick ? noveltyOf(ballPick) : undefined;
+    if (nb && (progress().items[nb.item] || 0) > 0) {
+      shot.ball = nb.k; // (one shot's worth: it's used up as it's struck)
+      void useItem(nb.item).then(() => {
+        if (!(progress().items[nb.item] > 0)) ballPick = '';
+      });
+    }
     net.sendShot(shot);
   }
   addEventListener('keydown', e => {
@@ -683,6 +735,7 @@ export function createGolf(env: GolfEnv) {
     }
     if (S.phase === 'walk' || S.phase === 'drive') {
       if (e.code === 'KeyK') roam.toggleSkate();
+      if (e.code === 'KeyU') void tryMulligan();
       if (e.code === 'KeyE') roam.interact();
       if (e.code === 'KeyF' && S.phase === 'walk') {
         const f = new THREE.Vector3(Math.sin(W.yaw), 0, Math.cos(W.yaw));
@@ -704,6 +757,14 @@ export function createGolf(env: GolfEnv) {
       return;
     }
     if (S.phase !== 'aim') return;
+    if (e.code === 'KeyU') {
+      void tryMulligan();
+      return;
+    }
+    if (e.code === 'KeyX') {
+      cycleBall();
+      return;
+    }
     if (e.code === 'KeyR') {
       // step back from the ball and walk: whenever you like, your turn or not (E or T comes back to it)
       const b = myBall();
@@ -1030,6 +1091,11 @@ export function createGolf(env: GolfEnv) {
     $('h-wind').textContent = ws < 0.3 ? 'Calm' : `${arrows[ai]} ${(ws * 2.237).toFixed(0)} mph`;
     $('h-club').textContent = c.putter ? `P · ${PUTT_FT[S.puttRange]}ft` : c.short;
     {
+      const nb = !c.putter && ballPick ? noveltyOf(ballPick) : undefined,
+        t = nb ? `${nb.icon} ${nb.name} · ${progress().items[nb.item] || 0} left` : '';
+      if ($('h-ball').textContent !== t) $('h-ball').textContent = t;
+    }
+    {
       const sl = c.putter ? '' : slopeOf().label;
       $('h-carry').textContent = c.putter ? `${lieOf()}` : `${yd(carryOf(S.club) * slopeOf().dist)} yd · ${lieOf()}${sl ? ' · ' + sl : ''}`;
     }
@@ -1078,7 +1144,8 @@ export function createGolf(env: GolfEnv) {
   const sfx = new Sfx(),
     bursts = new Bursts(scene),
     ribbon = new Ribbon(scene),
-    tracer = new Tracer(scene);
+    tracer = new Tracer(scene),
+    smokeTrail = createSmokeTrail(scene);
   // ---------------- ragdolls: a ball in flight that passes through another golfer knocks them flat ----------------
   // Every client replays the same deterministic flights, so every client sees the same bonk without any messages.
   let pw: PhysWorld | null = null,
@@ -1294,6 +1361,16 @@ export function createGolf(env: GolfEnv) {
           pl._ht = tn;
         } // everything flown since last frame
         const r = framePos(a.play, nowS - a.t0, a.ballPos);
+        if (a.play.result.input.ball === 'smoke' && nowS - a.t0 < (a.play.result.events.find(e => e.type === 'land')?.t ?? 0) + 1.5) {
+          // a puff every 60 ms of flight, filled in along the path (so a slow frame still leaves an unbroken cloud)
+          const pl = a.play as any,
+            col = SMOKE_COLOURS[[...id].reduce((h, ch) => h + ch.charCodeAt(0), 0) % SMOKE_COLOURS.length];
+          for (let n = 0; (pl._puff ?? 0) < nowS - a.t0 && n < 40; n++) {
+            pl._puff = (pl._puff ?? 0) + 0.06;
+            framePos(a.play, pl._puff, _puffAt);
+            smokeTrail.puff(_puffAt, col);
+          }
+        }
         let dropping = false;
         if (a.play.result.outcome === 'holed') {
           const fr = a.play.result.frames;
@@ -1655,6 +1732,7 @@ export function createGolf(env: GolfEnv) {
       }
     }
     roam.update(dt);
+    smokeTrail.update(dt, net.wind());
     tracer.setColor(trailColor(progress().trail, clock));
     {
       // the cart radio: at the wheel, or heard from where the cart is parked

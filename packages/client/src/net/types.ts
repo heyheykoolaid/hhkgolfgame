@@ -57,6 +57,8 @@ export interface GameNet {
   nextHole?(h: number): void;
   /** Turn-based play: my shot timer ran out — a penalty stroke; the 3rd on a hole picks the ball up. gs = group strokes before it. */
   penalize?(gs: number): void;
+  /** Take your first shot on this hole back: the ball goes back on the tee and the stroke is forgotten (paid for by the caller). */
+  mulligan?(): boolean;
   /** Betting (shared/src/bets.ts): publish my offers, answers, locked bets and results. */
   setBets?(bt: import('@gh/shared').BetPres | null): void;
   /** In a live room with other players reachable (false: solo, or the connection dropped). */

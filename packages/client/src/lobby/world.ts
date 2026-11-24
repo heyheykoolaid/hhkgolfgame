@@ -11,6 +11,7 @@ import { buildCity } from '../world/city';
 import { palmModel, buildTrees, groundPhoto } from '../world/nature';
 import { createGachaMachine } from './gachaMachine';
 import { buildRV } from './rv';
+import { buildDwelling } from './dwellings';
 import { buildProShop, buildTeeBoard, buildBench } from './plaza';
 import { funSurface, puttFloor } from './funland';
 import { westSurface, westY } from './westside';
@@ -46,6 +47,10 @@ export const FUN = { x1: 172, z: 48, gateZ: 14, gateHW: 4.4 };
 /** The West Side (lobby/westside.ts): through a gate in the town's west edge at z = gateZ; x from x0 to the edge. */
 /** Where the blackjack table stands: in the middle of the Lucky Lie Lounge. */
 export const BJ_AT: [number, number] = [-79, 5.2];
+/** The high-roller table, in the back of the lounge in the aisle between the booths and the bar (the same frame as BJ_AT). */
+export const HR_AT: [number, number] = [-80.95, -1.6],
+  HR_BUYIN = 2500,
+  HR_LIMITS = { min: 500, max: 50000, name: 'High rollers' };
 /** The West Side stands on a rise west of town: everything in lobby/westside.ts is laid out in its own frame and then
  *  moved this far (x) and lifted this high (y). The street climbs to it over the 24 m between the town's edge and x1. */
 export const WEST_OFF = { x: -24, y: 2.6 };
@@ -86,6 +91,8 @@ export interface Plot {
   yaw: number;
   group: THREE.Group;
   rv: THREE.Group | null;
+  /** the upgrade standing in for the travel trailer ('' = the trailer; lobby/dwellings.ts) */
+  dwelling?: string;
   sign: THREE.Mesh;
   stripe: THREE.Material[];
   owner: string | null;
@@ -300,6 +307,14 @@ export function buildLobby(scene: THREE.Scene) {
   bj.position.set(BJ_AT[0] + SHADY_OFF.x, SHADY_OFF.y + 0.12, BJ_AT[1] + SHADY_OFF.z);
   scene.add(bj);
   addCol(BJ_AT[0] + SHADY_OFF.x - 1.45, BJ_AT[0] + SHADY_OFF.x + 1.45, BJ_AT[1] + SHADY_OFF.z - 0.9, BJ_AT[1] + SHADY_OFF.z + 0.55, 'bj');
+  {
+    // the high-roller table: oxblood felt, in the back
+    const hr = blackjackTable(false, '#6a1f2b', 'bjTableHR');
+    hr.add(contactShadow(3.2, 3.2, 0, 0.2, 0.005, 0.3));
+    hr.position.set(HR_AT[0] + SHADY_OFF.x, SHADY_OFF.y + 0.12, HR_AT[1] + SHADY_OFF.z);
+    scene.add(hr);
+    addCol(HR_AT[0] + SHADY_OFF.x - 1.45, HR_AT[0] + SHADY_OFF.x + 1.45, HR_AT[1] + SHADY_OFF.z - 0.9, HR_AT[1] + SHADY_OFF.z + 0.55, 'bj');
+  }
 
   // a fingerpost by the fountain: where everything is
   {
@@ -585,7 +600,8 @@ function buildPlot(p: Plot, addCol: (x0: number, x1: number, z0: number, z1: num
   colL(HALF - 0.1, HALF + 0.1, -HALF, HALF - 3, 'fence');
   // RV against the back fence
   const stripeM = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.6 }),
-    rv = buildRV(stripeM); // lobby/rv.ts
+    rv = new THREE.Group(); // (holds the dwelling: the travel trailer, or an upgrade, lobby/dwellings.ts)
+  rv.add(buildRV(stripeM)); // lobby/rv.ts
   const RVZ = -HALF + 2.0;
   rv.position.set(-1.5, 0, RVZ);
   const rvShadow = contactShadow(8.4, 3.3, -1.5, RVZ);
@@ -593,6 +609,7 @@ function buildPlot(p: Plot, addCol: (x0: number, x1: number, z0: number, z1: num
   p.rv = rv;
   p.rvShadow = rvShadow;
   p.stripe = [stripeM];
+  p.dwelling = '';
   colL(-5.4, 2.4, RVZ - 1.3, RVZ + 1.3, 'rv');
   // (the lawn chair and cooler under the awning are now ordinary Build Mode items: see STARTER in build.ts)
   // spigot + fertilizer bin beside the RV (care v2: fill the watering can here, grab fertilizer)
@@ -660,6 +677,16 @@ function chainLink() {
   return t;
 }
 /** Paint the lot sign and the owner colour onto the RV. */
+/** What stands at the back of the lot: the travel trailer ('') or an upgrade (lobby/dwellings.ts). */
+export function setPlotDwelling(p: Plot, id: string) {
+  if (!p.rv || (p.dwelling || '') === id) return;
+  p.dwelling = id;
+  for (const c of [...p.rv.children]) {
+    p.rv.remove(c);
+    c.traverse(o => (o as THREE.Mesh).geometry?.dispose());
+  }
+  p.rv.add(buildDwelling(id, p.stripe[0] as THREE.MeshStandardMaterial));
+}
 /** The owner has left the game (or come back): their RV, mailbox and name go (or return). The lot stays theirs. */
 export function setPlotAway(p: Plot, away: boolean) {
   if (!!p.away === away) return;

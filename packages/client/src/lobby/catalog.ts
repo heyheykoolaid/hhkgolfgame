@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { windSway } from '../world/wind';
 import { M, box, cyl } from './world';
 import { buildTrophy } from '../world/trophy';
+import { lizardCardModel } from './lizardCard';
 import { cartModel } from '../vehicles/vehicles';
 import { propInstance, loadProp } from '../world/props';
 import { loadProps, type PropPack } from '../world/propPacks';
@@ -26,6 +27,7 @@ export interface ItemDef {
   model?: string; // a detailed Poly Haven model (world/props.ts) instead of a built one
   pack?: string; // or pieces of a prop pack (world/propPacks.ts; credits in docs/credits.md)
   slots?: [number, number, number][]; // grow gear: where plants sit (local x, soil height, z)
+  notSold?: boolean; // not on any shop's shelves (the lizard card: bought back at Lucky Pawn)
   make(color: string): THREE.Object3D;
 }
 
@@ -176,6 +178,23 @@ export const ITEMS: ItemDef[] = [
         cyl(0.285, 0.285, 0.05, 14, M('#333336', 0.6), 0, 0.42, 0),
         cyl(0.25, 0.25, 0.03, 14, SOIL(), 0, 0.43, 0),
       ),
+  },
+  {
+    id: 'uvlamp',
+    name: 'UV grow lamp (keeps volatile plants within 2.2 m alive)',
+    cat: 'grow',
+    price: 1800,
+    w: 0.4,
+    d: 0.4,
+    solid: false,
+    make: () => {
+      const glow = new THREE.MeshStandardMaterial({ color: '#c9a0ff', emissive: '#a060ff', emissiveIntensity: 2.2, roughness: 0.4 });
+      const r = g(cyl(0.14, 0.17, 0.05, 12, M('#2a2a2c', 0.6), 0, 0.025, 0), cyl(0.02, 0.02, 1.3, 8, M('#9aa0a6', 0.4, 0.6), 0, 0.67, 0));
+      const head = g(box(0.5, 0.06, 0.16, M('#2a2a2c', 0.5), 0, 0, 0), box(0.46, 0.015, 0.12, glow, 0, -0.035, 0));
+      head.position.set(0.18, 1.32, 0);
+      r.add(head, box(0.2, 0.025, 0.025, M('#9aa0a6', 0.4, 0.6), 0.08, 1.33, 0));
+      return r;
+    },
   },
   {
     id: 'sprinkler',
@@ -404,6 +423,18 @@ export const ITEMS: ItemDef[] = [
     make: c => g(flat(2.4, 1.6, new THREE.MeshStandardMaterial({ map: stripes(c, '#e9d8b0', 12), roughness: 1 }))),
   },
 
+  // the card Mom sold: bought back at Lucky Pawn for $100,000 (lobby/lizardCard.ts)
+  {
+    id: 'lizardcard',
+    name: '1st Edition Holographic Lizard (in its case)',
+    cat: 'decor',
+    price: 100000,
+    w: 0.5,
+    d: 0.5,
+    max: 1,
+    notSold: true,
+    make: () => lizardCardModel(),
+  },
   // ---------------- lot games (lobby/lotGames.ts): anyone on the lot can press E at them
   {
     id: 'jukebox',

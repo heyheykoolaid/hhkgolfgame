@@ -4,8 +4,44 @@
 import { $, esc, money } from '../ui/dom';
 import { playSample } from '../audio/samples';
 import { invIcon } from './invIcons';
-import { loadProgress, progress, buyItem, setTrail, setCar, paintCar, fitPart, sellTrophy, isPlaced, addItem } from '../avatar/progress';
+import {
+  loadProgress,
+  progress,
+  buyItem,
+  setTrail,
+  setCar,
+  paintCar,
+  fitPart,
+  sellTrophy,
+  isPlaced,
+  addItem,
+  repairCar,
+  payImpound,
+} from '../avatar/progress';
+import { repairPrice } from '../vehicles/wear';
 import { DECKS, BOARD_PRICE } from '../vehicles/skateboard';
+import { NOVELTY } from '../golf/novelty';
+import { lizardCardCanvas } from './lizardCard';
+import type { Outfit } from '../characters/golfer';
+/** Vanity club sets (Pro Shop): owned as items, worn in your look so everyone sees them. */
+export const CLUB_SET_SHOP = [
+  {
+    id: 'gold',
+    item: 'cgold',
+    name: 'Solid gold set',
+    price: 25000,
+    desc: 'Every club in polished gold. Glints in the evening sun, and rings like a bell on a PERFECT strike.',
+    sw: 'linear-gradient(135deg,#fff1b0,#d9a93a 45%,#8a5d10)',
+  },
+  {
+    id: 'diamond',
+    item: 'cdiamond',
+    name: 'Diamond set',
+    price: 60000,
+    desc: 'Heads and shafts cut from something that is definitely diamond. Same ring on a PERFECT strike, higher.',
+    sw: 'linear-gradient(135deg,#ffffff,#bfe9ff 45%,#6fb4e0)',
+  },
+];
 import { objectImage } from '../world/trophy';
 import { TRAILS } from '../avatar/trails';
 import { ITEMS, loadItemModels } from './catalog';
@@ -15,6 +51,9 @@ import { cartModel, CARS, CAR, CAR_PAINTS, CAR_PARTS, CAR_RIMS, carModel, loadCa
 
 /** What the lobby lends: its message line, its modal, and the picture of a trophy. */
 export interface ShopCtx {
+  /** what you're wearing, and a way to change part of it (vanity club sets) */
+  look: () => Outfit;
+  patchLook: (p: Partial<Outfit>) => void;
   toast: (html: string, ms?: number) => void;
   openModal: (title: string, html: string) => void;
   trophyPic: (seed: number, n: 3 | 9, sub?: string, px?: number) => string;
@@ -32,6 +71,8 @@ export function createShopMenus(ctx: ShopCtx) {
     have: string;
     sold?: boolean;
     group: string;
+    /** sold as counted items (progress().items) instead of gear: how many come for the price */
+    item?: number;
   }
   async function openShop(title: string, keeper: string, goods: (pr: Awaited<ReturnType<typeof loadProgress>>) => Good[], note = '') {
     const pr = await loadProgress(),
@@ -69,7 +110,7 @@ export function createShopMenus(ctx: ShopCtx) {
         b =>
           (b.onclick = async () => {
             const g = list.find(x => x.id === b.dataset.buy)!,
-              r = await buyItem(g.id, g.price);
+              r = g.item ? await addItem(g.id, g.item, g.price) : await buyItem(g.id, g.price);
             playSample(r === 'ok' ? 'confirm' : 'error', 0.5);
             if (r !== 'ok')
               toast(
@@ -92,11 +133,13 @@ export function createShopMenus(ctx: ShopCtx) {
       return 'natural';
     }
   };
+  let armedSet = '';
   async function openProShop() {
-    const pr = await loadProgress();
+    const pr = await loadProgress(),
+      wearing = ctx.look().clubs || '';
     openModal(
       'Pro Shop',
-      `<div class="shop"><div class="shophead"><p class="muted">"Everything for the golfer who has everything. Trails today; club skins and effects are on order."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
+      `<div class="shop"><div class="shophead"><p class="muted">"Everything for the golfer who has everything, and a few things for the golfer who doesn't."</p><div class="shopcash">Cash <b>${money(pr.cash)}</b></div></div>
        <h3>Ball trails</h3><div class="goods">${TRAILS.map(t => {
          const own = !t.id || pr.trails.includes(t.id),
            on = pr.trail === t.id;
@@ -104,6 +147,19 @@ export function createShopMenus(ctx: ShopCtx) {
            <button data-trail="${t.id}" ${on || (!own && pr.cash < t.price) ? 'disabled' : ''}>${on ? 'In use' : own ? 'Use' : money(t.price)}</button></div>`;
        }).join('')}</div>
        <p class="muted" style="margin-top:10px">A trail is the line your ball draws through the air on every course. Others don't see yours yet.</p>
+       <h3>Novelty balls</h3><div class="goods">${NOVELTY.map(
+         n => `<div class="good"><div class="gi" style="font-size:30px">${n.icon}</div><div class="gt"><b>${n.name}</b><p>${n.desc} One shot each: on the course, <kbd>X</kbd> picks it for your next shot.</p><em>${pr.items[n.item] ? `You have ${pr.items[n.item]}` : ''}</em></div>
+           <button data-nov="${n.k}" ${pr.cash < n.price ? 'disabled' : ''}>3 for ${money(n.price)}</button></div>`,
+       ).join('')}</div>
+       <h3>Club sets</h3><div class="goods">
+         <div class="good"><div class="gi"><span class="trail" style="background:linear-gradient(135deg,#eef0f2,#aeb3b9)"></span></div><div class="gt"><b>Steel</b><p>The clubs you started with. Honest.</p><em>${wearing ? '' : 'In use'}</em></div>
+           <button data-set="" ${wearing ? '' : 'disabled'}>${wearing ? 'Use' : 'In use'}</button></div>
+         ${CLUB_SET_SHOP.map(c => {
+           const own = (pr.items[c.item] || 0) > 0,
+             on = wearing === c.id;
+           return `<div class="good"><div class="gi"><span class="trail" style="background:${c.sw}"></span></div><div class="gt"><b>${c.name}</b><p>${c.desc}</p><em>${on ? 'In use' : own ? 'Owned' : ''}</em></div>
+             <button data-set="${c.id}" ${on || (!own && pr.cash < c.price) ? 'disabled' : ''}>${on ? 'In use' : own ? 'Use' : armedSet === c.id ? `Buy for ${money(c.price)}?` : money(c.price)}</button></div>`;
+         }).join('')}</div>
        <h3>Skateboard</h3>${
          pr.items.board
            ? `<p class="muted">Yours. Press <kbd>K</kbd> anywhere to hop on (in town and on the course). Pick a deck:</p><div class="tg">${DECKS.map(
@@ -124,6 +180,57 @@ export function createShopMenus(ctx: ShopCtx) {
             } catch {}
             playSample('confirm', 0.4);
             void openProShop();
+          }),
+      );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-nov]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const n = NOVELTY.find(x => x.k === b.dataset.nov)!,
+              r = await addItem(n.item, 3, n.price);
+            playSample(r === 'ok' ? 'confirm' : 'error', 0.45);
+            toast(
+              r === 'ok'
+                ? `Three ${n.name.toLowerCase()}s. Press <kbd>X</kbd> on the course to use one.`
+                : r === 'full'
+                  ? 'Your inventory is full.'
+                  : "You can't afford those.",
+            );
+            const sc = $('lmodal').querySelector('.card')?.scrollTop || 0;
+            await openProShop();
+            const c = $('lmodal').querySelector('.card');
+            if (c) c.scrollTop = sc;
+          }),
+      );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-set]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const id = b.dataset.set || '',
+              c = CLUB_SET_SHOP.find(x => x.id === id),
+              sc = $('lmodal').querySelector('.card')?.scrollTop || 0;
+            if (c && !(progress().items[c.item] > 0)) {
+              if (armedSet !== id)
+                armedSet = id; // (big money: click once to be asked, again to buy)
+              else {
+                armedSet = '';
+                const r = await addItem(c.item, 1, c.price);
+                playSample(r === 'ok' ? 'win' : 'error', 0.5);
+                if (r !== 'ok') toast("You can't afford that set.");
+                else {
+                  ctx.patchLook({ clubs: id });
+                  toast(`The ${c.name.toLowerCase()} is in your bag. Everyone on the course will see it.`, 3500);
+                }
+              }
+            } else {
+              ctx.patchLook({ clubs: id || undefined });
+              playSample('confirm', 0.4);
+            }
+            await openProShop();
+            const cd = $('lmodal').querySelector('.card');
+            if (cd) cd.scrollTop = sc;
           }),
       );
     const bb = $('lmodal').querySelector<HTMLButtonElement>('[data-board]');
@@ -161,6 +268,9 @@ export function createShopMenus(ctx: ShopCtx) {
     return Math.max(500, Math.round(((base + under) * mood) / 50) * 50);
   };
   /** Lucky Pawn (Shady Lane): sell trophies from your case for cash. Gone for good; not while one stands on your lot. */
+  const LIZARD_PRICE = 100000;
+  let lizardImg = '';
+  const lizardPic = () => (lizardImg ||= lizardCardCanvas(140).toDataURL());
   async function openPawn(armed = '') {
     const pr = await loadProgress(),
       tp = (n: number) => (n === 0 ? 'even par' : n > 0 ? `+${n}` : `${n}`),
@@ -185,8 +295,29 @@ export function createShopMenus(ctx: ShopCtx) {
                .join('')}</div>`
            : ''
        }
-       <p class="muted" style="margin-top:10px">A sold trophy is gone for good, on every device. Click a price once to be asked, again to sell.</p></div>`,
+       <p class="muted" style="margin-top:10px">A sold trophy is gone for good, on every device. Click a price once to be asked, again to sell.</p>
+       <h3>Behind the glass</h3><div class="goods"><div class="good"><div class="gi"><img src="${lizardPic()}" alt="" style="height:96px;width:auto"></div><div class="gt"><b>1st Edition Holographic Lizard</b>
+         <p>"A lady sold me a whole box of these cards a while back. This one's the jewel. Mint. Not for sale... unless it is."</p><em>${(pr.gear.lizardcard || 0) > 0 ? 'Yours: it stands on your lot (Build Mode, Decoration)' : ''}</em></div>
+         ${
+           (pr.gear.lizardcard || 0) > 0
+             ? '<button disabled>Bought back</button>'
+             : `<button data-lizard ${pr.cash < LIZARD_PRICE ? 'disabled' : ''}>${armed === 'lizard' ? `Buy it back for ${money(LIZARD_PRICE)}?` : money(LIZARD_PRICE)}</button>`
+         }</div></div></div>`,
     );
+    $('lmodal')
+      .querySelector<HTMLButtonElement>('[data-lizard]')
+      ?.addEventListener('click', async () => {
+        if (armed !== 'lizard') return openPawn('lizard');
+        const r = await buyItem('lizardcard', LIZARD_PRICE);
+        playSample(r === 'ok' ? 'win' : 'error', 0.55);
+        toast(
+          r === 'ok'
+            ? 'The lizard is home. Mom would cry. Place it on your lot in Build Mode (Decoration): everyone will see it.'
+            : "You can't afford it. He's not surprised.",
+          5000,
+        );
+        await openPawn();
+      });
     const card = $('lmodal').querySelector('.card');
     card?.classList.add('wide');
     $('lmodal')
@@ -248,6 +379,26 @@ export function createShopMenus(ctx: ShopCtx) {
                }).join('')}</div>`
            : ''
        }
+       ${(() => {
+         // repairs (crash wear) and the impound lot (cars the tow truck took): vehicles/wear.ts
+         const worn = pr.cars.filter(id => (pr.carWear[id] || 0) > 0 && !pr.impound[id]),
+           held = Object.keys(pr.impound).filter(id => CAR.has(id));
+         return worn.length || held.length
+           ? `<h3>Service bay</h3><div class="goods">${worn
+               .map(id => {
+                 const w = pr.carWear[id] || 0,
+                   price = repairPrice(id, w);
+                 return `<div class="good"><div class="gi"><img src="${pic(id)}" alt="" style="width:84px;height:auto;object-fit:contain"></div><div class="gt"><b>${CAR.get(id)!.name}</b><p>${w >= 60 ? 'Smoking, backfiring and down on power.' : w >= 30 ? 'Backfires when you lift off; down on power.' : 'A few knocks: a little down on power.'}</p><em>Wear ${w}%</em></div>
+                   <button data-fix="${id}" ${pr.cash < price ? 'disabled' : ''}>Fix it · ${money(price)}</button></div>`;
+               })
+               .join('')}${held
+               .map(
+                 id => `<div class="good"><div class="gi"><img src="${pic(id)}" alt="" style="width:84px;height:auto;object-fit:contain"></div><div class="gt"><b>${CAR.get(id)!.name}</b><p>In the impound lot round the back, still dripping pond water.</p><em>Towed</em></div>
+                   <button data-impound="${id}" ${pr.cash < pr.impound[id] ? 'disabled' : ''}>Get it back · ${money(pr.impound[id])}</button></div>`,
+               )
+               .join('')}</div>`
+           : '';
+       })()}
        <h3>On the lot</h3><div class="cars">
          <div class="carcard${pr.car ? '' : ' on'}"><img class="carpic" src="${carPics.get('cart') || (carPics.set('cart', objectImage(cartModel('#c8452f').root, 220)), carPics.get('cart'))}" alt=""><b>Golf cart</b><p>The one that came with the place.</p>
            <button data-car="" ${pr.car ? '' : 'disabled'}>${pr.car ? 'Drive this' : 'Driving'}</button></div>
@@ -255,7 +406,7 @@ export function createShopMenus(ctx: ShopCtx) {
            const own = pr.cars.includes(c.id),
              on = pr.car === c.id;
            return `<div class="carcard${on ? ' on' : ''}"><img class="carpic" src="${pic(c.id)}" alt=""><b>${c.name}</b><p>${c.blurb}</p>
-             <button data-car="${c.id}" ${on || (!own && pr.cash < c.price) ? 'disabled' : ''}>${on ? 'Driving' : own ? 'Drive this' : money(c.price)}</button></div>`;
+             <button data-car="${c.id}" ${on || pr.impound[c.id] || (!own && pr.cash < c.price) ? 'disabled' : ''}>${pr.impound[c.id] ? 'Impounded' : on ? 'Driving' : own ? 'Drive this' : money(c.price)}</button></div>`;
          }).join('')}</div>
        <p class="muted" style="margin-top:10px">Your car comes out of the cart garage on your lot (<kbd>E</kbd> at the garage) and waits behind the tee on the course.</p></div>`,
     );
@@ -290,6 +441,30 @@ export function createShopMenus(ctx: ShopCtx) {
             playSample(ok ? 'confirm' : 'error', 0.5);
             if (!ok) toast("You can't afford that right now.");
             else toast(id ? `${CAR.get(id)!.name}: it's in your garage.` : 'Back to the golf cart.');
+            await again();
+          }),
+      );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-fix]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const id = b.dataset.fix!,
+              ok = await repairCar(id, repairPrice(id, progress().carWear[id] || 0));
+            playSample(ok ? 'confirm' : 'error', 0.5);
+            toast(ok ? `Good as new. Take it out of the garage again to feel it.` : "You can't afford the repair.");
+            await again();
+          }),
+      );
+    $('lmodal')
+      .querySelectorAll<HTMLButtonElement>('[data-impound]')
+      .forEach(
+        b =>
+          (b.onclick = async () => {
+            const id = b.dataset.impound!,
+              ok = await payImpound(id);
+            playSample(ok ? 'confirm' : 'error', 0.5);
+            toast(ok ? `Your ${CAR.get(id)!.name.toLowerCase()} is back in your garage. Maybe stay out of the ponds.` : "You can't afford the fee.");
             await again();
           }),
       );
@@ -361,7 +536,7 @@ export function createShopMenus(ctx: ShopCtx) {
       'Homestead Furniture',
       '"Take your time. It all goes home with you: we deliver to your lot\'s storage."',
       pr =>
-        ITEMS.filter(i => i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage')
+        ITEMS.filter(i => !i.notSold && (i.cat === 'furniture' || i.cat === 'decor' || i.cat === 'garage'))
           .sort((a, b) => AISLE_ORDER.indexOf(aisle(a)) - AISLE_ORDER.indexOf(aisle(b)))
           .map(def => {
             const own = pr.gear[def.id] || 0;
@@ -401,6 +576,30 @@ export function createShopMenus(ctx: ShopCtx) {
           gear('growpot', invIcon('growpot'), 'One plant. Goes anywhere on your lot.'),
           gear('growbed', invIcon('growbed'), 'Three plants, and they grow a little faster.'),
           gear('sprinkler', invIcon('sprinkler'), 'Waters every plant within 2.6 m for you.'),
+          {
+            id: 'ggseed',
+            icon: '<span style="font-size:34px">🌟</span>',
+            name: 'Golden Hills Gold seed',
+            desc: 'Premium and volatile. Sells for a fortune, but it wilts and dies without a UV lamp beside it and premium nutrients. One seed.',
+            price: 2500,
+            have: pr.items.ggseed ? `${pr.items.ggseed} in your pocket` : '',
+            group: 'Premium',
+            item: 1,
+          },
+          {
+            ...gear('uvlamp', '<span style="font-size:34px">💡</span>', 'Keeps volatile plants within 2.2 m alive. Place it beside the pot.'),
+            group: 'Premium',
+          },
+          {
+            id: 'nutri',
+            icon: '<span style="font-size:34px">🧪</span>',
+            name: 'Premium nutrients',
+            desc: 'Three doses. A volatile plant needs one every six minutes or it starts to wilt.',
+            price: 450,
+            have: pr.items.nutri ? `${pr.items.nutri} doses` : '',
+            group: 'Premium',
+            item: 3,
+          },
           {
             id: 'fert',
             icon: invIcon('fert'),

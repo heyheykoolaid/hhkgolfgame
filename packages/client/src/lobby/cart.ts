@@ -3,6 +3,7 @@
 // vehicles the lobby keeps per remote player.
 import * as THREE from 'three';
 import { VEHICLES, CAR, carModel, cleanKind, myVehicleKind, type Vehicle, type VehState } from '../vehicles/vehicles';
+import { hookWear } from '../vehicles/wear';
 import { progress } from '../avatar/progress';
 import { toWorld, BOUND, type Plot, type Collider } from './world';
 import type { Placed } from './build';
@@ -97,6 +98,7 @@ export function createLobbyCart(host: CartHost) {
       car = mine.make(host.pw()!, host.scene, host.myPlot()!.color, true);
       car.placeAt(g.x, 0.12, g.z, g.yaw);
     }
+    hookWear(car, host.toast); // (its saved wear: a repair since last time shows up here)
     enterCart();
   }
   /** Fun Land's kart stand: your cart appears there (it comes from your garage if it was out). */

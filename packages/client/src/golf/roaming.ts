@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { COURSE, heightAt, surfaceAt, clamp, treesNear, pondPd, WATER_Y, CART_SLOTS } from '@gh/shared';
 import { myVehicleKind, insideVehicle, type Vehicle } from '../vehicles/vehicles';
+import { hookWear, towIt } from '../vehicles/wear';
 import { progress } from '../avatar/progress';
 import { speedo } from '../ui/speedo';
 import { Flop, type PhysWorld } from '../physics/ragdoll';
@@ -109,6 +110,7 @@ export function createRoaming(host: RoamHost) {
       i = Math.max(0, ord.indexOf(host.uid())),
       [x, z] = CART_SLOTS[i % CART_SLOTS.length];
     cart = myVehicleKind(progress()).make(pw, scene, colorFor(host.uid()), true); // your own car from the lobby, or the golf cart
+    hookWear(cart, toast);
     cart.placeAt(x, heightAt(x, z) + 0.2, z, 0); // your own cart, in your parking slot behind the tee
   }
   /** Walk-blocking: tree trunks, ponds, carts. */
@@ -289,6 +291,22 @@ export function createRoaming(host: RoamHost) {
       cartStuck = wet ? 'water' : up < 0.45 && sp < 1.5 ? 'flip' : '';
       if (cartStuck === 'water' && was !== 'water') {
         sfx.splash(0.6);
+        if (cart.kind.startsWith('car:')) {
+          // a car in the pond: the tow truck takes it to the impound lot (vehicles/wear.ts); you're left on the bank
+          const c = cart;
+          if (S.phase === 'drive') {
+            S.phase = 'walk';
+            if (cartSafe) {
+              W.x = cartSafe.x;
+              W.z = cartSafe.z;
+            }
+          }
+          cart = null;
+          cartStuck = '';
+          void towIt(c).then(msg => msg && toast(msg, 6000));
+          setTimeout(() => c.dispose(), 1500);
+          return;
+        }
         toast('Splash! Press E to haul the cart out.', 2000);
       }
       // remember the last spot where it was upright on dry ground (that's where a soaked cart gets hauled back to)

@@ -77,6 +77,10 @@ export interface Progress {
   carLook: Record<string, string>;
   /** Bolt-on parts per car you own: three digits, engine · tyres · brakes, each 0 to 3 (vehicles.ts CAR_PARTS). */
   carParts: Record<string, string>;
+  /** Crash wear per car you own, 0 (fresh) to 100 (a wreck); Wrench & Ride repairs it (vehicles/wear.ts). */
+  carWear: Record<string, number>;
+  /** Cars the tow truck has taken to the impound lot, with the fee to get each one back. */
+  impound: Record<string, number>;
   /** Odds and ends by kind, counted: hobo (the hobo's rainbow seeds). */
   items: Record<string, number>;
   /** Mom's Attic: the lost things you've found (lobby/attic.ts ids). */
@@ -125,6 +129,8 @@ const clean0 = (
   | 'car'
   | 'carLook'
   | 'carParts'
+  | 'carWear'
+  | 'impound'
   | 'items'
   | 'attic'
   | 'putter'
@@ -193,13 +199,27 @@ const clean = (p: any): Progress => ({
       .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && typeof v === 'string' && /^[0-3]{3}$/.test(v))
       .slice(0, 40),
   ) as Record<string, string>,
+  carWear: Object.fromEntries(
+    Object.entries(p?.carWear && typeof p.carWear === 'object' ? p.carWear : {})
+      .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && +(v as any) > 0)
+      .slice(0, 40)
+      .map(([k, v]) => [k, Math.min(100, Math.round(+(v as any)))]),
+  ) as Record<string, number>,
+  impound: Object.fromEntries(
+    Object.entries(p?.impound && typeof p.impound === 'object' ? p.impound : {})
+      .filter(([k, v]) => /^[a-z]{2,10}$/.test(k) && +(v as any) > 0)
+      .slice(0, 40)
+      .map(([k, v]) => [k, Math.min(1e6, Math.round(+(v as any)))]),
+  ) as Record<string, number>,
   items: Object.fromEntries(
     Object.entries(p?.items && typeof p.items === 'object' ? p.items : {})
       .filter(([k, v]) => /^[a-z]{2,12}$/.test(k) && +(v as any) > 0)
       .slice(0, 40)
       .map(([k, v]) => [k, Math.min(999, Math.floor(+(v as any)))]),
   ),
-  attic: Array.isArray(p?.attic) ? [...new Set<string>(p.attic.filter((s: any) => typeof s === 'string' && /^[a-z0-9]{2,16}$/.test(s)))].slice(0, 60) : [],
+  attic: Array.isArray(p?.attic)
+    ? [...new Set<string>(p.attic.filter((s: any) => typeof s === 'string' && /^[a-z0-9]{2,16}$/.test(s)))].slice(0, 60)
+    : [],
   putter: typeof p?.putter === 'string' && /^[a-z0-9]{0,16}$/.test(p.putter) ? p.putter : '',
   gear: Object.fromEntries(
     Object.entries(p?.gear && typeof p.gear === 'object' ? p.gear : {})
@@ -455,7 +475,7 @@ export async function deleteMail(id: string) {
 // ------------------------------------------------------------------ the inventory: 32 slots
 export const INV_SLOTS = 32;
 /** Grow gear is small enough to carry, so spare pieces take an inventory slot; furniture waits in your lot's own storage. */
-const CARRIED = ['growpot', 'growbed', 'sprinkler'];
+const CARRIED = ['growpot', 'growbed', 'sprinkler', 'uvlamp'];
 /** What's standing on your own lot (catalog ids, one per placed item): gear and trophies out there take no slot. */
 let placedKeys: string[] = [];
 export function setPlaced(keys: string[]) {
@@ -518,6 +538,7 @@ export async function addToCloset(keys: string[], cost: number, seed = false) {
 /** Cars: buy one (and drive it), or switch to one you own ('' = back to the golf cart). */
 export async function setCar(id: string, price: number) {
   await loadProgress();
+  if (id && cur.impound[id]) return false; // (it's in the impound lot: pay the fee first)
   if (id && !cur.cars.includes(id)) {
     if (cur.cash < price) return false;
     cur.cash -= price;
@@ -546,6 +567,42 @@ export async function fitPart(id: string, part: number, stage: number, price: nu
   await save();
   return true;
 }
+/** Crash wear on a car (0–100), saved as it happens. */
+export async function setCarWear(id: string, w: number) {
+  await loadProgress();
+  w = Math.max(0, Math.min(100, Math.round(w)));
+  if ((cur.carWear[id] || 0) === w) return;
+  if (w) cur.carWear[id] = w;
+  else delete cur.carWear[id];
+  await save();
+}
+/** Wrench & Ride: fix a car's wear for `price`. */
+export async function repairCar(id: string, price: number) {
+  await loadProgress();
+  if (cur.cash < price || !cur.carWear[id]) return false;
+  cur.cash -= price;
+  delete cur.carWear[id];
+  await save();
+  return true;
+}
+/** The tow truck took it: it's in the impound lot until the fee is paid (and it isn't the car you drive meanwhile). */
+export async function impoundCar(id: string, fee: number) {
+  await loadProgress();
+  if (!cur.cars.includes(id)) return;
+  cur.impound[id] = Math.round(fee);
+  if (cur.car === id) cur.car = '';
+  await save();
+}
+export async function payImpound(id: string) {
+  await loadProgress();
+  const fee = cur.impound[id];
+  if (!fee || cur.cash < fee) return false;
+  cur.cash -= fee;
+  delete cur.impound[id];
+  cur.car = id;
+  await save();
+  return true;
+}
 /** Ball trails: buy one (and put it on), or switch to one you own. */
 export async function setTrail(id: string, price: number) {
   await loadProgress();
@@ -562,7 +619,7 @@ export async function setTrail(id: string, price: number) {
 export async function addItem(kind: string, n: number, price: number): Promise<BuyResult> {
   await loadProgress();
   if (cur.cash < price) return 'cash';
-  if (!cur.items[kind] && slotsUsed() >= INV_SLOTS) return 'full';
+  if (kind === 'hobo' && !cur.items[kind] && slotsUsed() >= INV_SLOTS) return 'full'; // (only the hobo's seeds take a slot)
   cur.cash -= price;
   cur.items[kind] = (cur.items[kind] || 0) + n;
   await save();
